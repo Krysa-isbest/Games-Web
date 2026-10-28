@@ -479,6 +479,7 @@
   async function runHost(game) {
     const { adapter, net } = game;
     const ctx = game.ctx = await readyCtx(game.frame, adapter, { ts: net === 'ts' });
+    if (adapter.openOnly) { gStatus(adapter.note || 'Opened for everyone.'); return; }
     if (net === 'ts' && adapter.ts === 'manual') {
       gStatus('Opening the game for your friends…');
       await adapter.hostManual(ctx);
@@ -541,7 +542,7 @@
     if (!adapter) return;
     const game = P.game;
     readyCtx(frame, adapter, { ts: m.net === 'ts' })
-      .then(ctx => { game.ctx = ctx; gStatus('Waiting for the leader\'s room…'); pump(); })
+      .then(ctx => { game.ctx = ctx; gStatus(adapter.openOnly ? (adapter.note || 'Opened for everyone.') : 'Waiting for the leader\'s room…'); pump(); })
       .catch(e => fail(game, e));
   }
   // Guest: handle codes / invites from the leader once the game has loaded

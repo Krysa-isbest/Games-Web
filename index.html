@@ -50,8 +50,10 @@ h1 em{font-style:italic;color:var(--accent)}
   opacity:0;transform:translateY(6px);transition:all .25s ease;
 }
 .card:hover .play{opacity:1;transform:none}
+.flags{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.flag.big{color:#fff;background:rgba(184,80,47,.94)}
 .flag{
-  position:absolute;top:14px;left:14px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
 }
 .flag i{width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 2s infinite}
@@ -143,6 +145,21 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    changelog entries look like: { version: '1.1', date: '2026-10-26', notes: ['Added X', 'Fixed Y'] }
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
+  {
+    file: 'contain-the-miller/index.html', party: 'miller', title: 'Contain the Miller', art: 'miller', big: true,
+    desc: 'Shipwrecked on an island overrun by monkeys. Chop bamboo and trees, build cages with rope lashing, sneak up on monkeys and feed them to tame them. Every caged monkey earns you money.',
+    mp: null, mpNote: 'Co-op for up to 4 players is planned. For now the party can open it for everyone at once, but each player has their own island.', lang: 'English', genre: '3D survival',
+    updating: true, changelog: [
+      { version: '0.1.0', date: '2026-10-28', notes: [
+        'First playable jungle: chop bamboo and trees, gather stone and fiber.',
+        'Chimpanzees and Basic Monkeys roam the jungle. Sneak (Ctrl) and feed them to tame them.',
+        'Build menu (B) with the rope-lashing build minigame.',
+        'Bamboo cages earn slow income for every monkey inside.',
+        'Day and night cycle with campfires and torches.',
+        'Health, stamina, hunger and thirst. Drink from the river or your canteen.'
+      ] }
+    ]
+  },
   {
     file: 'Prison boss/index.html', party: 'prison', title: 'Prison Boss', subtitle: 'VR & PC edition', art: 'prison',
     desc: 'Run a business from your cell. Craft and sell contraband, climb the ranks, carve a fake key and escape without the guards catching on. Playable on PC or in a VR headset.',
@@ -257,6 +274,17 @@ const GAMES = [
 
 /* Atmospheric card art: gradient sky + layered silhouettes */
 const ART = {
+  miller: `
+    <defs><linearGradient id="g9" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9d9a6"/><stop offset=".55" stop-color="#9cc08a"/><stop offset="1" stop-color="#4f7a4a"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g9)"/><circle cx="310" cy="52" r="20" fill="#fff4d0" opacity=".8"/>
+    <path d="M0 120q60-30 120-8t110 0 90-20 80 6v102H0z" fill="#5f8f55" opacity=".7"/>
+    <g fill="#2f4f2c"><path d="M40 200V96q-2-20 6-36" stroke="#2f4f2c" stroke-width="6" fill="none"/>
+    <path d="M46 60q-34-6-46 18q22-12 46-10z"/><path d="M46 60q32-14 56 2q-28-2-56 6z"/><path d="M46 60q-10-24 6-38q-2 20-2 38z"/>
+    <path d="M360 200V90q2-18-4-32" stroke="#2f4f2c" stroke-width="6" fill="none"/><path d="M356 58q30-10 44 10q-22-8-44-4z"/><path d="M356 58q-28-12-50 6q26-4 50-0z"/></g>
+    <g stroke="#6b4a2a" stroke-width="5"><path d="M150 170V110M178 170V110M206 170V110M234 170V110M262 170V110"/><path d="M144 110h124M144 170h124" stroke-width="7"/></g>
+    <g fill="#3a2a1c"><circle cx="206" cy="132" r="9"/><ellipse cx="206" cy="152" rx="12" ry="14"/><circle cx="198" cy="126" r="4"/><circle cx="214" cy="126" r="4"/></g>
+    <g fill="#3a2a1c"><circle cx="96" cy="150" r="7"/><ellipse cx="102" cy="164" rx="12" ry="8"/><path d="M112 162q14-4 12-20" stroke="#3a2a1c" stroke-width="3" fill="none"/></g>
+    <rect y="170" width="400" height="30" fill="#3e6339"/>`,
   prison: `
     <defs><linearGradient id="g8" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c7cdd3"/><stop offset="1" stop-color="#8b949c"/></linearGradient>
     <radialGradient id="g8b" cx=".72" cy=".3" r=".45"><stop offset="0" stop-color="#fff1cf" stop-opacity=".9"/><stop offset="1" stop-color="#fff1cf" stop-opacity="0"/></radialGradient></defs>
@@ -342,7 +370,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}
+        ${g.big || g.updating ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
@@ -399,6 +427,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Last%20shelter/party-adapter.js"></script>
 <script src="Rooftop%20snipers/party-adapter.js"></script>
 <script src="Survival/party-adapter.js"></script>
+<script src="contain-the-miller/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
 </html>
