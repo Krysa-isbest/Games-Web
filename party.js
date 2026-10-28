@@ -414,10 +414,30 @@
         }
       },
       sleep: async ms => { await sleep(ms); if (!alive()) throw new Error('cancelled'); },
-      status: gStatus
+      status: gStatus,
+      ask: (title, text, options) => askChoice(frame, title, text, options)
     };
     return ctx;
   }
+  // A question shown over the game, e.g. "continue your save or start a new game?"
+  // options: [{ v: 'value', t: 'Button text', pri: true }]
+  function askChoice(frame, title, text, options) {
+    return new Promise((res, rej) => {
+      const box = document.createElement('div');
+      box.className = 'pg-ask';
+      box.innerHTML = `<div class="pg-ask-card"><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="pg-ask-btns">${options.map((o, i) => `<button data-i="${i}" class="pt-btn${o.pri ? ' pri' : ''}">${esc(o.t)}</button>`).join('')}</div></div>`;
+      $('pg-frame').appendChild(box);
+      const done = () => { box.remove(); clearInterval(watch); };
+      const watch = setInterval(() => { if (session !== frame.session) { done(); rej(new Error('cancelled')); } }, 300);
+      box.addEventListener('click', e => {
+        const b = e.target.closest('[data-i]');
+        if (!b) return;
+        done();
+        res(options[+b.dataset.i].v);
+      });
+    });
+  }
+
   async function readyCtx(frame, adapter, opts) {
     await frame.loaded;
     try { void frame.fr.contentDocument.body; }

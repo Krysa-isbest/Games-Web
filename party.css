@@ -89,7 +89,7 @@ body.in-party .item.pt-ok .art::after{content:'Play with party';color:var(--acce
 body.in-party .item:not(.pt-ok) .card{opacity:.75}
 
 /* the game, opened inside the page */
-#pg-frame{position:fixed;top:0;left:0;bottom:0;right:0;z-index:40;background:#111;display:none;flex-direction:column}
+#pg-frame{isolation:isolate;position:fixed;top:0;left:0;bottom:0;right:0;z-index:40;background:#111;display:none;flex-direction:column}
 body.party-open #pg-frame{right:var(--pw)}
 body.pg-playing #pg-frame{display:flex}
 body.pg-playing{overflow:hidden}
@@ -99,6 +99,11 @@ body.pg-playing{overflow:hidden}
 .pg-back,.pg-quit{font:600 13px var(--sans);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--ink)}
 .pg-quit{color:#9a3a22}
 #pg-iframe{flex:1;width:100%;border:0;background:#000}
+.pg-ask{position:absolute;inset:0;display:grid;place-items:center;background:rgba(20,16,12,.55);backdrop-filter:blur(3px);z-index:2;padding:16px}
+.pg-ask-card{background:var(--paper);color:var(--ink);border-radius:18px;padding:24px 26px;max-width:420px;width:100%;box-shadow:0 30px 80px -20px rgba(0,0,0,.6);font-family:var(--sans)}
+.pg-ask-card h3{margin:0 0 8px;font:600 24px var(--serif)}
+.pg-ask-card p{margin:0 0 18px;color:var(--soft);font-size:14.5px;line-height:1.5}
+.pg-ask-btns{display:flex;flex-direction:column;gap:8px}
 
 @media (max-width:900px){
   :root{--pw:min(360px,100vw)}
