@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contain the Miller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- loading -->
+<div id="loading" class="screen">
+  <div class="title small"><span>CONTAIN</span><em>THE</em><span>MILLER</span></div>
+  <div class="bar"><div id="loadFill"></div></div>
+  <div id="loadText">Loading the island…</div>
+</div>
+
+<!-- main menu -->
+<div id="menu" class="screen hidden">
+  <div id="menuBg"></div>
+  <div class="menuLeft">
+    <div class="title"><span>CONTAIN</span><em>THE</em><span>MILLER</span></div>
+    <nav id="menuButtons">
+      <button data-act="continue">Continue</button>
+      <button data-act="new">New Game</button>
+      <button data-act="load">Load Game</button>
+      <button data-act="settings">Settings</button>
+      <button data-act="credits">Credits</button>
+      <button data-act="exit">Exit Game</button>
+    </nav>
+  </div>
+  <aside id="changelog">
+    <header><h2>CHANGELOG</h2><button id="clToggle" title="Hide changelog">✕</button></header>
+    <ul id="clList"></ul>
+  </aside>
+  <button id="clShow" class="hidden">CHANGELOG</button>
+  <div id="version"></div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="crosshair"></div>
+  <div id="prompt"></div>
+  <div id="hint"></div>
+  <div id="notes"></div>
+  <div id="topRight"><div id="clock"></div><div id="money"></div><div id="income"></div></div>
+  <div id="fps" class="hidden"></div>
+  <div id="stats">
+    <div class="stat"><svg viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg><div class="track"><i id="sHealth" style="background:#c8323a"></i></div></div>
+    <div class="stat"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><div class="track"><i id="sStamina" style="background:#e3b23c"></i></div></div>
+    <div class="stat"><svg viewBox="0 0 24 24"><path d="M7 2v9a2 2 0 0 1-1 1.7V22H4v-9.3A2 2 0 0 1 3 11V2h1v6h1V2h1v6h1V2zm10 0c2 1 3 4 3 7s-1 4-2 4v9h-2V2z"/></svg><div class="track"><i id="sHunger" style="background:#b9b64a"></i></div></div>
+    <div class="stat"><svg viewBox="0 0 24 24"><path d="M12 2s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13z"/></svg><div class="track"><i id="sThirst" style="background:#3c86d6"></i></div></div>
+    <div class="stat" id="oxyRow"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><circle cx="16" cy="9" r="3"/><circle cx="17" cy="18" r="2"/></svg><div class="track"><i id="sOxygen" style="background:#9ad8ff"></i></div></div>
+  </div>
+  <div id="hotbar"></div>
+  <div id="resources"></div>
+  <div id="damage"></div>
+  <div id="nightTint"></div>
+</div>
+
+<!-- build menu -->
+<div id="buildMenu" class="panel hidden">
+  <h2>BUILD</h2>
+  <div id="buildList"></div>
+  <p class="foot">Pick something, place it, then click the glowing rings to tie the ropes. &nbsp;[B] close</p>
+</div>
+
+<!-- pause -->
+<div id="pause" class="screen dim hidden">
+  <div class="panel narrow">
+    <h2>PAUSED</h2>
+    <button data-act="resume">Resume</button>
+    <button data-act="save">Save Game</button>
+    <button data-act="settings">Settings</button>
+    <button data-act="controls">Controls</button>
+    <button data-act="menu">Main Menu</button>
+  </div>
+</div>
+
+<!-- death -->
+<div id="death" class="screen dim hidden">
+  <div class="panel narrow">
+    <h2>YOU DIED</h2>
+    <p id="deathReason"></p>
+    <button data-act="respawn">Wake up at camp</button>
+    <button data-act="menu">Main Menu</button>
+  </div>
+</div>
+
+<!-- generic modal -->
+<div id="modal" class="screen dim hidden">
+  <div class="panel" id="modalBox">
+    <h2 id="modalTitle"></h2>
+    <div id="modalBody"></div>
+    <div class="modalFoot"><button id="modalClose">Back</button></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
