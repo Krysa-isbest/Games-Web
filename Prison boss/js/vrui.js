@@ -47,24 +47,22 @@ PB.VRUI = (() => {
         if (dirty) { dirty = false; render(); }
     };
 
+    // Every menu (trader, crafting, pause, settings, main menu...) is a tablet held in your LEFT hand:
+    // it moves with your hand, you point at it with the right hand (or poke it with your right finger).
+    // Only the small minigame instructions float low beside the desk, so both hands stay free.
     function place(s) {
-        const P = PB.Player, cell = W.cells[P.cell];
-        // pause menu = a tablet on your left wrist
-        if (s.key === 'pause' && PB.VR.hands.left) {
-            PB.VR.hands.left.grip.add(mesh);
-            mesh.position.set(0, 0.11, 0.1); mesh.rotation.set(-1.0, 0, 0); mesh.scale.setScalar(0.3);
+        const L = PB.VR.hands.left;
+        if (s.key !== 'mini' && L) {
+            L.grip.add(mesh);
+            mesh.position.set(0.02, 0.17, -0.02); mesh.rotation.set(-0.55, 0, 0); mesh.scale.setScalar(0.4);
+            U.onHand = true;
             return;
         }
-        if (s.key === 'panel' && anchor && cell && W.area === 'cell') {
-            const at = anchor === 'desk' ? [0.4, 1.22, 1.9, 0.4, 1.22, 1.0] : [-0.9, 1.5, -1.8, -0.9, 1.5, -1.0];
-            const pos = cell.toWorld(at[0], at[1], at[2]), look = cell.toWorld(at[3], at[4], at[5]);
-            W.activeScene.add(mesh);
-            mesh.position.copy(pos); mesh.lookAt(look); mesh.scale.setScalar(anchor === 'desk' ? 0.75 : 0.85);
-            return;
-        }
+        U.onHand = false;
         W.activeScene.add(mesh);
         floatInFront(s);
     }
+    U.onHand = false;
 
     // Float the panel in front of you (the minigame instructions sit low and to the left, out of the way)
     function floatInFront(s) {
@@ -85,7 +83,7 @@ PB.VRUI = (() => {
     // Press buttons by touching them with your fingertip
     const pokeIn = {};
     U.poke = (tip, side) => {
-        if (!U.visible) return;
+        if (!U.visible || (U.onHand && side === 'left')) return; // the hand holding the tablet can't poke it
         mesh.updateMatrixWorld();
         const l = mesh.worldToLocal(tip.clone()), s = mesh.getWorldScale(new THREE.Vector3()).x;
         const inside = Math.abs(l.x) < SIZE / 2 && Math.abs(l.y) < SIZE / 2, depth = l.z * s;
@@ -242,8 +240,10 @@ PB.VRUI = (() => {
         b.el.click();
         dirty = true;
     };
-    U.scroll = (dy, onPanel) => {
-        if (!onPanel || !dy) return;
+    U.scroll = (dy, onPanel) => { if (onPanel) U.scrollBy(dy); };
+    // (hold the trigger and move your hand: up = see what's further down, like dragging the page)
+    U.scrollBy = dy => {
+        if (!dy || !U.visible) return;
         const max = Math.max(0, contentH - (CH - 160));
         const ns = PB.clamp(scrollY + dy, 0, max);
         if (ns !== scrollY) { scrollY = ns; dirty = true; }

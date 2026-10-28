@@ -724,6 +724,7 @@ PB.Game = (() => {
             PB.Escape.update(dt);
             PB.UI.update(dt);
             PB.Mini.update(dt);
+            PB.Area.updateTravel();
             const area = PB.World.area;
             if (area !== lastArea) { lastArea = area; PB.Audio.setRoom(area); }
             if (PB.Player.enabled) PB.Audio.ambience(dt, area, PB.state.phase === 'night');

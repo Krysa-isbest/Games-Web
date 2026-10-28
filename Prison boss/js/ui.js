@@ -392,8 +392,11 @@ PB.UI = (() => {
             </ul>
             <h3>🥽 VR (Settings → VR: ON)</h3>
             <ul>
-                <li><b>Left stick</b> walk · <b>Right stick</b> snap turn / scroll menus</li>
-                <li><b>Grip</b> (either hand): grab what your hand is touching. It glows when it's in reach. Let go to drop it, or swing and let go to throw. Grab a drawer handle and pull it. Grab the poster to lift it.</li>
+                <li><b>Left stick</b> walk · flick it <b>down</b> to crouch / stand up · <b>Right stick</b> snap turn</li>
+                <li><b>Grip</b> (either hand): grab what your hand is near; it snaps into your palm. Let go to drop it, or swing and let go to throw. Grab a drawer handle and pull it. Grab the poster and swing it open or shut.</li>
+                <li>Menus are a tablet in your <b>left hand</b>. Point with the right hand and pull the trigger to click; <b>hold the trigger and move your hand up/down</b> to scroll.</li>
+                <li>When lunch, the yard etc. is open, a yellow <b>bubble</b> in the bottom-left of your view takes you there (poke it or point + trigger). It also takes you back to your cell.</li>
+                <li>Minigames: your body stays in place so you can lean over the desk. <b>Grip</b> grabs the paper, pouch, tools; shake your hand to sprinkle tobacco.</li>
                 <li><b>Trigger</b>: use what your finger touches, or what the right laser points at (doors, lamp, toilet, Vinnie, buttons)</li>
                 <li><b>A</b> use · <b>B</b> secondary · <b>X</b> back / wrist tablet (pause, settings, unstuck) · <b>Y</b> wrist info on/off</li>
                 <li>Press the red <b>CRAFT</b> button on your desk for the recipe board. Talk to Vinnie for the shop board at the bars. Poke buttons with your finger.</li>

@@ -4,12 +4,12 @@ PB.Keys = (() => {
     const K = { waiting: null };
     K.DEFAULTS = {
         forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', use: 'KeyE', alt: 'KeyF', rotate: 'KeyR',
-        putback: 'KeyQ', throw: 'KeyT', help: 'KeyH', music: 'KeyM', ping: 'KeyG', crouch: 'ControlLeft'
+        putback: 'KeyQ', throw: 'KeyT', help: 'KeyH', music: 'KeyM', ping: 'KeyG', crouch: 'ControlLeft', travel: 'Enter'
     };
     K.NAMES = {
         forward: 'Walk forward', back: 'Walk back', left: 'Walk left', right: 'Walk right', use: 'Use / interact',
         alt: 'Secondary action / take one', rotate: 'Rotate item', putback: 'Put item back', throw: 'Throw / drop item',
-        help: 'Help', music: 'Music on/off', ping: 'Ping (co-op)', crouch: 'Crouch'
+        help: 'Help', music: 'Music on/off', ping: 'Ping (co-op)', crouch: 'Crouch', travel: 'Go (lunch, yard, back to cell...)'
     };
     // letters used in on-screen hints -> the action they stand for
     const HINT = { E: 'use', F: 'alt', R: 'rotate', Q: 'putback', T: 'throw', H: 'help', M: 'music', G: 'ping' };

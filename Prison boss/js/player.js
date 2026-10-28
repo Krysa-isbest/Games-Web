@@ -72,6 +72,7 @@ PB.Player = (() => {
                 case 'help': PB.UI.openHelp(); break;
                 case 'music': PB.Music.toggle(); break;
                 case 'ping': PB.Coop.ping(); break;
+                case 'travel': PB.Area.travel(); break;
             }
         });
         addEventListener('keyup', e => {
@@ -155,7 +156,7 @@ PB.Player = (() => {
             if (K('right') || P.keys.ArrowRight) mx += 1;
         }
         const len = Math.hypot(mx, mz);
-        if (vr) P.crouch = false; // in VR you just crouch for real
+        // (in VR, PB.VR sets P.crouch: left stick flicked down, or really crouching)
         if (len > 0) {
             const sp = (W.area === 'cell' ? 2.1 : 2.8) * (P.crouch ? 0.5 : 1) * (P.speedMult || 1) * dt / len, s = Math.sin(P.yaw), c = Math.cos(P.yaw);
             P.tryMove((-s * -mz + c * mx) * sp, (-c * -mz - s * mx) * sp);
@@ -314,11 +315,13 @@ PB.Player = (() => {
         parent.add(m);
         m.scale.setScalar(1);
         if (PB.VR.isOn()) {
-            if (world) { // keep it exactly where your hand closed around it
-                parent.updateMatrixWorld(true);
-                m.matrix.copy(new THREE.Matrix4().copy(parent.matrixWorld).invert().multiply(world));
-                m.matrix.decompose(m.position, m.quaternion, m.scale);
-            } else { m.position.set(0, -0.02, -0.08); m.rotation.set(0, 0, 0); }
+            // always the same grip: the item's centre sits in your palm, lying flat in your hand
+            parent.remove(m);
+            m.position.set(0, 0, 0); m.rotation.set(0, 0, 0);
+            m.updateMatrixWorld(true);
+            const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+            parent.add(m);
+            m.position.set(-c.x, -0.035 - c.y, -0.065 - c.z);
         }
         PB.UI.setHeld(P.held);
     };

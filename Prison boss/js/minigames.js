@@ -160,7 +160,7 @@ PB.Mini = (() => {
         if (!M.active || M.grabbed) return;
         const hp = handLocal(side);
         if (!hp) return;
-        let best = null, bestD = 0.16;
+        let best = null, bestD = 0.2; // generous: your hand only has to be near it
         for (const p of M.props) {
             if (!p.grab || p.state === 'held' || !p.mesh.visible || (p.canGrab && !p.canGrab())) continue;
             const d = p.mesh.position.clone().add(new THREE.Vector3(0, 0.04, 0)).distanceTo(hp);
@@ -267,6 +267,7 @@ PB.Mini = (() => {
                 // VR: the prop sits in your real hand; tilting your wrist tips it (pouring)
                 const prev = m.position.clone(), hp = handLocal(p.vrHand);
                 M.clampWork(hp, p.pad);
+                hp.y = Math.max(hp.y, M.deskY + 0.005); // never through the desk
                 if (p.follow) p.follow(hp, dt);
                 else m.position.lerp(hp, 1 - Math.exp(-30 * dt));
                 const v = m.position.clone().sub(prev).divideScalar(Math.max(dt, 0.001));

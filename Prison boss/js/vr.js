@@ -1,8 +1,9 @@
 'use strict';
 // WebXR (VR headset) support for Meta Quest Browser and PC VR browsers. Only used when Settings → VR is ON.
 //   P.pos / P.yaw stay the "truth"; the camera rig is placed every frame so your head ends up there.
-//   Controls:  L stick walk · R stick snap turn · GRIP grabs what your hand is touching (either hand),
-//              let go to drop/throw it · TRIGGER uses what your hand touches, or what the right laser points at
+//   Controls:  L stick walk (flick down = crouch) · R stick snap turn · GRIP grabs what your hand is near
+//              (it snaps into your palm), let go to drop/throw it · TRIGGER uses what your hand touches, or what
+//              the right laser points at; on a menu: click, or hold + move the hand to scroll
 //              A = use · B = secondary · X = back / wrist tablet (pause) · Y = wrist info on/off
 PB.VR = (() => {
     const V = { supported: false, active: false, fake: false, rigYaw: 0, lastYawOut: null, hands: {}, turnLatch: false, lastHL: null, infoOn: true };
@@ -10,7 +11,8 @@ PB.VR = (() => {
     const ctrls = [];
     const UP = new THREE.Vector3(0, 1, 0), tmp = new THREE.Vector3(), eul = new THREE.Euler(0, 0, 0, 'YXZ');
     const TRIGGER = 0, GRIP = 1, STICK = 3, A = 4, B = 5; // xr-standard gamepad (X/Y on the left = 4/5)
-    const REACH = 0.15;
+    const REACH = 0.2; // generous: grabbing should never be fiddly
+    V.crouch = false; V.crouchY = 0;
 
     V.isOn = () => V.active || V.fake;
 
@@ -126,7 +128,7 @@ PB.VR = (() => {
 
     function drawWrist() {
         if (!wristCtx || !PB.state) return;
-        wrist.visible = V.infoOn && document.getElementById('pause').classList.contains('hidden'); // tablet takes its place
+        wrist.visible = V.infoOn && !PB.VRUI.visible; // a menu on your hand takes its place
         const g = wristCtx, s = PB.state, $ = id => document.getElementById(id);
         g.clearRect(0, 0, 512, 320);
         g.fillStyle = 'rgba(255,244,214,.95)'; g.strokeStyle = '#221a2e'; g.lineWidth = 8;
@@ -240,6 +242,8 @@ PB.VR = (() => {
         return now && !was ? 1 : !now && was ? -1 : 0;
     }
     function gripPos(h) { h.grip.updateMatrixWorld(); return new THREE.Vector3().setFromMatrixPosition(h.grip.matrixWorld); }
+    // the middle of your palm (where held things sit)
+    function palmPos(h) { h.grip.updateMatrixWorld(); return h.grip.localToWorld(new THREE.Vector3(0, -0.035, -0.065)); }
     V.pressed = (side, i) => btn(V.hands[side], i);
 
     // The red CRAFT button really goes down under your fingertip and fires once it's pressed in
@@ -299,6 +303,80 @@ PB.VR = (() => {
         }
         return null;
     }
+    // A poster in your cell whose lower half your hand is on (you grab it and swing it open or shut)
+    function posterTarget(h) {
+        const W = PB.World, cell = W.cells[PB.Player.cell];
+        if (!cell || W.area !== 'cell') return null;
+        const p = gripPos(h);
+        for (const n of [1, 2]) {
+            const sd = cell.sides[n];
+            if (!sd.real || !sd.pivot.visible) continue;
+            sd.pivot.updateMatrixWorld();
+            const c = sd.pivot.localToWorld(new THREE.Vector3(0, -0.45, 0)); // lower part of the poster
+            if (c.distanceTo(p) < 0.25) return { cell, sd };
+        }
+        return null;
+    }
+    // swing angle from where your hand is (in the cell's own coordinates, so mirrored cells work too)
+    function dragPoster(h) {
+        const { cell, sd } = h.poster;
+        const l = cell.group.worldToLocal(gripPos(h)), pv = sd.pivot.position;
+        const out = -sd.sx * (l.x - pv.x), down = pv.y - l.y;
+        sd.poster.t = PB.clamp(Math.atan2(Math.max(0, out), Math.max(0.05, down)) / 1.45, 0, 1);
+    }
+    function releasePoster(h) {
+        const { cell, sd } = h.poster;
+        const want = sd.poster.t > 0.4;
+        sd.drag = false; h.poster = null;
+        if (want === sd.poster.lifted) return;
+        if (PB.Coop.isGuest()) PB.Coop.send({ t: 'act', a: 'use', id: cell.prefix + (sd.n === 2 ? 'poster2' : 'poster'), alt: true });
+        sd.poster.lifted = want;
+        PB.Audio.play('paper');
+    }
+
+    // ---------- Travel bubble ("Go to lunch?") in the bottom-left of your view ----------
+    let travel = null, travelLabel = '', travelLatch = false;
+    function buildTravel() {
+        const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+        const t = new THREE.CanvasTexture(cv);
+        travel = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.05), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthTest: false }));
+        travel.renderOrder = 997;
+        travel.position.set(-0.17, -0.15, -0.5); travel.rotation.set(0.25, 0.3, 0);
+        travel.userData.cv = cv;
+        W.camera.add(travel);
+    }
+    function drawTravel(label) {
+        if (label === travelLabel) return;
+        travelLabel = label;
+        const cv = travel.userData.cv, g = cv.getContext('2d');
+        g.clearRect(0, 0, 512, 128);
+        g.fillStyle = '#ffd23f'; g.strokeStyle = '#221a2e'; g.lineWidth = 10;
+        g.beginPath(); g.roundRect ? g.roundRect(6, 6, 500, 116, 40) : g.rect(6, 6, 500, 116); g.fill(); g.stroke();
+        g.fillStyle = '#221a2e'; g.font = 'bold 40px Nunito, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(label, 256, 66);
+        travel.material.map.needsUpdate = true;
+    }
+    function updateTravel(ray, trig, show) {
+        if (!travel) buildTravel();
+        const o = show ? PB.Area.offer() : null;
+        travel.visible = !!o;
+        if (!o) return false;
+        drawTravel(o.label);
+        let hit = ray.intersectObject(travel, false).length > 0;
+        // or poke it with a fingertip
+        let poked = false;
+        ['left', 'right'].forEach(s => {
+            const h = V.hands[s];
+            if (!h) return;
+            const l = travel.worldToLocal(V.tipPos(h));
+            if (Math.abs(l.x) < 0.1 && Math.abs(l.y) < 0.025 && Math.abs(l.z) < 0.03) poked = true;
+        });
+        if (poked && !travelLatch) { travelLatch = true; o.go(); return true; }
+        if (!poked) travelLatch = false;
+        if (hit && trig === 1) { o.go(); return true; }
+        return false;
+    }
+
     // The interactable your fingertip is touching
     function touchTarget(h) {
         const tip = V.tipPos(h), P = PB.Player;
@@ -345,14 +423,29 @@ PB.VR = (() => {
 
         const e = {};
         ['left', 'right'].forEach(s => { const h = V.hands[s]; e[s] = h ? { trig: edge(h, TRIGGER), grip: edge(h, GRIP), a: edge(h, A), b: edge(h, B), stick: edge(h, STICK) } : {}; });
-        if (onPanel && e.right.trig === 1) PB.VRUI.click(onPanel);
-        else if (PB.Mini.active) {
+
+        // menus: point and pull the trigger to click; keep holding it and move your hand up/down to scroll
+        if (onPanel && e.right.trig === 1 && R) V.menuDrag = { start: onPanel, y0: gripPos(R).y, last: gripPos(R).y, scrolled: false };
+        const onTravel = !V.menuDrag && updateTravel(ray, e.right.trig, inGame && !menuOpen && !PB.Mini.active && !PB.Escape.active);
+        if (V.menuDrag) {
+            if (R && btn(R, TRIGGER)) {
+                const y = gripPos(R).y;
+                if (Math.abs(y - V.menuDrag.y0) > 0.025) V.menuDrag.scrolled = true;
+                if (V.menuDrag.scrolled) PB.VRUI.scrollBy((y - V.menuDrag.last) * 3200);
+                V.menuDrag.last = y;
+            } else {
+                if (!V.menuDrag.scrolled) PB.VRUI.click(V.menuDrag.start);
+                V.menuDrag = null;
+            }
+        } else if (onTravel) {
+            // the laser is on the travel bubble: nothing else gets the trigger
+        } else if (PB.Mini.active) {
             // minigames with your real hands: grip grabs the props, the trigger is the "click"
             ['left', 'right'].forEach(s => {
                 const h = V.hands[s];
                 if (!h) return;
                 h.grip.updateMatrixWorld();
-                PB.Mini.vrHands[s] = { pos: gripPos(h), quat: h.grip.getWorldQuaternion(new THREE.Quaternion()) };
+                PB.Mini.vrHands[s] = { pos: palmPos(h), quat: h.grip.getWorldQuaternion(new THREE.Quaternion()) };
                 if (e[s].grip === 1) PB.Mini.vrGrab(s);
                 if (e[s].grip === -1) PB.Mini.vrRelease(s);
             });
@@ -377,23 +470,35 @@ PB.VR = (() => {
         }
         PB.VRUI.scroll(-axis(R, 3) * dt * 900, onPanel);
 
-        // left stick: walk relative to where you look; right stick: snap turn 30°
-        if (inGame && !menuOpen && !PB.Mini.active) {
+        // left stick: walk relative to where you look (forward and sideways); flick it DOWN to crouch / stand up.
+        // right stick: snap turn 30°
+        const free = inGame && !menuOpen && !PB.Mini.active;
+        if (free) {
             const sx = axis(L, 2), sy = axis(L, 3);
-            if (Math.hypot(sx, sy) > 0.15) {
-                const yaw = V.rigYaw + headYaw, sp = 2.0 * dt;
+            if (sy > 0.8 && !V.crouchLatch) { V.crouchLatch = true; V.crouch = !V.crouch; PB.Audio.play('click', { vol: 0.4 }); }
+            if (sy < 0.5) V.crouchLatch = false;
+            const fy = Math.min(0, sy); // pulling back is crouch, so no walking backwards
+            if (Math.hypot(sx, fy) > 0.15) {
+                const yaw = V.rigYaw + headYaw, sp = 2.0 * dt * (V.crouch ? 0.5 : 1);
                 const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
-                P.tryMove((fx * -sy + rx * sx) * sp, (fz * -sy + rz * sx) * sp);
+                P.tryMove((fx * -fy + rx * sx) * sp, (fz * -fy + rz * sx) * sp);
             }
         }
+        if (!inGame) V.crouch = false;
+        V.crouchY = PB.damp(V.crouchY, V.crouch && !PB.Mini.active ? -0.55 : 0, 10, dt);
+        P.crouch = (V.crouch && !PB.Mini.active) || hl.y < 1.15; // really crouching counts too
         const tx = axis(R, 2);
-        if (!onPanel && Math.abs(tx) > 0.7 && !V.turnLatch) { V.rigYaw -= Math.sign(tx) * Math.PI / 6; V.turnLatch = true; }
+        if (!onPanel && !PB.Mini.active && Math.abs(tx) > 0.7 && !V.turnLatch) { V.rigYaw -= Math.sign(tx) * Math.PI / 6; V.turnLatch = true; }
         if (Math.abs(tx) < 0.3) V.turnLatch = false;
 
-        // place the rig so the headset ends up exactly at P.pos
-        rig.rotation.set(0, V.rigYaw, 0);
-        tmp.set(hl.x, 0, hl.z).applyAxisAngle(UP, V.rigYaw);
-        rig.position.set(P.pos.x - tmp.x, 0, P.pos.z - tmp.z);
+        // place the rig so the headset ends up exactly at P.pos. In a minigame the rig is placed once and then
+        // stays put, so you can lean over the desk and reach things instead of the room sliding away from you.
+        if (!(PB.Mini.active && V.rigFrozen)) {
+            rig.rotation.set(0, V.rigYaw, 0);
+            tmp.set(hl.x, 0, hl.z).applyAxisAngle(UP, V.rigYaw);
+            rig.position.set(P.pos.x - tmp.x, V.crouchY, P.pos.z - tmp.z);
+            if (PB.Mini.active && --V.freezeIn <= 0) V.rigFrozen = true;
+        }
         P.yaw = V.rigYaw + headYaw;
         P.pitch = headPitch;
         V.lastYawOut = P.yaw;
@@ -415,6 +520,12 @@ PB.VR = (() => {
         const vel = trackVelocity(h, dt), P = PB.Player, held = heldIn(side);
         if (PB.World.area !== 'cell') { if (h.glow) h.glow.visible = false; if (ev.trig === 1) { const d = touchTarget(h); if (d) P.useInter(d); else if (side === 'right' && P.hover && P.hover.inter) P.useInter(P.hover.inter); } return; }
 
+        // swinging a poster open / shut with your hand
+        if (h.poster) {
+            dragPoster(h);
+            if (ev.grip === -1) releasePoster(h);
+            return;
+        }
         // pulling a drawer by its handle
         if (h.drag) {
             const d = h.drag, z = gripPos(h).z;
@@ -455,9 +566,9 @@ PB.VR = (() => {
                 const d = drawerTarget(h);
                 if (d) { h.drag = d; d.drag = true; h.dragZ0 = gripPos(h).z; h.dragT0 = d.t; }
                 else {
-                    // grabbing the poster lifts/lowers it
-                    const t = touchTarget(h);
-                    if (t && t.id && /poster2?$/.test(t.id)) P.useInter(t, true);
+                    // grab the poster and swing it open or shut with your hand
+                    const pt = posterTarget(h);
+                    if (pt) { h.poster = pt; pt.sd.drag = true; PB.Audio.play('paper', { vol: 0.5 }); }
                 }
             }
         } else if (ev.grip === -1 && held) {
@@ -488,8 +599,10 @@ PB.VR = (() => {
         if (!backup) backup = { pos: P.pos.clone(), yaw: P.yaw };
         P.pos.set(pos.x, P.pos.y, pos.z);
         P.yaw = Math.atan2(-(look.x - pos.x), -(look.z - pos.z));
+        V.rigFrozen = false; V.freezeIn = 2; // place the rig there, then lock it (your body stays put)
     };
     V.leaveMinigame = () => {
+        V.rigFrozen = false;
         if (!backup) return;
         PB.Player.pos.copy(backup.pos); PB.Player.yaw = backup.yaw;
         backup = null;

@@ -892,7 +892,7 @@ PB.World = (() => {
                 const t = W.tunnelAt(cell.prefix, n), on = W.tunnelOn(t), p = on ? W.tunnelP(t) : 0;
                 if (!on) sd.poster.lifted = false;
                 sd.pivot.visible = on;
-                sd.poster.t = PB.damp(sd.poster.t, sd.poster.lifted ? 1 : 0, 9, dt);
+                if (!sd.drag) sd.poster.t = PB.damp(sd.poster.t, sd.poster.lifted ? 1 : 0, 9, dt); // a VR hand may be swinging it
                 sd.pivot.rotation.z = -sd.sx * sd.poster.t * 1.45; // swings out into the room, away from the wall
                 // tunnel plug sinks into the wall as the tunnel grows (both sides look dug)
                 const recess = Math.min(0.2, p * 0.2);

@@ -98,6 +98,8 @@ PB.Area = (() => {
         addEventListener('mouseup', e => { if (e.button === 0) A.mouse.down = false; });
         addEventListener('mousemove', e => { A.mouse.dx += e.movementX; A.mouse.dy = (A.mouse.dy || 0) + e.movementY; });
         addEventListener('keydown', e => { if (e.code === 'Space') A.space = true; });
+        const tr = document.getElementById('travel');
+        if (tr) tr.addEventListener('click', () => A.travel());
         addEventListener('keyup', e => { if (e.code === 'Space') A.space = false; });
     };
     // does an area want the mouse button for itself right now (charging a throw, lifting, cooking...)?
@@ -135,6 +137,32 @@ PB.Area = (() => {
     // ---------- HUD chips ----------
     A.hud = html => { const h = $('area-hud'); h.classList.toggle('hidden', !html); if (html) h.innerHTML = html; };
     A.clock = t => { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
+    // ---------- Travel bubble: "Go to lunch?" / "Back to your cell?" ----------
+    // One tap (VR: poke it or point + trigger · PC: click it or press Enter) takes you there.
+    A.offer = () => {
+        const s = PB.state, W = PB.World;
+        if (!s || !PB.Player.enabled || PB.Mini.active || (PB.Escape && PB.Escape.active)) return null;
+        if (W.area === 'cell') {
+            if (s.kitchenOpen && !(PB.Kitchen.wentDay === s.day && PB.Kitchen.left)) return { label: '🍳 Go to kitchen duty?', go: () => PB.Kitchen.enter() };
+            if (s.lunchOpen && PB.Lunch.wentDay !== s.day) return { label: '🍽️ Go to lunch?', go: () => PB.Lunch.enter() };
+            if (s.yardOpen) return { label: '🏀 Go out to the yard?', go: () => PB.Yard.enter() };
+            if (s.workshopOpen && PB.Workshop.allowed() && PB.Workshop.wentDay !== s.day) return { label: '🪚 Go to the workshop?', go: () => PB.Workshop.enter() };
+            return null;
+        }
+        const back = { canteen: () => PB.Lunch.exit(false), workshop: () => PB.Workshop.exit(false), yard: () => PB.Yard.exit(false), kitchen: () => PB.Kitchen.exit(false) }[W.area];
+        return back ? { label: '🚪 Back to your cell?', go: back } : null;
+    };
+    let travelTxt = null;
+    A.updateTravel = () => {
+        const el = document.getElementById('travel');
+        if (!el) return;
+        const o = PB.VR.isOn() ? null : A.offer(); // VR has its own bubble in the corner of your view
+        el.classList.toggle('hidden', !o);
+        if (o && o.label !== travelTxt) { travelTxt = o.label; el.innerHTML = `${o.label} <kbd>${PB.Keys.label(PB.Keys.get('travel'))}</kbd>`; }
+        A.travelGo = o ? o.go : null;
+    };
+    A.travel = () => { const o = A.offer(); if (o) o.go(); };
 
     // ---------- Pockets (smuggling things back to the cell) ----------
     A.unpack = (mod, types) => {

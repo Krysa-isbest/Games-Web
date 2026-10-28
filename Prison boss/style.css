@@ -146,6 +146,9 @@ html, body {
 #area-hud .bar { display: inline-block; vertical-align: middle; width: 90px; height: 12px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; overflow: hidden; }
 #area-hud .bar > div { height: 100%; background: var(--orange); }
 #area-hud .eye { background: var(--red); color: #fff; }
+#travel { position: absolute; left: 14px; bottom: 44px; cursor: pointer; pointer-events: auto; background: #ffd23f; font-size: 17px; animation: travelPulse 1.6s ease-in-out infinite; }
+#travel kbd { font-size: 13px; }
+@keyframes travelPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 #meter { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); width: min(460px, 80vw); text-align: center; }
 .meter-label { font-family: 'Luckiest Guy'; font-size: 22px; color: #fff; -webkit-text-stroke: 1px var(--ink); margin-bottom: 6px; }
 .meter-bar { position: relative; height: 26px; border: 4px solid var(--ink); border-radius: 14px; background: #fff; overflow: hidden; }

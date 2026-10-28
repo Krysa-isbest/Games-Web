@@ -206,7 +206,7 @@ PB.CigGame = class {
     // VR: grip next to the paper pack pulls a paper out into your hand
     vrGrab(hp, side) {
         if (this.phase !== 'paper' || this.paper) return;
-        if (hp.distanceTo(this.pack.position) > 0.18) return;
+        if (hp.distanceTo(this.pack.position) > 0.22) return;
         this.paper = this.makePaper(hp);
         this.paper.vrHand = side;
         PB.Mini.grabProp(this.paper);
