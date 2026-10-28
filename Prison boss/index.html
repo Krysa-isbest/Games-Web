@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prison Boss PC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game"></div>
+
+    <!-- In-game HUD -->
+    <div id="hud" class="hidden">
+        <div id="hud-top">
+            <div class="chip" id="hud-day"><span id="hud-phase-icon">☀️</span> Day <b id="hud-daynum">1</b> <span class="sep">·</span> <span id="hud-clock">07:00</span></div>
+            <div class="chip money">$<b id="hud-money">0</b></div>
+            <div class="chip rep">
+                <span id="hud-rank">Fish</span>
+                <div class="bar"><div id="hud-rep-bar"></div></div>
+                <small id="hud-rep-val">0</small>
+            </div>
+            <div class="chip heat" title="Guard suspicion. At 100 your cell gets searched.">
+                🔥 Heat
+                <div class="bar"><div id="hud-heat-bar"></div></div>
+            </div>
+            <div class="chip event hidden" id="hud-event"></div>
+            <div class="chip hidden" id="net-ping"></div>
+        </div>
+        <div id="quest-tracker"></div>
+        <div id="lunch-hud" class="hidden">
+            <div class="chip">🍽️ Lunch <b id="lunch-time">1:50</b></div>
+            <div class="chip">👖 <span id="lunch-pockets"></span></div>
+            <div class="chip eye" id="lunch-eye">👁️ Seen!</div>
+        </div>
+        <div id="shop-hud" class="hidden">
+            <div class="chip">🪚 Shift <b id="shop-time">2:00</b></div>
+            <div class="chip"><span id="shop-task">🪵 Real job</span><div class="bar"><div id="shop-bar"></div></div></div>
+            <div class="chip">👖 <span id="shop-pockets">—</span></div>
+            <div class="chip eye" id="shop-eye">👁️ Seen!</div>
+        </div>
+        <!-- yard / kitchen / escape: chips filled in by the area modules -->
+        <div id="area-hud" class="hidden"></div>
+        <!-- timing meter for gym reps, cooking, raking... -->
+        <div id="meter" class="hidden"><div class="meter-label" id="meter-label"></div><div class="meter-bar"><div class="meter-zone" id="meter-zone"></div><div class="meter-mark" id="meter-mark"></div></div></div>
+        <!-- cutscene letterbox + subtitles -->
+        <div id="crosshair"></div>
+        <div id="prompt"></div>
+        <div id="held"></div>
+        <div id="toasts"></div>
+        <div id="bubbles"></div>
+        <div id="click-to-play">Click to look around</div>
+        <div id="keys-hint">WASD move · Mouse look · LMB pick/place · R rotate · E use · F alt · Q return · M music · H help · Esc pause</div>
+    </div>
+
+    <div id="warning"><span>👁️</span> <b id="warning-text">A guard is looking into your cell!</b></div>
+    <!-- cutscene letterbox + subtitles (outside the HUD, which is hidden during cutscenes) -->
+    <div id="cine" class="hidden"><div class="cine-bar top"></div><div class="cine-bar bot"></div><div id="cine-text"></div><div id="cine-skip">Hold <b>Space</b> (VR: <b>B</b>) to skip</div></div>
+    <div id="fade"></div>
+
+    <!-- Minigame overlay -->
+    <div id="mini" class="hidden">
+        <canvas id="mini-canvas"></canvas>
+        <div id="mini-panel">
+            <div id="mini-head">
+                <div id="mini-title">Minigame</div>
+                <div id="mini-step"></div>
+            </div>
+            <div id="mini-foot">
+                <div id="mini-hint"></div>
+                <div id="mini-buttons"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic panel (trader, crafting, summary, help...) -->
+    <div id="panel-wrap" class="hidden">
+        <div id="panel">
+            <div id="panel-head">
+                <div id="panel-title">Panel</div>
+                <button id="panel-close" class="x">✕</button>
+            </div>
+            <div id="panel-body"></div>
+        </div>
+    </div>
+
+    <!-- Main menu -->
+    <div id="menu" class="screen">
+        <div class="menu-inner">
+            <div class="logo">
+                <div class="logo-top">PRISON</div>
+                <div class="logo-bot">BOSS</div>
+                <div class="logo-sub">PC Edition</div>
+            </div>
+            <div class="menu-buttons">
+                <button class="btn big" id="btn-continue">Continue</button>
+                <button class="btn big orange" id="btn-new">New Game</button>
+                <button class="btn big" id="btn-coop">👥 Multiplayer</button>
+                <button class="btn big hidden" id="btn-vr">🥽 Enter VR</button>
+                <button class="btn" id="btn-settings">⚙️ Settings</button>
+                <button class="btn" id="btn-help">How to Play</button>
+            </div>
+            <div class="menu-foot">Best opened in its own browser tab (mouse lock works better).</div>
+        </div>
+    </div>
+
+    <!-- Co-op lobby -->
+    <div id="coop" class="screen hidden">
+        <div class="menu-inner">
+            <div class="logo"><div class="logo-bot coop-logo">CO-OP</div></div>
+            <div class="coop-card">
+                <div id="coop-mic" class="coop-mic"></div>
+                <div class="coop-row"><label for="coop-name">Your name</label><input id="coop-name" maxlength="14" spellcheck="false"></div>
+                <div class="coop-row">
+                    <label for="coop-size">Lobby size (when hosting)</label>
+                    <select id="coop-size">
+                        <option value="2">2 players</option>
+                        <option value="3">3 players</option>
+                        <option value="4">4 players</option>
+                    </select>
+                </div>
+                <div id="coop-lobby" class="coop-lobby hidden">
+                    <div class="lobby-head">Lobby <span id="lobby-count"></span></div>
+                    <ul id="lobby-list" class="lobby-list"></ul>
+                    <div class="center"><button class="btn green big hidden" id="coop-start">▶ Start game</button></div>
+                </div>
+                <div class="tabs">
+                    <div class="tab on" data-ctab="peer">⚡ Quick join</div>
+                    <div class="tab" data-ctab="manual">🔗 Code swap (Tailscale / LAN)</div>
+                </div>
+                <div id="coop-peer">
+                    <p class="coop-help">Uses the free PeerJS service so you can find each other with a short room code. Needs internet.</p>
+                    <div class="coop-row">
+                        <button class="btn orange" id="cp-host">Host game</button>
+                        <label class="chk"><input type="checkbox" id="cp-new"> start a new game (otherwise your save is loaded)</label>
+                    </div>
+                    <div id="cp-code" class="room-code hidden"></div>
+                    <div class="coop-row">
+                        <input id="cp-join-code" placeholder="ROOM CODE" maxlength="5" spellcheck="false">
+                        <button class="btn green" id="cp-join">Join</button>
+                    </div>
+                </div>
+                <div id="coop-manual" class="hidden">
+                    <p class="coop-help">No server at all. You swap two codes (over Discord, etc.). Works best over <b>Tailscale</b> or the same Wi-Fi.</p>
+                    <div class="tabs">
+                        <div class="tab on" data-mtab="mhost">I'm hosting</div>
+                        <div class="tab" data-mtab="mjoin">I'm joining</div>
+                    </div>
+                    <div id="cm-host">
+                        <div class="coop-row">
+                            <button class="btn orange" id="cm-make">1. Create invite code (one per friend)</button>
+                            <label class="chk"><input type="checkbox" id="cm-new"> start a new game</label>
+                        </div>
+                        <div class="coop-row"><textarea id="cm-invite" readonly placeholder="Your invite code appears here"></textarea><button class="btn small" data-copy="cm-invite">Copy</button></div>
+                        <div class="coop-row"><textarea id="cm-reply-in" placeholder="2. Paste your friend's reply code here"></textarea><button class="btn green" id="cm-connect">3. Connect</button></div>
+                    </div>
+                    <div id="cm-join" class="hidden">
+                        <div class="coop-row"><textarea id="cm-invite-in" placeholder="1. Paste the host's invite code here"></textarea><button class="btn orange" id="cm-answer">2. Create reply code</button></div>
+                        <div class="coop-row"><textarea id="cm-reply" readonly placeholder="Your reply code appears here. Send it to the host."></textarea><button class="btn small" data-copy="cm-reply">Copy</button></div>
+                    </div>
+                </div>
+                <div id="coop-status" class="coop-status"></div>
+                <div class="center"><button class="btn" id="coop-back">Back</button></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause menu -->
+    <div id="pause" class="screen hidden">
+        <div class="menu-inner small">
+            <div class="logo"><div class="logo-bot">PAUSED</div></div>
+            <div class="menu-buttons">
+                <button class="btn big orange" id="btn-resume">Resume</button>
+                <button class="btn hidden" id="btn-vr2">🥽 Enter VR</button>
+                <button class="btn" id="btn-unstuck">🆘 Unstuck (back to cell)</button>
+                <button class="btn" id="btn-settings2">⚙️ Settings</button>
+                <button class="btn" id="btn-help2">How to Play</button>
+                <button class="btn" id="btn-quit">Save &amp; Quit to Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+    <script src="js/core.js"></script>
+    <script src="js/events.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/music.js"></script>
+    <script src="js/custom-music.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/items.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/npc.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/minigames.js"></script>
+    <script src="js/mg-cig.js"></script>
+    <script src="js/mg-paper.js"></script>
+    <script src="js/mg-hooch.js"></script>
+    <script src="js/mg-dig.js"></script>
+    <script src="js/tunnel.js"></script>
+    <script src="js/lunch.js"></script>
+    <script src="js/workshop.js"></script>
+    <script src="js/areas.js"></script>
+    <script src="js/yard.js"></script>
+    <script src="js/kitchen.js"></script>
+    <script src="js/escape.js"></script>
+    <script src="js/crafting.js"></script>
+    <script src="js/vr.js"></script>
+    <script src="js/vrui.js"></script>
+    <script src="js/net.js"></script>
+    <script src="js/coop.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>

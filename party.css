@@ -1,0 +1,108 @@
+/* Party lobby panel (right side) + the in-page game frame. Uses the hub's colour tokens. */
+:root{ --pw:340px }
+
+#party{
+  position:fixed;top:0;right:0;bottom:0;width:var(--pw);z-index:50;
+  background:var(--paper);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;font-family:var(--sans);color:var(--ink);
+  transform:translateX(100%);transition:transform .25s ease;
+}
+body.party-open #party{transform:none}
+body.party-open{padding-right:var(--pw)}
+body{transition:padding-right .25s ease}
+
+#party-tab{
+  position:absolute;right:100%;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--ink);color:var(--paper);border:0;border-radius:12px 0 0 12px;
+  padding:14px 9px;cursor:pointer;font:600 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;
+  box-shadow:-6px 8px 24px -12px rgba(40,25,10,.5);
+}
+#party-tab span{writing-mode:vertical-rl;transform:rotate(180deg)}
+body.party-open #party-tab{display:none}
+body.in-party #party-tab::after{content:'';width:7px;height:7px;border-radius:50%;background:#7fd6a0}
+
+.pt-head{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 12px;border-bottom:1px solid var(--line)}
+.pt-head h3{margin:0;font:600 24px var(--serif)}
+.pt-x{background:none;border:1px solid var(--line);border-radius:50%;width:32px;height:32px;cursor:pointer;color:var(--soft);font-size:15px}
+.pt-x:hover{color:var(--ink);border-color:var(--soft)}
+.pt-body{flex:1;overflow:auto;padding:16px 20px 22px;display:flex;flex-direction:column;gap:10px}
+
+.pt-lede{margin:0;color:var(--soft);font-size:14px;line-height:1.5}
+.pt-note{margin:0;color:var(--soft);font-size:13px;line-height:1.5}
+.pt-lbl{font-size:12px;font-weight:600;color:var(--soft);margin-top:4px}
+.pt-or{text-align:center;color:var(--faint);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:6px 0 0}
+.pt-busy{margin:0;font-size:13px;color:var(--live);font-weight:600}
+.pt-err,.pt-warn{margin:0;font-size:13px;line-height:1.45;color:#9a3a22;background:#f7e3da;border-radius:10px;padding:9px 11px}
+
+#party input,#party textarea{
+  width:100%;font:500 14px var(--sans);color:var(--ink);background:#fff;
+  border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;
+}
+#party input:focus,#party textarea:focus{border-color:var(--soft)}
+#party textarea{min-height:64px;resize:vertical;font:12px ui-monospace,Consolas,monospace;word-break:break-all}
+#pt-code{text-transform:uppercase;letter-spacing:.3em;font-weight:600}
+.pt-row{display:flex;gap:8px}
+.pt-row input{flex:1;min-width:0}
+
+.pt-btn{
+  font:600 14px var(--sans);color:var(--ink);background:#fff;border:1px solid var(--line);
+  border-radius:10px;padding:9px 14px;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap;
+}
+.pt-btn:hover:not(:disabled){border-color:var(--soft)}
+.pt-btn:disabled{opacity:.5;cursor:default}
+.pt-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.pt-btn.pri:hover:not(:disabled){background:#a2441f;border-color:#a2441f}
+.pt-btn.sm{padding:6px 11px;font-size:13px}
+.pt-btn.ghost{background:none;color:var(--soft);margin-top:4px}
+
+.pt-seg{display:flex;gap:4px;background:var(--bg);border-radius:999px;padding:4px}
+.pt-seg button{flex:1;font:500 13px var(--sans);color:var(--soft);background:none;border:0;border-radius:999px;padding:7px 10px;cursor:pointer}
+.pt-seg button.on{background:var(--ink);color:var(--paper)}
+
+.pt-code{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:12px 14px}
+.pt-code span{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+.pt-code b{flex:1;font:600 26px var(--serif);letter-spacing:.18em;color:var(--accent);user-select:all}
+.pt-code b.ts{font-size:19px;letter-spacing:0}
+.pt-code.sm b{font-size:19px}
+
+.pt-sec{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.pt-sec h4{margin:0;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.pt-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pt-list li{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.pt-list li i{width:9px;height:9px;border-radius:50%}
+.pt-list em{font-style:normal;font-size:11px;font-weight:600;color:var(--soft);background:var(--bg);border-radius:999px;padding:1px 8px}
+.pt-list small{flex-basis:100%;padding-left:17px;color:var(--faint);font-size:12px}
+.pt-inv{background:var(--bg);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.pt-now{margin:0;font:600 18px var(--serif)}
+
+.pt-chat{max-height:200px;min-height:60px;overflow:auto;background:var(--bg);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+.pt-chat p{margin:0;font-size:13px;line-height:1.4;word-wrap:break-word}
+.pt-chat p.sys{color:var(--faint);font-style:italic}
+
+/* party mode: show which games can be played together */
+body.in-party .item .art::after{
+  position:absolute;right:14px;top:14px;font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;
+  background:rgba(251,248,243,.92);border-radius:999px;padding:5px 10px;content:'Solo only';color:var(--soft);
+}
+body.in-party .item.pt-ok .art::after{content:'Play with party';color:var(--accent)}
+body.in-party .item:not(.pt-ok) .card{opacity:.75}
+
+/* the game, opened inside the page */
+#pg-frame{position:fixed;top:0;left:0;bottom:0;right:0;z-index:40;background:#111;display:none;flex-direction:column}
+body.party-open #pg-frame{right:var(--pw)}
+body.pg-playing #pg-frame{display:flex}
+body.pg-playing{overflow:hidden}
+.pg-bar{display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--paper);border-bottom:1px solid var(--line);font:13px var(--sans);color:var(--soft)}
+.pg-bar b{font:600 16px var(--serif);color:var(--ink)}
+#pg-gst{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-back,.pg-quit{font:600 13px var(--sans);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--ink)}
+.pg-quit{color:#9a3a22}
+#pg-iframe{flex:1;width:100%;border:0;background:#000}
+
+@media (max-width:900px){
+  :root{--pw:min(360px,100vw)}
+  body.party-open{padding-right:0}
+  #party{box-shadow:-20px 0 40px -20px rgba(40,25,10,.4)}
+  body.party-open #pg-frame{right:0}
+}

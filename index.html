@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banger Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="party.css">
+<style>
+:root{
+  --bg:#f3eee6; --paper:#fbf8f3; --ink:#1f1b16; --soft:#6b6257; --faint:#a39a8e;
+  --line:#e2d9cc; --accent:#b8502f; --live:#3f8a5f;
+  --serif:Fraunces,Georgia,serif; --sans:Inter,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1160px;margin:0 auto;padding:64px 24px 80px}
+
+/* header */
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:40px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,6vw,64px);line-height:1.02;margin:0;letter-spacing:-.02em}
+h1 em{font-style:italic;color:var(--accent)}
+.tagline{color:var(--soft);font-size:16px;margin:12px 0 0;max-width:440px;line-height:1.5}
+
+.filters{display:flex;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px}
+.chip{font:500 14px var(--sans);color:var(--soft);background:none;border:0;border-radius:999px;padding:8px 16px;cursor:pointer;transition:background .15s,color .15s}
+.chip:hover{color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.count{font-size:12px;opacity:.6;margin-left:4px}
+
+/* grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:28px}
+.item{display:flex;flex-direction:column}
+.item.hidden{display:none}
+.card{
+  display:flex;flex-direction:column;text-decoration:none;color:inherit;flex:1;
+  background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(60,40,20,.04);transition:transform .25s ease,box-shadow .25s ease;
+}
+.card:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(60,40,20,.35)}
+.art{position:relative;aspect-ratio:2/1;overflow:hidden}
+.art svg{width:100%;height:100%;display:block;transition:transform .6s ease}
+.card:hover .art svg{transform:scale(1.04)}
+.play{
+  position:absolute;right:14px;bottom:14px;width:42px;height:42px;border-radius:50%;
+  background:rgba(251,248,243,.92);display:grid;place-items:center;
+  opacity:0;transform:translateY(6px);transition:all .25s ease;
+}
+.card:hover .play{opacity:1;transform:none}
+.flag{
+  position:absolute;top:14px;left:14px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
+}
+.flag i{width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.body{padding:20px 22px 22px;display:flex;flex-direction:column;gap:8px;flex:1}
+.title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.body h2{font-family:var(--serif);font-weight:600;font-size:24px;margin:0;letter-spacing:-.01em}
+.sub{font-size:13px;color:var(--faint)}
+.body p{margin:0;color:var(--soft);font-size:14.5px;line-height:1.55}
+.meta{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--soft)}
+.mode{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)}
+.mode svg{width:16px;height:16px}
+.mode.mp{color:var(--accent)}
+.meta .sep{width:3px;height:3px;border-radius:50%;background:var(--faint)}
+
+.logbtn{
+  align-self:flex-start;margin:10px 0 0 4px;font:500 13px var(--sans);color:var(--soft);
+  background:none;border:0;padding:4px 2px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  border-bottom:1px solid transparent;transition:color .15s,border-color .15s;
+}
+.logbtn:hover{color:var(--ink);border-color:var(--ink)}
+.logbtn .dot{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.logbtn.live .dot{background:var(--live)}
+
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+/* changelog dialog */
+dialog{
+  border:0;border-radius:18px;padding:0;max-width:520px;width:calc(100% - 32px);
+  background:var(--paper);color:var(--ink);box-shadow:0 30px 80px -20px rgba(40,25,10,.45);
+}
+dialog[open]{animation:pop .2s ease}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}}
+dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
+.dhead{display:flex;align-items:flex-start;gap:12px;padding:24px 26px 16px}
+.dhead div{flex:1}
+.dhead h3{margin:0;font:600 26px var(--serif)}
+.x{font:400 22px var(--sans);color:var(--soft);background:none;border:1px solid var(--line);border-radius:50%;width:36px;height:36px;cursor:pointer;line-height:1}
+.x:hover{color:var(--ink);border-color:var(--soft)}
+.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:8px}
+.status i{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.status.live{color:var(--live)}.status.live i{background:var(--live)}
+.dbody{padding:4px 26px 26px;max-height:60vh;overflow:auto}
+.note{font-size:14px;color:var(--soft);background:var(--bg);border-radius:10px;padding:10px 12px;margin:0 0 16px;line-height:1.5}
+.entry{padding:14px 0;border-top:1px solid var(--line)}
+.entry b{font:600 17px var(--serif)}
+.entry small{color:var(--faint);margin-left:8px;font-size:13px}
+.entry ul{margin:8px 0 0;padding-left:18px;color:var(--soft);font-size:14.5px;line-height:1.6}
+.empty{color:var(--faint);margin:0;padding:14px 0;border-top:1px solid var(--line);font-size:14.5px}
+
+@media (max-width:560px){
+  .wrap{padding:40px 16px 60px}
+  .grid{grid-template-columns:1fr}
+  .filters{width:100%}.chip{flex:1;padding:8px 6px}
+  .play{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">Browser games</p>
+      <h1>Banger <em>Games</em></h1>
+      <p class="tagline">A small collection of games that run right in your browser. Pick one and play — some are better with friends.</p>
+    </div>
+    <div class="filters" role="group" aria-label="Filter games">
+      <button class="chip" data-f="all" aria-pressed="true">All</button>
+      <button class="chip" data-f="mp" aria-pressed="false">Multiplayer</button>
+      <button class="chip" data-f="solo" aria-pressed="false">Single player</button>
+    </div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <footer><span>Banger Games</span><span id="total"></span></footer>
+</div>
+
+<dialog id="log">
+  <div class="dhead">
+    <div><h3 id="logTitle">Changelog</h3><div id="logStatus"></div></div>
+    <button class="x" id="logClose" aria-label="Close">×</button>
+  </div>
+  <div class="dbody" id="logBody"></div>
+</dialog>
+
+<script>
+/* Edit this list to add games or changelog entries.
+   changelog entries look like: { version: '1.1', date: '2026-10-26', notes: ['Added X', 'Fixed Y'] }
+   or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
+const GAMES = [
+  {
+    file: 'Prison boss/index.html', party: 'prison', title: 'Prison Boss', subtitle: 'VR & PC edition', art: 'prison',
+    desc: 'Run a business from your cell. Craft and sell contraband, climb the ranks, carve a fake key and escape without the guards catching on. Playable on PC or in a VR headset.',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: 'Prison sim · VR',
+    updating: true, changelog: [
+      { title: 'The ending, gym day & kitchen duty', date: '2026-10-28', notes: [
+        'A real ending. Turn the fake key and run out of the cell block, then across a misty field at dawn.',
+        'A police outpost blocks the road. Find a pipe, duct tape and nails, craft a club at the workbench, and knock out the officers. Sneak up from behind for a one-hit takedown. Take the car keys from the sergeant, smash through the gate and drive into the sunrise. Getting tased sends you back to the last checkpoint.',
+        'A new escape theme song that builds up and explodes when the fight starts.',
+        'Gym day (14:00–16:00). Out in the yard you can shoot hoops, lift weights or do pull-ups (25 reps gives a Strong buff), and rake leaves for a bit of money. Sometimes a package flies over the fence, so grab it when the guard isn\'t looking.',
+        'Kitchen duty (09:00–11:00). The cook is sick: make stew or burgers for the queue and get paid per plate. Better food means more money and respect. The pantry has sugar and fruit, if the kitchen guard isn\'t looking.',
+        '12 new daily events, including Visiting day, K9 unit with sniffer dogs, Lockdown, Card tournament, Heat wave, Black market, Rookie guard, Protection tax, Good vibes and Rainy day.',
+        'Supplier tiers. Pay Vinnie\'s supplier for better ingredients (Fine ★, Premium ★★, Luxury ★★★). Your goods get the same tier and sell for much more.',
+        'In co-op, everyone plays their own escape.'
+      ] },
+      { title: 'Co-op for up to 4 players', date: '2026-10-27', notes: [
+        'Co-op now supports 2, 3 or 4 players. The host picks the lobby size and can change it until the game starts.',
+        'New lobby screen. It lists everyone who has joined and which cell they will get, and the host presses Start game once at least one friend is in.',
+        'Every player gets their own cell. Players 1 and 2 live in the two middle cells, which have two posters and tunnels each, and players 3 and 4 in the edge cells, which have one each. Tunnels connect neighbouring cells.',
+        'Each player has their own look, with a different skin, hair, hat, beard or mustache.',
+        'You see each other whenever you are in the same place: the cell block, the canteen or the workshop.',
+        'Crossplay between PC and VR. VR players show floating hands that follow their real controllers.',
+        'New ping key (G) to mark a spot for your friends.'
+      ] },
+      { title: 'Open cell block', date: '2026-10-27', notes: [
+        'The cell block is now a big open atrium. Your two cells are on the upper floor, and a metal walkway runs all the way around it, past every cell.',
+        'Below there is a safety net, a ground floor one storey down and stairs leading to it.',
+        'Guards come in through a door at the east end of your walkway, check both of your cells, then walk the whole loop and leave. You can see them coming from across the atrium.',
+        'No more on-screen guard warnings or heartbeat. A guard\'s flashlight beam and footsteps are now the only warning you get.'
+      ] },
+      { title: 'Workshop, fake key & escape', date: '2026-10-27', notes: [
+        'New workshop shift from 14:00 to 16:00, unlocked at the Big Shot rank. Saw planks at your bench to get paid.',
+        'While you work, secretly carve the three pieces of a fake key: the bow, the shaft and the bit. When the guard looks your way, switch back to the real job (F, or B in VR), or he takes the piece.',
+        'Steal a tube of glue at lunch, then glue the pieces together into a Fake Cell Key.',
+        'Hold the key and use your cell door at night to escape. If a guard sees you at the door, the key is gone and you get +50 heat.',
+        'Daily events: most mornings from day 2, something changes the rules for one day. There are 10 of them, like Guards have the flu, Crackdown, Payday, Feast day, Power cut and A snitch is talking.',
+        'Minigames in VR now use your real hands. Grab the props with grip, and tilt to shake the pouch or pour sugar and water into the jug.',
+        'Custom music: the game can play your own MP3s from a Music folder instead of the built-in music.'
+      ] },
+      { title: 'Lunch time at 12:00', date: '2026-10-27', notes: [
+        'Every day from 12:00 to 13:30 your cell door opens for lunch.',
+        'Walk into the canteen and steal small things into your 3 pockets, like a spoon for digging or a pepper grinder for better cigarettes.',
+        'The guards\' view cones are drawn on the floor in red. Stay out of them.',
+        'You can only go to lunch once a day.',
+        'In co-op, each cellmate gets their own canteen.'
+      ] },
+      { title: 'VR support', date: '2026-10-27', notes: [
+        'Play in a VR headset. Turn VR on in Settings and an "Enter VR" button appears in the main menu and the pause menu.',
+        'Grab things with the grip button on either hand, throw them, pull drawers and grab posters.',
+        'Press buttons by poking them with your finger.',
+        'A CRAFT button and recipe board sit on the desk, and the shop board hangs at the bars.',
+        'A wrist tablet (X) and wrist info (Y).',
+        'Movement fixed, and the game no longer pauses when you enter VR.'
+      ] }
+    ]
+  },
+  {
+    file: 'Containment/Containment.html', party: 'containment', title: 'Containment', art: 'containment',
+    desc: 'Hold a sealed chamber against waves of drones. Pick upgrades between waves, craft gear and face a Warden every fifth wave.',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: '3D shooter',
+    updating: true, changelog: []
+  },
+  {
+    file: 'Dredge 2/Dredge copy 3.html', party: 'tides', title: 'Hollow Tides', subtitle: 'Dredge 2', art: 'tides',
+    desc: 'A co-op fishing voyage through the fog. Fish, sell your catch, upgrade your boat and keep what lurks below at bay.',
+    mp: 'Online co-op · up to 3', lang: 'English', genre: 'Fishing horror',
+    updating: true, changelog: [
+      { version: '2.0.0', date: '2026-10-27', notes: [
+        'Weather that changes by area, from clear skies and fog to storms and full hurricanes. A hurricane brings waterspouts and rogue waves, so make for harbor.',
+        'Sea events. Dangerous ones: waterspouts, whirlpools and rogue waves. Good ones: fish frenzies with quick, rare bites, and the aurora, which brings up rare and aberrant fish.',
+        'The Blender. Mix up to 3 fruits into smoothies that give timed boosts. Buy fruit at a harbor\'s Fruit Market or pick it on landing islands.',
+        'New boat upgrades: the Galley, which makes smoothie boosts last longer, and Stabilizers, for fewer leaks in heavy seas and less pull from waterspouts and whirlpools.',
+        'Higher-quality water with reflections and a wake behind the boat.'
+      ] },
+      { version: '1.0.0', date: '', notes: ['First version.'] }
+    ]
+  },
+  {
+    file: 'Last shelter/Last shelter.html', party: 'shelter', title: 'Last Shelter', art: 'shelter',
+    desc: 'The surface belongs to the dead. Dig an underground bunker, build rooms, keep your survivors fed and send them out to scavenge.',
+    mp: 'Online co-op · up to 3', lang: 'English', genre: 'Base building'
+  },
+  {
+    file: 'Rooftop snipers/Rooftop snipers.html', party: 'rooftop', title: 'Rooftop Snipers 3D', art: 'rooftop',
+    desc: 'A rooftop shootout — knock the other player off the edge and down to the street. Mix in chaos modes, or play the computer.',
+    mp: '2–3 players · local or online', lang: 'Czech', genre: 'Versus'
+  },
+  {
+    file: 'Survival/Survival.html', party: 'survival', title: 'Divočina', art: 'island',
+    desc: 'Shipwrecked on an unknown island. Gather, craft, forge weapons, survive the nights and build a signal beacon to get rescued.',
+    mp: 'Online with a friend', lang: 'Czech', genre: 'Survival'
+  },
+  {
+    file: 'Ping pong/Ping pong.html', title: 'Neon Ping Pong', subtitle: 'Nuclear Edition', art: 'pong',
+    desc: 'Neon pong with an upgrade shop and power-ups, rocket launcher included. Play a friend on one keyboard or the computer.',
+    mp: '2 players · same keyboard', lang: 'Czech', genre: 'Arcade'
+  },
+  {
+    file: 'Hivebound/Hivebound.html', title: 'Hivebound', art: 'hive',
+    desc: 'Raise a bee colony. Collect pollen in the fields, turn it into honey, hatch new bees and buy better gear.',
+    mp: null, mpNote: 'Hivebound has online lobbies, but they only work when the game is opened on claude.ai.', lang: 'English', genre: 'Cozy idle'
+  }
+];
+
+/* Atmospheric card art: gradient sky + layered silhouettes */
+const ART = {
+  prison: `
+    <defs><linearGradient id="g8" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c7cdd3"/><stop offset="1" stop-color="#8b949c"/></linearGradient>
+    <radialGradient id="g8b" cx=".72" cy=".3" r=".45"><stop offset="0" stop-color="#fff1cf" stop-opacity=".9"/><stop offset="1" stop-color="#fff1cf" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#g8)"/><rect width="400" height="200" fill="url(#g8b)"/>
+    <rect x="250" y="34" width="70" height="44" fill="#fff4d6" opacity=".9"/><path d="M262 34v44M274 34v44M286 34v44M298 34v44M310 34v44" stroke="#5b636b" stroke-width="3"/>
+    <rect y="150" width="400" height="50" fill="#5b636b"/>
+    <path d="M70 150l18-40h20l18 40z" fill="#8a6a4a" opacity=".85"/><rect x="60" y="100" width="76" height="10" rx="2" fill="#3f454b"/>
+    <g fill="#3f454b"><circle cx="190" cy="108" r="9"/><rect x="182" y="117" width="16" height="33" rx="4"/><rect x="198" y="122" width="22" height="5" rx="2"/></g>
+    <g stroke="#2e3338" stroke-width="7"><path d="M20 0v200M60 0v200M100 0v200M140 0v200M180 0v200M220 0v200M260 0v200M300 0v200M340 0v200M380 0v200" opacity=".55"/></g>
+    <path d="M0 14h400" stroke="#2e3338" stroke-width="10" opacity=".55"/>`,
+  containment: `
+    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9a48a"/><stop offset="1" stop-color="#a8473a"/></linearGradient>
+    <radialGradient id="g1b" cx=".5" cy=".55" r=".35"><stop offset="0" stop-color="#ffe2c9" stop-opacity=".9"/><stop offset="1" stop-color="#ffe2c9" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#g1)"/><rect width="400" height="200" fill="url(#g1b)"/>
+    <path d="M0 200V60h60v-20h60v20h160v-20h60v20h60v140z" fill="#7c3029" opacity=".55"/>
+    <path d="M0 200v-40h400v40z" fill="#5d221d"/>
+    <g fill="#5d221d"><circle cx="200" cy="110" r="16"/><rect x="194" y="124" width="12" height="36"/><path d="M180 132h40v6h-40z"/>
+    <circle cx="120" cy="140" r="8"/><rect x="116" y="146" width="8" height="14"/><circle cx="290" cy="138" r="9"/><rect x="286" y="145" width="9" height="15"/></g>
+    <circle cx="200" cy="110" r="4" fill="#ffd7b5"/>`,
+  tides: `
+    <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe0df"/><stop offset=".6" stop-color="#8fb4b8"/><stop offset="1" stop-color="#3d6a73"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g2)"/><circle cx="300" cy="58" r="22" fill="#f4f1e6" opacity=".85"/>
+    <path d="M0 120q40-8 80 0t80 0 80 0 80 0 80 0v80H0z" fill="#557f86" opacity=".7"/>
+    <path d="M150 122h90l-14 18h-62z" fill="#2c4a52"/><path d="M188 122V70l30 38h-30z" fill="#2c4a52"/><rect x="170" y="108" width="16" height="14" fill="#2c4a52"/>
+    <circle cx="178" cy="114" r="2.5" fill="#ffd98a"/>
+    <path d="M0 150q50-10 100 0t100 0 100 0 100 0v50H0z" fill="#2c4a52"/>
+    <path d="M60 175q20-30 50-18q-20 4-30 22z" fill="#1f363c"/>`,
+  shelter: `
+    <defs><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9cbb8"/><stop offset="1" stop-color="#b8a58e"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g3)"/>
+    <path d="M0 62l30-14 20 8 40-22 30 18 50-8 40 16 60-10 40 12 50-6 40 10v-10H0z" fill="#9c8a74"/>
+    <rect y="60" width="400" height="140" fill="#6e5a48"/>
+    <g fill="#e8c88a" opacity=".9"><rect x="60" y="90" width="80" height="36" rx="3"/><rect x="160" y="90" width="80" height="36" rx="3"/><rect x="110" y="146" width="80" height="36" rx="3"/></g>
+    <rect x="270" y="60" width="16" height="122" fill="#4e3f33"/>
+    <g fill="#4e3f33"><circle cx="90" cy="112" r="5"/><rect x="87" y="116" width="6" height="10"/><circle cx="200" cy="112" r="5"/><rect x="197" y="116" width="6" height="10"/><circle cx="150" cy="168" r="5"/><rect x="147" y="172" width="6" height="10"/></g>`,
+  rooftop: `
+    <defs><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3c98b"/><stop offset="1" stop-color="#e2875f"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g4)"/><circle cx="200" cy="120" r="40" fill="#fbe2b3" opacity=".8"/>
+    <g fill="#c9684a" opacity=".6"><rect x="130" y="110" width="30" height="90"/><rect x="170" y="90" width="24" height="110"/><rect x="205" y="120" width="34" height="80"/><rect x="250" y="100" width="22" height="100"/></g>
+    <g fill="#5a2c25"><rect x="0" y="120" width="120" height="80"/><rect x="280" y="108" width="120" height="92"/>
+    <circle cx="70" cy="94" r="7"/><rect x="66" y="100" width="8" height="20"/><rect x="72" y="104" width="26" height="3"/>
+    <circle cx="330" cy="82" r="7"/><rect x="326" y="88" width="8" height="20"/><rect x="302" y="92" width="26" height="3"/></g>`,
+  island: `
+    <defs><linearGradient id="g5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfd9cf"/><stop offset="1" stop-color="#f1dfb8"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g5)"/>
+    <path d="M0 140h400v60H0z" fill="#6f9fa0"/>
+    <path d="M90 142q110-40 220 0z" fill="#d9c08f"/>
+    <path d="M190 132q4-40 -4-74" stroke="#3f5e4b" stroke-width="5" fill="none"/>
+    <g fill="#3f5e4b"><path d="M186 58q-30-8-50 12q24-6 50-6z"/><path d="M186 58q30-12 54 4q-26-2-54 2z"/><path d="M186 58q-8-22 10-34q-4 18-6 34z"/><path d="M186 58q-24 6-34 30q16-18 34-24z"/></g>
+    <path d="M260 138v-34l14 34z" fill="#8a5a3c"/><circle cx="267" cy="100" r="4" fill="#f2b45a"/>
+    <path d="M0 160q50-6 100 0t100 0 100 0 100 0v40H0z" fill="#4f8285"/>`,
+  pong: `
+    <defs><linearGradient id="g6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3360"/><stop offset="1" stop-color="#6a3a6c"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g6)"/>
+    <path d="M200 20v160" stroke="#ffffff" stroke-opacity=".25" stroke-width="2" stroke-dasharray="6 8"/>
+    <rect x="40" y="62" width="8" height="56" rx="4" fill="#7fe3ff"/><rect x="352" y="84" width="8" height="56" rx="4" fill="#ff8cc6"/>
+    <rect x="34" y="56" width="20" height="68" rx="10" fill="#7fe3ff" opacity=".2"/>
+    <circle cx="262" cy="80" r="7" fill="#fff4b0"/><circle cx="262" cy="80" r="16" fill="#fff4b0" opacity=".18"/>
+    <path d="M70 92q90-30 186-12" stroke="#fff4b0" stroke-opacity=".25" stroke-width="2" fill="none"/>`,
+  hive: `
+    <defs><linearGradient id="g7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6e2a8"/><stop offset="1" stop-color="#e9b860"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g7)"/>
+    <g fill="#c98a2b" opacity=".75"><path d="M170 50l24-14 24 14v28l-24 14-24-14z"/><path d="M218 78l24-14 24 14v28l-24 14-24-14z"/><path d="M170 106l24-14 24 14v28l-24 14-24-14z"/><path d="M122 78l24-14 24 14v28l-24 14-24-14z"/></g>
+    <path d="M0 170q60-14 120 0t140 0 140 0v30H0z" fill="#8b6a2c"/>
+    <g fill="#8b6a2c"><circle cx="80" cy="166" r="6"/><circle cx="310" cy="164" r="7"/></g>
+    <g fill="#4a3615"><ellipse cx="300" cy="70" rx="9" ry="6"/><ellipse cx="80" cy="96" rx="7" ry="5"/></g>
+    <g fill="#fff" opacity=".7"><ellipse cx="297" cy="62" rx="6" ry="4"/><ellipse cx="78" cy="90" rx="5" ry="3"/></g>`
+};
+
+const ICON_MP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 13.6c2.6.2 4.5 2 4.5 4.9"/></svg>';
+const ICON_SOLO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/></svg>';
+const ICON_PLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#1f1b16"><path d="M8 5.5v13l11-6.5z"/></svg>';
+
+const grid = document.getElementById('grid');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+GAMES.forEach((g, i) => {
+  const item = document.createElement('div');
+  item.className = 'item';
+  item.dataset.mp = g.mp ? 'mp' : 'solo';
+  item.dataset.idx = i;
+  item.innerHTML = `
+    <a class="card" href="${encodeURI(g.file)}">
+      <div class="art">
+        <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
+        ${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}
+        <span class="play">${ICON_PLAY}</span>
+      </div>
+      <div class="body">
+        <div class="title"><h2>${esc(g.title)}</h2>${g.subtitle ? `<span class="sub">${esc(g.subtitle)}</span>` : ''}</div>
+        <p>${esc(g.desc)}</p>
+        <div class="meta">
+          <span class="mode ${g.mp ? 'mp' : ''}">${g.mp ? ICON_MP + esc(g.mp) : ICON_SOLO + 'Single player'}</span>
+          <span class="sep"></span><span>${esc(g.genre)}</span>
+          <span class="sep"></span><span>${esc(g.lang)}</span>
+        </div>
+      </div>
+    </a>
+    <button class="logbtn${g.updating ? ' live' : ''}" data-i="${i}"><span class="dot"></span>Changelog</button>`;
+  grid.appendChild(item);
+});
+
+// filter counts
+const nMp = GAMES.filter(g => g.mp).length;
+const counts = { all: GAMES.length, mp: nMp, solo: GAMES.length - nMp };
+document.querySelectorAll('.chip').forEach(c => c.insertAdjacentHTML('beforeend', `<span class="count">${counts[c.dataset.f]}</span>`));
+document.getElementById('total').textContent = GAMES.length + ' games';
+
+document.querySelectorAll('.chip').forEach(chip => chip.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c === chip));
+  const f = chip.dataset.f;
+  document.querySelectorAll('.item').forEach(it => it.classList.toggle('hidden', f !== 'all' && it.dataset.mp !== f));
+}));
+
+// changelog
+const dlg = document.getElementById('log');
+grid.addEventListener('click', e => {
+  const b = e.target.closest('.logbtn');
+  if (!b) return;
+  const g = GAMES[b.dataset.i];
+  const log = g.changelog || [];
+  document.getElementById('logTitle').textContent = g.title;
+  document.getElementById('logStatus').innerHTML = g.updating
+    ? '<span class="status live"><i></i>Receiving updates</span>'
+    : '<span class="status"><i></i>Not currently updated</span>';
+  let h = g.mpNote ? `<p class="note">${esc(g.mpNote)}</p>` : '';
+  h += log.length
+    ? log.map(c => `<div class="entry"><b>${esc(c.title || 'v' + c.version)}</b>${c.date ? `<small>${esc(c.date)}</small>` : ''}<ul>${c.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>`).join('')
+    : '<p class="empty">No changelog entries yet.</p>';
+  document.getElementById('logBody').innerHTML = h;
+  dlg.showModal();
+});
+document.getElementById('logClose').onclick = () => dlg.close();
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+</script>
+<!-- Party lobby: party.js runs the lobby, each game folder's party-adapter.js knows that game's menu -->
+<script src="Prison%20boss/party-adapter.js"></script>
+<script src="Containment/party-adapter.js"></script>
+<script src="Dredge%202/party-adapter.js"></script>
+<script src="Last%20shelter/party-adapter.js"></script>
+<script src="Rooftop%20snipers/party-adapter.js"></script>
+<script src="Survival/party-adapter.js"></script>
+<script src="party.js"></script>
+</body>
+</html>
