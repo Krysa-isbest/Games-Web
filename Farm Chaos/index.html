@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chaos Farm</title>
+<meta name="description" content="A first-person co-op farming game where tornadoes, nukes, aliens and black holes ruin everything.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="flash"></div>
+<div id="hurt"></div>
+<div id="vignette"></div>
+
+<div id="hud" class="hidden">
+  <div id="info"></div>
+  <div id="events"></div>
+  <div id="warnings"></div>
+  <div id="combo"></div>
+  <div id="log"></div>
+  <div id="crosshair"></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <div id="sleepInfo"></div>
+  <div id="finalTimer"></div>
+  <div id="radio"></div>
+  <div id="report"></div>
+  <div id="bottom">
+    <div id="health"><div id="hpFill"></div></div>
+    <div id="hotbar"></div>
+    <div id="pack"></div>
+  </div>
+  <div id="fps"></div>
+  <div id="scoreboard" class="hidden"></div>
+  <div id="chat" class="hidden"><input id="chatIn" maxlength="140" placeholder="Say something… (Enter to send)"></div>
+</div>
+
+<div id="death" class="hidden"><h1>YOU DIED</h1><p id="deathCause"></p><p id="deathCount"></p></div>
+<div id="stats" class="hidden"></div>
+<div id="clickToPlay" class="hidden">Click to play</div>
+<div id="menu"><div id="menuBox"></div></div>
+<div id="modal" class="hidden"><div id="modalBox"></div></div>
+<div id="loading">Loading the farm…</div>
+<div id="errors"></div>
+
+<script>
+  // show script errors on screen so problems are easy to report
+  window.addEventListener('error', e => { const el = document.getElementById('errors'); el.style.display = 'block'; el.textContent += (e.message || e) + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno + '\n'; });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/models.js"></script>
+<script src="js/world.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/player.js"></script>
+<script src="js/animals.js"></script>
+<script src="js/events.js"></script>
+<script src="js/net.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
