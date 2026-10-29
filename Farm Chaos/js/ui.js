@@ -67,7 +67,7 @@ const UI = {
         <button class="big" id="bJoin">🤝 Join co-op</button>
         <button id="bSet">⚙️ Settings</button>
       </div>
-      <p class="tiny">WASD move · Mouse look · Click use tool · E interact · 1/2/3 tools · R next seed · Q ping · T chat · Tab players</p>`;
+      <p class="tiny">WASD move · Mouse look · Click use tool · E interact · 1–5 tools (4 can, 5 bucket) · F carry animal · R next seed · Q ping · T chat · Tab players</p>`;
     $('mName').oninput = e => { S.d.name = e.target.value.trim() || 'Farmer'; S.save(); };
     document.querySelectorAll('.sw').forEach(b => b.onclick = () => { S.d.color = +b.dataset.c; S.save(); this.renderMenu(); });
     $('bSolo').onclick = () => this.farmSetup('solo');
@@ -228,7 +228,12 @@ const UI = {
   openShop() { this.showModal('shop', '<div id="shopBox"></div>'); this.renderShop(); },
   renderShop() {
     const box = $('shopBox'); if (!box) return;
-    const tabs = ['Seeds', 'Fields', 'Upgrades', 'Bank'], day = G.day(), m = G.money;
+    const tabs = ['Seeds', 'Fields', 'Animals', 'Upgrades', 'Bank'], day = G.day(), m = G.money;
+    const upCard = u => {
+      const own = G.upgrades[u.id], needPlot = u.plot !== undefined && !G.plots[u.plot], needUp = u.needs && !G.upgrades[u.needs];
+      return `<div class="card ${own ? 'owned' : ''} ${u.soon ? 'locked' : ''}"><b>${u.name}</b><small>${u.desc}</small>
+        ${own ? '<small>✅ Owned</small>' : u.soon ? '<small>🚜 Coming soon</small>' : needPlot ? '<small>🔒 Buy the field first</small>' : needUp ? `<small>🔒 Needs ${UPGRADES.find(q => q.id === u.needs).name}</small>` : `<button data-buy="upgrade" data-id="${u.id}" ${m < u.cost ? 'disabled' : ''}>Buy ${U.money(u.cost)}</button>`}</div>`;
+    };
     let body = '';
     if (this.shopTab === 'Seeds') {
       body = '<div class="grid">' + CROPS.map((c, i) => {
@@ -242,13 +247,16 @@ const UI = {
     } else if (this.shopTab === 'Fields') {
       body = '<div class="grid">' + PLOTS.map((p, i) => `<div class="card ${G.plots[i] ? 'owned' : ''}"><div class="ic">🌾</div><b>Field ${i + 1}</b><small>8×8 tiles${G.has('gh' + i) ? ' · greenhouse' : ''}</small>
         ${G.plots[i] ? '<small>✅ Owned</small>' : `<button data-buy="plot" data-id="${i}" ${m < p.cost ? 'disabled' : ''}>Buy ${U.money(p.cost)}</button>`}</div>`).join('') + '</div>';
+    } else if (this.shopTab === 'Animals') {
+      body = '<h3>Animals</h3><div class="grid">' + Object.entries(ANIMAL_SHOP).map(([k, s]) => {
+        const n = AN.count(k), cap = AN.capacity(k), full = !AN.freeZone(k);
+        return `<div class="card"><div class="ic">${s.icon}</div><b>${s.name}</b><small>${s.desc}</small><small>You have <b>${n}</b> · room for ${cap}</small>
+          ${full ? '<small>🔒 Pens are full — buy a pen below</small>' : `<button data-buy="animal" data-id="${k}" ${m < s.cost ? 'disabled' : ''}>Buy ${U.money(s.cost)}</button>`}</div>`;
+      }).join('') + '</div><p class="note">New animals are dropped into a pen with room. Carry animals with F and put them down inside another pen to move them there.</p>'
+        + '<h3>Pens & animal upgrades</h3><div class="grid">' + UPGRADES.filter(u => u.cat === 'Animals').map(upCard).join('') + '</div>';
     } else if (this.shopTab === 'Upgrades') {
-      const cats = [...new Set(UPGRADES.map(u => u.cat))];
-      body = cats.map(cat => `<h3>${cat}</h3><div class="grid">` + UPGRADES.filter(u => u.cat === cat).map(u => {
-        const own = G.upgrades[u.id], needPlot = u.plot !== undefined && !G.plots[u.plot];
-        return `<div class="card ${own ? 'owned' : ''} ${u.soon ? 'locked' : ''}"><b>${u.name}</b><small>${u.desc}</small>
-          ${own ? '<small>✅ Owned</small>' : u.soon ? '<small>🚜 Coming soon</small>' : needPlot ? '<small>🔒 Buy the field first</small>' : `<button data-buy="upgrade" data-id="${u.id}" ${m < u.cost ? 'disabled' : ''}>Buy ${U.money(u.cost)}</button>`}</div>`;
-      }).join('') + '</div>').join('');
+      const cats = [...new Set(UPGRADES.map(u => u.cat))].filter(c => c !== 'Animals');
+      body = cats.map(cat => `<h3>${cat}</h3><div class="grid">` + UPGRADES.filter(u => u.cat === cat).map(upCard).join('') + '</div>').join('');
     } else {
       const broken = W.brokenCount(), prem = 200 + 50 * day;
       body = `<div class="bank">
@@ -268,13 +276,13 @@ const UI = {
       <div class="tabs">${tabs.map(t => `<button class="${t === this.shopTab ? 'on' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
       <div class="shopBody">${body}</div><button id="shClose">Close (Esc)</button>`;
     box.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { this.shopTab = b.dataset.t; this.renderShop(); });
-    box.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => Game.request({ k: 'buy', what: b.dataset.buy, id: b.dataset.buy === 'upgrade' ? b.dataset.id : +b.dataset.id, n: +b.dataset.n || 1 }));
+    box.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => Game.request({ k: 'buy', what: b.dataset.buy, id: b.dataset.buy === 'upgrade' || b.dataset.buy === 'animal' ? b.dataset.id : +b.dataset.id, n: +b.dataset.n || 1 }));
     box.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => Game.request({ k: 'pay', amount: +b.dataset.pay }));
     box.querySelectorAll('[data-ins]').forEach(b => b.onclick = () => Game.request({ k: 'ins', on: b.dataset.ins === '1' }));
     $('shClose').onclick = () => this.closeModal(true);
     this.shopSig = this.sig();
   },
-  sig() { return [G.money, G.debt, G.seeds.join(), JSON.stringify(G.upgrades), G.plots.join(), G.insured, W.brokenCount()].join('|'); },
+  sig() { return [G.money, G.debt, G.seeds.join(), JSON.stringify(G.upgrades), G.plots.join(), G.insured, W.brokenCount(), AN.list.length].join('|'); },
 
   // ---------------- modal plumbing ----------------
   showModal(name, html) {
@@ -358,7 +366,7 @@ const UI = {
       <div class="debt">Debt ${G.endless ? '— none (endless)' : U.money(G.debt)}</div>
       <div class="binI">📦 ${U.money(G.bin)} tomorrow${G.priceMult !== 1 ? ` · <b class="${G.priceMult > 1 ? 'up' : 'down'}">prices ×${G.priceMult}</b>` : ''}</div>`);
     // hotbar
-    const tool = ['✋ Hand', '⛏️ Hoe', '🌱 Seeds'];
+    const tool = ['✋ Hand', '⛏️ Hoe', '🌱 Seeds', `🚿 Can<small>${P.can}/${CAN_MAX()} · 1×1</small>`, `🪣 Bucket<small>${P.bucket}/${BUCKET_MAX()} · 2×2</small>`];
     if (G.has('scythe')) tool[0] = '🪓 Scythe'; if (G.has('widehoe')) tool[1] = '⛏️ Wide hoe';
     const seed = CROPS[P.seedSel];
     this.setH('hotbar', tool.map((t, i) => `<div class="slot ${P.slot === i ? 'on' : ''}"><span class="k">${K.keyName(S.d.keys['slot' + (i + 1)])}</span>${i === 2 ? `${this.icon(P.seedSel, 22)} ${seed.name}<small>${G.seeds[P.seedSel]} seeds · ${K.keyName(S.d.keys.nextSeed)} = next</small>` : t}</div>`).join(''));

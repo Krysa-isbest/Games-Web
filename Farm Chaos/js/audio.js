@@ -88,6 +88,10 @@ const AU = {
       case 'ufo': this.osc('sine', 300, 900, 1.2, 0.2, D); this.osc('sine', 305, 880, 1.2, 0.2, D); break;
       case 'zap': this.osc('sawtooth', 1800, 200, 0.25, 0.2, D); break;
       case 'splash': this.burst(0.5, 0.6, 'highpass', 800, 0.7, D); break;
+      case 'pour': this.burst(0.35, 0.35, 'bandpass', 1800, 1.5, D); this.burst(0.25, 0.2, 'highpass', 3500, 1, D, false, 0.08); break;
+      case 'squeak': this.osc('sine', 2400, 3200, 0.06, 0.08, D); this.osc('sine', 2600, 3400, 0.05, 0.06, D, 0.08); break;
+      case 'caw': this.osc('sawtooth', 520, 380, 0.22, 0.12, D); this.burst(0.2, 0.15, 'bandpass', 900, 3, D); break;
+      case 'swish': this.burst(0.25, 0.35, 'highpass', 2500, 0.8, D); this.osc('triangle', 880, 1320, 0.2, 0.15, D, 0.1); break;
       case 'warn': this.osc('triangle', 880, 880, 0.15, 0.3, D); this.osc('triangle', 660, 660, 0.25, 0.3, D, 0.17); this.osc('triangle', 880, 880, 0.3, 0.3, D, 0.4); break;
       case 'siren': { const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
         o.type = 'sawtooth'; for (let i = 0; i < 6; i++) { o.frequency.setValueAtTime(600, t + i * 0.5); o.frequency.linearRampToValueAtTime(900, t + i * 0.5 + 0.25); o.frequency.linearRampToValueAtTime(600, t + i * 0.5 + 0.5); }

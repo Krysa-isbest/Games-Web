@@ -268,6 +268,14 @@ M.animal = function (kind) {
     b.box(0.06, 0.22, 0.14, 0xeeeeee, 0, 0.55, -0.25, -0.5, 0, 0);
     b.box(0.04, 0.18, 0.26, 0xf0f0f0, -0.2, 0.43, -0.02); b.box(0.04, 0.18, 0.26, 0xf0f0f0, 0.2, 0.43, -0.02);
     for (const x of [-0.07, 0.07]) { const l = new MB(); l.box(0.03, 0.22, 0.03, 0xf5a623, 0, -0.11, 0); l.box(0.09, 0.02, 0.12, 0xf5a623, 0, -0.22, 0.03); legs.push({ geo: l.geo(), x, y: 0.24, z: 0 }); }
+  } else if (kind === 'rat') {
+    b.ico(0.13, 1, 0x6e655c, 0, 0.13, 0, 0.9, 0.75, 1.5);
+    b.cone(0.08, 0.16, 6, 0x6e655c, 0, 0.13, 0.24, Math.PI / 2, 0, 0);
+    b.ico(0.02, 0, 0xf2a3a8, 0, 0.13, 0.33);
+    b.ico(0.045, 0, 0xc49a9a, -0.07, 0.22, 0.14); b.ico(0.045, 0, 0xc49a9a, 0.07, 0.22, 0.14);
+    b.box(0.025, 0.025, 0.02, 0x111111, -0.045, 0.17, 0.24); b.box(0.025, 0.025, 0.02, 0x111111, 0.045, 0.17, 0.24);
+    b.box(0.025, 0.025, 0.42, 0xd8a0a0, 0, 0.08, -0.36, 0.25, 0, 0);
+    for (const [x, z] of [[-0.07, 0.1], [0.07, 0.1], [-0.07, -0.1], [0.07, -0.1]]) leg(0.04, 0.06, 0xc49a9a, x, 0.06, z);
   } else if (kind === 'gnome') {
     b.cyl(0.16, 0.22, 0.38, 6, 0x2f6fd1, 0, 0.3, 0);
     b.ico(0.14, 1, COL.skin, 0, 0.6, 0);
@@ -457,5 +465,41 @@ M.tool = function (kind) {
   else if (kind === 'scythe') { b.box(0.035, 0.035, 1.2, COL.woodLight, 0, 0, 0); b.box(0.6, 0.02, 0.1, COL.metal, 0.28, -0.03, 0.6, 0, 0.35, 0); b.box(0.12, 0.03, 0.03, COL.woodDark, 0.06, 0, 0.1); }
   else if (kind === 'seeds') { b.ico(0.13, 0, 0xc9a46a, 0, 0, 0, 1, 1.15, 0.9, 0.03); b.cyl(0.05, 0.08, 0.08, 6, 0xb0884f, 0, 0.15, 0); b.box(0.12, 0.12, 0.01, 0x5a9c38, 0, 0, 0.115); }
   else if (kind === 'wide') { b.box(0.035, 0.035, 1.1, COL.woodLight, 0, 0, 0); b.box(0.5, 0.03, 0.12, COL.metal, 0, -0.06, 0.55, 0.5, 0, 0); for (let i = 0; i < 5; i++) b.box(0.03, 0.03, 0.1, COL.metal, -0.2 + i * 0.1, -0.1, 0.62); }
+  else if (kind === 'can') { b.cyl(0.11, 0.12, 0.22, 10, 0x4f9a5a, 0, 0, 0); b.cyl(0.02, 0.03, 0.34, 6, 0x4f9a5a, 0, 0.06, -0.2, -1.0, 0, 0); b.cyl(0.05, 0.03, 0.04, 8, 0x3d7a46, 0, 0.17, -0.34, -1.0, 0, 0); b.tor(0.09, 0.015, 4, 10, 0x3d7a46, 0, 0.13, 0.05, 0, Math.PI / 2, 0, Math.PI); }
+  else if (kind === 'bucket') { b.cyl(0.15, 0.11, 0.22, 10, COL.metal, 0, 0, 0); b.cyl(0.13, 0.13, 0.02, 10, 0x4f8fc0, 0, 0.09, 0); b.tor(0.15, 0.012, 4, 12, COL.darkMetal, 0, 0.11, 0, 0, Math.PI / 2, 0, Math.PI); }
   const m = new THREE.Mesh(b.geo(), M.mat); return m;
 };
+
+// ---------------- farm extras ----------------
+M.well = () => {
+  const b = new MB();
+  b.cyl(1.0, 1.1, 0.9, 12, COL.stone, 0, 0.45, 0, 0, 0, 0); b.cyl(0.8, 0.8, 0.05, 12, 0x2d5f80, 0, 0.82, 0);
+  b.box(0.15, 2.0, 0.15, COL.woodDark, -0.95, 1.4, 0); b.box(0.15, 2.0, 0.15, COL.woodDark, 0.95, 1.4, 0);
+  b.box(2.2, 0.1, 0.1, COL.woodDark, 0, 2.0, 0); b.cyl(0.02, 0.02, 0.8, 4, 0x9a8a6a, 0, 1.6, 0);
+  b.cyl(0.13, 0.1, 0.18, 8, COL.wood, 0, 1.15, 0); b.box(0.06, 0.06, 0.4, COL.metal, 1.15, 2.0, 0.2);
+  b.prism(1.7, 0.8, 2.6, 0x7b3b2b, 0, 2.05, 0, 0, Math.PI / 2, 0);
+  return b.geo();
+};
+M.hoop = () => {
+  const b = new MB();
+  b.box(0.18, 3.6, 0.18, COL.darkMetal, 0, 1.8, -0.5); b.box(0.1, 0.1, 0.6, COL.darkMetal, 0, 3.3, -0.25);
+  b.box(1.8, 1.1, 0.08, 0xf4f4f4, 0, 3.4, 0); b.box(0.6, 0.45, 0.09, 0xd04030, 0, 3.15, 0.005);
+  b.tor(0.23, 0.02, 4, 14, 0xe0602a, 0, 3.05, 0.3, Math.PI / 2, 0, 0);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.box(0.015, 0.35, 0.015, 0xffffff, Math.cos(a) * 0.19, 2.88, 0.3 + Math.sin(a) * 0.19); }
+  return b.geo();
+};
+M.ball = () => { const b = new MB(); b.ico(0.13, 1, 0xe0702a, 0, 0, 0); b.tor(0.131, 0.006, 3, 12, 0x2a1a10, 0, 0, 0); b.tor(0.131, 0.006, 3, 12, 0x2a1a10, 0, 0, 0, 0, Math.PI / 2, 0); return b.geo(); };
+M.giantEgg = () => { const b = new MB(); b.ico(0.45, 1, 0xf3e6cc, 0, 0.55, 0, 1, 1.3, 1); b.ico(0.08, 0, 0xc9a46a, 0.2, 0.8, 0.35); b.ico(0.06, 0, 0xc9a46a, -0.25, 0.5, 0.33); return b.geo(); };
+M.mushroom = () => { const b = new MB(); b.cyl(0.05, 0.06, 0.16, 6, 0xf3eee2, 0, 0.08, 0); b.sph(0.13, 8, 5, 0xc0392b, 0, 0.17, 0, 1, 0.55, 1); b.ico(0.025, 0, 0xffffff, 0.06, 0.23, 0.04); b.ico(0.02, 0, 0xffffff, -0.05, 0.22, -0.05); return b.geo(); };
+M.clover = () => { const b = new MB(); b.box(0.02, 0.2, 0.02, 0x3d8f2e, 0, 0.1, 0); for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; b.ico(0.07, 0, 0x4fc04a, Math.cos(a) * 0.07, 0.22, Math.sin(a) * 0.07, 1, 0.3, 1); } return b.geo(); };
+M.scrap = () => { const b = new MB(); b.box(0.25, 0.08, 0.18, COL.metal, 0, 0.05, 0, 0.2, 0.5, 0); b.cyl(0.06, 0.06, 0.12, 6, COL.darkMetal, 0.1, 0.12, 0.05); b.box(0.05, 0.05, 0.2, 0xd8a040, -0.08, 0.1, 0); return b.geo(); };
+M.robot = () => {
+  const b = new MB();
+  b.box(1.6, 1.0, 2.2, 0xd04a2a, 0, 1.0, 0); b.box(1.2, 0.6, 0.8, 0x3a3c44, 0, 1.8, -0.4); b.box(0.9, 0.12, 0.05, 0xff2020, 0, 1.85, -0.82);
+  for (const x of [-0.9, 0.9]) for (const z of [-0.7, 0.7]) b.cyl(0.38, 0.38, 0.3, 10, 0x222222, x, 0.38, z, 0, 0, Math.PI / 2);
+  b.box(2.6, 0.2, 0.3, COL.metal, 0, 0.45, -1.35); for (let i = 0; i < 7; i++) b.cone(0.08, 0.3, 4, COL.metal, -1.2 + i * 0.4, 0.45, -1.6, -Math.PI / 2, 0, 0);
+  b.cyl(0.05, 0.05, 0.8, 5, COL.darkMetal, 0.5, 2.3, 0); b.ico(0.08, 0, 0xff2020, 0.5, 2.75, 0);
+  return b.geo();
+};
+M.worm = () => { const b = new MB(); for (let i = 0; i < 6; i++) b.ico(1.1 - i * 0.12, 1, i % 2 ? 0xd9b48a : 0xc89a70, 0, i * 1.1, -i * 0.35, 1, 0.9, 1, 0.06); b.ico(0.75, 1, 0x3a1a14, 0, 6.2, -1.9, 1, 0.3, 1); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; b.cone(0.1, 0.4, 4, 0xf3eee2, Math.cos(a) * 0.65, 6.25, -1.9 + Math.sin(a) * 0.65, 0, 0, Math.PI); } return b.geo(); };
+M.goldEgg = () => { const b = new MB(); b.ico(0.08, 1, 0xffd23a, 0, 0.09, 0, 1, 1.3, 1); return b.geo(); };

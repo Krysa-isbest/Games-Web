@@ -9,15 +9,25 @@ const P = {
   inBunker: false, sleeping: false, boarded: false,
   pack: {}, packN: 0, slot: 0, seedSel: 0, useCD: 0, swing: 0, stepT: 0, force: new V3(), fallV: 0,
   target: null, targetTiles: [], sheltered: false, shelterT: 0, lastHurt: 0, swim: false, bob: 0,
+  can: 0, bucket: 0, hotT: 0, streak: 0,
 
   init() {
     this.hand = new THREE.Group(); W.camera.add(this.hand);
-    this.tools = { hand: M.tool('hand'), hoe: M.tool('hoe'), wide: M.tool('wide'), seeds: M.tool('seeds'), scythe: M.tool('scythe') };
+    this.tools = { hand: M.tool('hand'), hoe: M.tool('hoe'), wide: M.tool('wide'), seeds: M.tool('seeds'), scythe: M.tool('scythe'), can: M.tool('can'), bucket: M.tool('bucket') };
     for (const k in this.tools) { const t = this.tools[k]; t.visible = false; this.hand.add(t); }
     this.tools.hoe.rotation.set(-0.3, 0, 0); this.tools.wide.rotation.set(-0.3, 0, 0); this.tools.scythe.rotation.set(-0.3, 0, 0);
     this.hand.position.set(0.32, -0.32, -0.55); this.hand.scale.setScalar(0.65);
   },
-  capacity() { return G.has('backpack') ? 120 : 40; },
+  capacity() { return (G.has('backpack') ? 120 : 40) + (G.has('farm3') ? 40 : 0); },
+  carrying() { return AN.carriedBy(G.myId); },
+  // pigs eat the cheapest crop in your backpack
+  cheapestCrop() { let best = null; for (const k in this.pack) if (k[0] === 'c' && this.pack[k] > 0 && (!best || itemValue(k) < itemValue(best))) best = k; return best; },
+  feedPig(a) {
+    const k = this.cheapestCrop();
+    if (!k) { UI.toast('Bring a crop to feed the pig'); AU.play('deny'); return; }
+    this.pack[k]--; this.packN--; if (!this.pack[k]) delete this.pack[k]; UI.dirty = true;
+    Game.request({ k: 'feed', id: a.id }); AU.play('oink', a);
+  },
   give(items) {
     for (const k in items) { this.pack[k] = (this.pack[k] || 0) + items[k]; this.packN += items[k]; }
     UI.dirty = true;
@@ -62,6 +72,7 @@ const P = {
     const p = this.pos, r = this.r, y0 = p.y + 0.3, y1 = p.y + this.height;
     for (const c of W.colliders) {
       if (c.dead || c.max.y < y0 || c.min.y > y1) continue;
+      if (c.roof && p.y < c.min.y - 0.05) continue; // walking under a roof, not into it
       if (p.x < c.min.x - r || p.x > c.max.x + r || p.z < c.min.z - r || p.z > c.max.z + r) continue;
       const cx = U.clamp(p.x, c.min.x, c.max.x), cz = U.clamp(p.z, c.min.z, c.max.z);
       let dx = p.x - cx, dz = p.z - cz; const d2 = dx * dx + dz * dz;
@@ -114,7 +125,9 @@ const P = {
     const len = Math.hypot(ix, iz) || 1; ix /= len; iz /= len;
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const wx = ix * cy + iz * sy, wz = -ix * sy + iz * cy;
-    let speed = (this.crouch ? 2.6 : this.sprint ? 8.6 : 5.2) * (G.has('boots') ? 1.3 : 1) * (W.env.speed || 1);
+    this.hotT = Math.max(0, this.hotT - dt);
+    const held = this.carrying();
+    let speed = (this.crouch ? 2.6 : this.sprint ? 8.6 : 5.2) * (G.has('boots') ? 1.3 : 1) * (W.env.speed || 1) * (this.hotT > 0 ? 1.25 : 1) * (held ? (held.kind === 'cow' ? 0.7 : 0.85) : 1);
     if (this.swim) speed *= 0.6;
     const accel = this.onGround ? 14 : 3;
     this.vel.x += (wx * speed - this.vel.x) * Math.min(1, accel * dt) * (ix || iz || this.onGround ? 1 : 0);
@@ -167,7 +180,7 @@ const P = {
 
     this.updateCamera(dt);
     if (playing && !this.dead) this.updateTools(dt);
-    else { W.highlight.visible = false; W.highlight3.visible = false; this.target = null; UI.prompt(''); }
+    else { W.highlight.visible = false; W.highlight3.visible = false; W.highlight2.visible = false; this.target = null; UI.prompt(''); }
   },
 
   updateCamera(dt) {
@@ -188,14 +201,14 @@ const P = {
     this.hand.position.set(0.3 + Math.sin(this.bob) * 0.01, -0.27 - s * 0.1 + Math.abs(Math.cos(this.bob)) * 0.012, -0.6 - s * 0.08);
     this.hand.rotation.set(-s * 0.9, 0, 0);
   },
-  toolName() { return this.slot === 0 ? (G.has('scythe') ? 'scythe' : 'hand') : this.slot === 1 ? (G.has('widehoe') ? 'wide' : 'hoe') : 'seeds'; },
+  toolName() { return this.slot === 0 ? (G.has('scythe') ? 'scythe' : 'hand') : this.slot === 1 ? (G.has('widehoe') ? 'wide' : 'hoe') : this.slot === 2 ? 'seeds' : this.slot === 3 ? 'can' : 'bucket'; },
+  nearPond() { return Math.hypot(this.pos.x - W.pondPos.x, this.pos.z - W.pondPos.z) < 13.5; },
 
   updateTools(dt) {
     // hotbar
-    if (K.hit('slot1')) this.slot = 0; if (K.hit('slot2')) this.slot = 1; if (K.hit('slot3')) this.slot = 2;
-    if (K.wheel) { this.slot = (this.slot + K.wheel + 3) % 3; UI.dirty = true; }
+    for (let i = 0; i < 5; i++) if (K.hit('slot' + (i + 1))) { this.slot = i; UI.dirty = true; }
+    if (K.wheel) { this.slot = (this.slot + K.wheel + 5) % 5; UI.dirty = true; }
     if (K.hit('nextSeed')) { this.cycleSeed(1); this.slot = 2; }
-    if (K.hit('slot1') || K.hit('slot2') || K.hit('slot3')) UI.dirty = true;
     if (G.seeds[this.seedSel] <= 0 && K.hit('slot3')) this.cycleSeed(1);
 
     const cam = W.camera, dir = new V3(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -218,9 +231,16 @@ const P = {
     }
     if (tile >= 0 && !G.plots[W.plotOf(tile)]) tile = -1;
     const wide = (this.slot === 0 && G.has('scythe')) || (this.slot === 1 && G.has('widehoe')) || (this.slot === 2 && G.has('spreader'));
+    W.highlight2.visible = false;
     if (tile >= 0) {
       const p = W.tilePos(tile);
-      if (wide) {
+      if (this.slot === 4) {
+        // the bucket splashes 2×2 (shifted back inside the field at its edges)
+        const k = tile % 64, tx = Math.min(6, k % 8), tz = Math.min(6, Math.floor(k / 8)), base = tile - k;
+        for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) this.targetTiles.push(base + (tz + b) * 8 + tx + a);
+        const p0 = W.tilePos(base + tz * 8 + tx);
+        W.highlight2.position.set(p0.x + TILE / 2, 0.08, p0.z + TILE / 2); W.highlight2.visible = true; W.highlight.visible = false; W.highlight3.visible = false;
+      } else if (wide) {
         const k = tile % 64, tx = k % 8, tz = Math.floor(k / 8), base = tile - k;
         for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const x = tx + a, z = tz + b; if (x >= 0 && x < 8 && z >= 0 && z < 8) this.targetTiles.push(base + z * 8 + x); }
         W.highlight3.position.set(p.x, 0.08, p.z); W.highlight3.visible = true; W.highlight.visible = false;
@@ -229,7 +249,14 @@ const P = {
 
     // prompt
     let txt = '';
-    if (best) txt = `<b>${K.keyName(S.d.keys.interact)}</b> ${best.label()}`;
+    const held = this.carrying(), key = a => `<b>${K.keyName(S.d.keys[a])}</b>`;
+    if (best) txt = (best.act ? `${key('interact')} ${best.label()}` : best.label()) + (best.animal !== undefined ? ` · ${key('carry')} Pick up` : '');
+    else if (this.slot === 4 && this.nearPond()) txt = `${key('interact')} Fill the bucket (${this.bucket}/${BUCKET_MAX()})`;
+    else if (tile >= 0 && this.slot >= 3) {
+      const T = W.tiles, fire = this.targetTiles.some(i => T.f[i] > 0), left = this.slot === 3 ? this.can : this.bucket;
+      txt = left > 0 ? `<b>Click</b> ${fire ? 'Put out the fire' : 'Water'} (${left} left)` : this.slot === 3 ? 'The watering can is empty — fill it at the well' : 'The bucket is empty — fill it at the pond';
+    }
+    else if (this.slot >= 3 && H.burnTarget(cam.position, dir)) txt = (this.slot === 3 ? this.can : this.bucket) > 0 ? '<b>Click</b> Put out the fire!' : 'Empty! Refill and come back';
     else if (tile >= 0) {
       const T = W.tiles;
       if (this.slot === 0 && T.c[tile] >= 0) txt = T.st[tile] === 3 ? `<b>Click</b> Harvest ${itemName('c' + T.c[tile] + (T.m[tile] ? '_' + T.m[tile] : ''))}` : `${CROPS[T.c[tile]].name} — growing (${Math.round(T.g[tile] / CROPS[T.c[tile]].grow * 100)}%)`;
@@ -239,9 +266,18 @@ const P = {
       else if (!T.s[tile]) txt = 'Untilled soil (hoe: 2)';
       else txt = 'Tilled soil (seeds: 3)';
     }
+    if (held) txt = `${key('carry')} Put down the ${ANIMAL_SHOP[held.kind].name.toLowerCase()}` + (txt ? ' · ' + txt : '');
     UI.prompt(txt);
 
-    if (K.hit('interact') && best) best.act();
+    if (K.hit('interact')) {
+      if (best && best.act) best.act();
+      else if (!best && this.slot === 4 && this.nearPond()) { this.bucket = BUCKET_MAX(); AU.play('splash', null, 0.7); UI.dirty = true; UI.toast('Bucket filled'); }
+    }
+    // pick up / put down animals (put them in another pen to move them there)
+    if (K.hit('carry')) {
+      if (held) Game.request({ k: 'carry', on: false, id: held.id, dx: -Math.sin(this.yaw), dz: -Math.cos(this.yaw) });
+      else if (best && best.animal !== undefined) Game.request({ k: 'carry', on: true, id: best.animal });
+    }
 
     // ping
     if (K.hit('ping')) {
@@ -254,8 +290,11 @@ const P = {
     if (K.mouse[0] && this.useCD <= 0) {
       this.useCD = 0.2;
       // kicking gnomes / angry chickens with any tool
+      const big = H.bigTarget(cam.position, dir);
+      if (big) { this.swing = 1; this.useCD = 0.35; AU.play('kick', null, 0.8); Game.request({ k: 'kickbig', type: big }); return; }
       const kick = AN.kickTarget(cam.position, dir);
       if (kick) { this.swing = 1; AU.play('kick', null, 0.7); Game.request({ k: 'kick', kind: kick.kind, id: kick.id, dx: dir.x, dz: dir.z }); return; }
+      if (this.slot >= 3) { this.useWater(cam, dir); return; }
       if (!this.targetTiles.length) return;
       const T = W.tiles; let tiles;
       if (this.slot === 0) {
@@ -273,6 +312,47 @@ const P = {
         else if (tiles.length) { UI.toast(`Out of ${CROPS[this.seedSel].name} seeds`); this.useCD = 0.6; }
       }
     }
+  },
+  // watering can (1 tile) / bucket (2×2): waters crops and puts out burning fields and buildings
+  useWater(cam, dir) {
+    const can = this.slot === 3, left = can ? this.can : this.bucket;
+    const burn = H.burnTarget(cam.position, dir);
+    if (!this.targetTiles.length && !burn) return;
+    if (left <= 0) { UI.toast(can ? 'Empty — fill the watering can at the well' : 'Empty — fill the bucket at the pond'); AU.play('deny'); this.useCD = 0.6; return; }
+    if (can) this.can--; else this.bucket--;
+    this.swing = 1; this.useCD = can ? 0.25 : 0.5; AU.play('pour', null, 0.7); UI.dirty = true;
+    if (burn) Game.request({ k: 'douse', type: burn.type, bi: burn.bi, pi: burn.pi });
+    else Game.request({ k: 'water', tiles: this.targetTiles });
+    const pts = burn ? [W.buildings[burn.bi].pieces[burn.pi].center] : this.targetTiles.map(i => W.tilePos(i));
+    for (const p of pts) for (let k = 0; k < 6 * S.d.particles; k++) FX.emit(p.x + U.rand(-0.5, 0.5), (p.y || 0) + 0.6, p.z + U.rand(-0.5, 0.5), U.rand(-1, 1), U.rand(0.5, 2), U.rand(-1, 1), 0.6, 0.15, 0x8fd4ff, { g: 9 });
+  },
+  fillCan() {
+    if (this.slot !== 3) { UI.toast(`Hold the watering can (${K.keyName(S.d.keys.slot4)}) to fill it`); return; }
+    if (G.wellDry === G.day() && G.hour() < 10) { UI.toast('The well is dry until 10:00 — use the bucket at the pond'); AU.play('deny'); return; }
+    this.can = CAN_MAX(); AU.play('splash', null, 0.7); UI.dirty = true; UI.toast('Watering can filled');
+  },
+  // basketball: 3 baskets in a row = hot hand (run 25% faster for a minute)
+  shoot() {
+    if (this.shotT > W.timeUniform.value) return;
+    this.shotT = W.timeUniform.value + 1.1;
+    const cam = W.camera.position, h = W.hoopPos, d = Math.hypot(h.x - cam.x, h.z - cam.z);
+    const make = Math.random() < U.clamp(1.05 - d / 7, 0.15, 0.9);
+    const from = cam.clone(), to = make ? h.clone() : h.clone().add(new V3(U.rand(-0.6, 0.6), 0.2, U.rand(0.1, 0.5)));
+    const ball = new THREE.Mesh(this.ballGeo || (this.ballGeo = M.ball()), M.mat); ball.userData.keepGeo = true;
+    FX.temp(ball, 1.6, t => {
+      const k = Math.min(1, t / 0.8);
+      if (k < 1) ball.position.set(U.lerp(from.x, to.x, k), U.lerp(from.y, to.y, k) + Math.sin(k * Math.PI) * 2.2, U.lerp(from.z, to.z, k));
+      else ball.position.set(to.x + (make ? 0 : (t - 0.8) * 2), Math.max(0.13, to.y - (t - 0.8) * (t - 0.8) * 14), to.z + (t - 0.8) * 1.5);
+      return t < 1.6;
+    });
+    this.swing = 1; AU.play('whoosh', null, 0.3);
+    setTimeout(() => {
+      if (make) {
+        this.streak++; AU.play('swish', h);
+        if (this.streak >= 3) { this.streak = 0; this.hotT = 60; UI.toast('🔥 Hot hand! You run 25% faster for 60 s'); AU.play('chime'); }
+        else UI.toast(`Swish! ${this.streak} in a row`);
+      } else { this.streak = 0; AU.play('boing', h, 0.5); UI.toast('Clang! Missed'); }
+    }, 800);
   },
   cycleSeed(dir) {
     for (let k = 1; k <= CROPS.length; k++) {

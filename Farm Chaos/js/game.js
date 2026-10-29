@@ -9,7 +9,8 @@ const Game = {
 
   init() {
     PICKUP_GEO.egg = M.egg(); PICKUP_GEO.frog = M.frog(); PICKUP_GEO.fish = M.fish(); PICKUP_GEO.meteorite = M.meteorite();
-    PICKUP_GEO.stardust = M.stardust(); PICKUP_GEO.bag = M.bag(); PICKUP_GEO.truffle = M.truffle(); PICKUP_GEO.pumpkinbit = M.pumpkinBit();
+    PICKUP_GEO.stardust = M.stardust(); PICKUP_GEO.bag = M.bag(); PICKUP_GEO.truffle = M.truffle(); PICKUP_GEO.pumpkinbit = M.pumpkinBit(); PICKUP_GEO.goldegg = M.goldEgg();
+    PICKUP_GEO.giantegg = M.giantEgg(); PICKUP_GEO.mushroom = M.mushroom(); PICKUP_GEO.clover = M.clover(); PICKUP_GEO.scrap = M.scrap();
     NET.onMsg = (from, m) => G.isHost ? this.handle(from, m) : this.clientMsg(m);
     NET.onJoin = id => { };
     NET.onLeave = id => {
@@ -27,7 +28,8 @@ const Game = {
     G.seeds = CROPS.map((c, i) => i === 0 ? 20 : i === 2 ? 6 : 0);
     G.plots = PLOTS.map((p, i) => i === 0);
     G.stats = { earned: 0, harvested: 0, destroyed: 0, deaths: 0, abducted: 0, events: 0, pieces: 0, days: 1 };
-    const T = W.tiles; T.s.fill(0); T.c.fill(-1); T.g.fill(0); T.st.fill(0); T.m.fill(0); T.f.fill(0);
+    const T = W.tiles; T.s.fill(0); T.c.fill(-1); T.g.fill(0); T.st.fill(0); T.m.fill(0); T.f.fill(0); T.w.fill(0);
+    AN.reset(); P.can = 0; P.bucket = 0;
     // a few tilled tiles to get started
     for (let i = 0; i < 16; i++) T.s[18 + (i % 4) + Math.floor(i / 4) * 8] = 1;
     W.repairAll(); W.cropsDirty = true; W.refreshPlots();
@@ -39,8 +41,9 @@ const Game = {
   saveInfo() { try { const s = JSON.parse(localStorage.getItem('farmchaos_save')); return s ? `Day ${Math.floor(s.time / DAY) + 1} · ${U.money(s.money)} · debt ${U.money(s.debt)}` : ''; } catch (e) { return ''; } },
   saveData() {
     const T = W.tiles;
-    return { v: 1, time: G.time, money: G.money, debt: G.debt, seeds: G.seeds, upgrades: G.upgrades, plots: G.plots, bin: G.bin, binItems: G.binItems, stats: G.stats, insured: G.insured, endless: G.endless,
-      tiles: { s: Array.from(T.s), c: Array.from(T.c), g: Array.from(T.g, v => Math.round(v)), m: Array.from(T.m) }, broken: W.brokenList(), pack: P.pack };
+    return { v: 2, time: G.time, money: G.money, debt: G.debt, seeds: G.seeds, upgrades: G.upgrades, plots: G.plots, bin: G.bin, binItems: G.binItems, stats: G.stats, insured: G.insured, endless: G.endless,
+      tiles: { s: Array.from(T.s), c: Array.from(T.c), g: Array.from(T.g, v => Math.round(v)), m: Array.from(T.m), w: Array.from(T.w) }, broken: W.brokenList(), pack: P.pack,
+      animals: AN.saveList(), water: [P.can, P.bucket] };
   },
   save() { if (!G.isHost || !G.started) return; try { localStorage.setItem('farmchaos_save', JSON.stringify(this.saveData())); } catch (e) { } },
   load(s) {
@@ -50,15 +53,20 @@ const Game = {
     Object.assign(G, { time: s.time, money: s.money, debt: s.debt, seeds: s.seeds, upgrades: s.upgrades || {}, plots: s.plots, bin: s.bin || 0, binItems: s.binItems || 0, stats: Object.assign(G.stats, s.stats), insured: !!s.insured, endless: !!s.endless });
     const T = W.tiles;
     s.tiles.s.forEach((v, i) => T.s[i] = v); s.tiles.c.forEach((v, i) => T.c[i] = v); s.tiles.g.forEach((v, i) => T.g[i] = v); s.tiles.m.forEach((v, i) => T.m[i] = v);
+    if (s.tiles.w) s.tiles.w.forEach((v, i) => T.w[i] = v);
     for (let i = 0; i < TILES_TOTAL; i++) T.st[i] = T.c[i] >= 0 ? this.stageOf(i) : 0;
+    W.refreshPlots(); // shows bought greenhouses first, so their broken pieces load too
     for (const [bi, pi] of s.broken || []) this.setBrokenSilent(bi, pi);
     P.pack = s.pack || {}; P.packN = Object.values(P.pack).reduce((a, b) => a + b, 0);
-    W.cropsDirty = true; W.refreshPlots();
+    if (s.animals) AN.loadList(s.animals);
+    if (s.water) [P.can, P.bucket] = s.water;
+    W.cropsDirty = true;
     this.lastDay = G.day();
     return true;
   },
   setBrokenSilent(bi, pi) {
     const p = W.buildings[bi] && W.buildings[bi].pieces[pi]; if (!p || p.broken) return;
+    if (W.buildings[bi].hidden) return;
     p.broken = true; p.mesh.visible = false; if (p.col) p.col.dead = true;
     const r = W.roofs.indexOf(p.mesh); if (r >= 0) W.roofs.splice(r, 1);
   },
@@ -122,13 +130,20 @@ const Game = {
         const i = this.pickups.findIndex(p => p.id === m.id); if (i < 0) return;
         const p = this.pickups[i]; this.pickups.splice(i, 1); W.scene.remove(p.mesh);
         this.broadcast({ k: 'pk-', id: p.id });
+        // a lucky clover is a speed boost, not an item
+        if (p.type === 'clover') { if (from === G.myId) this.clientMsg({ k: 'boost', t: 30 }, true); else NET.sendTo(from, { k: 'boost', t: 30 }); return; }
         this.give(from, p.items || { [p.type]: 1 });
         return;
       }
       case 'milk': case 'shear': {
         const a = AN.byId(m.id); if (!a) return;
-        if (m.k === 'milk' && a.milk) { a.milk = false; this.give(from, { milk: 1 }); AU.play('moo', a); }
-        if (m.k === 'shear' && a.wool) { a.wool = false; this.give(from, { wool: 1 }); AU.play('baa', a); }
+        if (m.k === 'milk' && a.milk) { a.milk = false; this.give(from, { milk: (G.has('milker') ? 2 : 1) + (a.milk2 ? 2 : 0) }); a.milk2 = false; AU.play('moo', a); }
+        if (m.k === 'shear' && a.wool) {
+          a.wool = false; AU.play('baa', a);
+          // thunder sheep: double wool, but it bites back
+          if (EV.has('thundersheep')) { this.give(from, { wool: 2 }); if (from === G.myId) this.clientMsg({ k: 'zapme' }, true); else NET.sendTo(from, { k: 'zapme' }); }
+          else this.give(from, { wool: 1 });
+        }
         return;
       }
       case 'kick': {
@@ -136,7 +151,36 @@ const Game = {
         else { const a = AN.byId(m.id); if (a) { AN.fling(a, m.dx * 9, 6, m.dz * 9); if (a.state === 'flung') a.state = 'flung'; } }
         return;
       }
-      case 'grab': { const a = AN.byId(m.id); if (a && a.state === 'abducted') { a.state = 'flung'; a.vy = -2; this.log(`💪 ${this.pname(from)} pulled a cow out of the tractor beam!`); } return; }
+      case 'grab': { const a = AN.byId(m.id); if (a && a.state === 'abducted') { a.state = 'flung'; a.vy = -2; this.log(`💪 ${this.pname(from)} pulled a ${a.kind} out of the tractor beam!`); } return; }
+      case 'carry': {
+        const a = AN.byId(m.id); if (!a) return;
+        if (m.on) AN.pickUp(a, from);
+        else if (a.by === from) AN.putDown(a, +m.dx || 0, +m.dz || 0);
+        return;
+      }
+      case 'feed': {
+        const a = AN.byId(m.id); if (!a || a.kind !== 'pig' || a.fat >= PIG_FAT) return;
+        a.fat = Math.min(PIG_FAT, a.fat + (G.has('pigfeed') ? 2 : 1));
+        if (a.fat >= PIG_FAT) this.log(`🐖 ${this.pname(from)} fattened a pig. It's ready to sell!`);
+        return;
+      }
+      case 'sellpig': {
+        const a = AN.byId(m.id); if (!a || a.kind !== 'pig' || a.fat < PIG_FAT || a.state === 'carried') return;
+        AN.remove(a); G.bin += PIG_PRICE; G.binItems++;
+        this.log(`🐖 ${this.pname(from)} sold a fat pig for ${U.money(PIG_PRICE)} (paid in the morning)`); AU.play('coin');
+        return;
+      }
+      case 'water': {
+        const T = W.tiles;
+        for (const i of m.tiles || []) {
+          if (i < 0 || i >= TILES_TOTAL || !G.plots[W.plotOf(i)]) continue;
+          if (T.f[i] > 0) this.extinguish(i);
+          if ((T.s[i] || T.c[i] >= 0) && !T.w[i]) { T.w[i] = 1; this.mark(i); }
+        }
+        return;
+      }
+      case 'douse': { if (!WATER_EVENTS.includes(m.type)) return; const e = EV.get(m.type); if (e) EV.defs[m.type].douse(e, m.bi, m.pi, from); return; }
+      case 'kickbig': { const e = EV.get(m.type); if (e && EV.defs[m.type].kick) EV.defs[m.type].kick(e, from); return; }
       case 'drop': { if (Object.keys(m.items || {}).length) this.spawnPickup('bag', m.x, m.z, m.items, m.y); return; }
       case 'died': G.stats.deaths++; this.log(`☠️ ${this.pname(from)} — ${m.cause}`); return;
       case 'sleep': if (m.on) this.sleepers.add(from); else this.sleepers.delete(from); return;
@@ -182,9 +226,16 @@ const Game = {
     } else if (m.what === 'upgrade') {
       const u = UPGRADES.find(q => q.id === m.id); if (!u || u.soon || G.upgrades[u.id]) return;
       if (u.plot !== undefined && !G.plots[u.plot]) return fail('Buy that field first');
+      if (u.needs && !G.upgrades[u.needs]) return fail('Buy ' + UPGRADES.find(q => q.id === u.needs).name + ' first');
       if (G.money < u.cost) return fail('Not enough money');
       G.money -= u.cost; G.upgrades[u.id] = true; W.refreshUpgradeProps(); this.ok(from);
       this.log(`🔧 ${who} bought ${u.name} (${U.money(u.cost)})`);
+    } else if (m.what === 'animal') {
+      const s = ANIMAL_SHOP[m.id]; if (!s) return;
+      const zone = AN.freeZone(m.id); if (!zone) return fail(`No room for another ${s.name.toLowerCase()} — buy a bigger pen`);
+      if (G.money < s.cost) return fail('Not enough money');
+      G.money -= s.cost; AN.add(m.id, zone, { drop: true }); this.ok(from);
+      this.log(`${s.icon} ${who} bought a ${s.name.toLowerCase()} (${U.money(s.cost)})`);
     } else if (m.what === 'repair') {
       const n = W.brokenCount(), cost = n * 15; if (!n) return;
       if (G.money < cost) return fail('Not enough money');
@@ -208,7 +259,15 @@ const Game = {
   },
   resetTile(i, cause) { if (!G.isHost) return; this.destroyTile(i, cause); const T = W.tiles; if (T.s[i]) { T.s[i] = 0; this.mark(i); } },
   mutateTile(i, mu) { if (!G.isHost) return; const T = W.tiles; if (T.c[i] < 0 || T.m[i] === mu) return; T.m[i] = mu; this.mark(i); },
-  igniteTile(i) { if (!G.isHost) return; const T = W.tiles; if ((T.c[i] < 0 && !T.s[i]) || T.f[i] > 0 || W.waterLevel > 0.2) return; T.f[i] = 0.01; this.mark(i); },
+  igniteTile(i) { if (!G.isHost) return; const T = W.tiles; if ((T.c[i] < 0 && !T.s[i]) || T.f[i] > 0 || W.waterLevel > 0.2 || (T.w[i] && Math.random() < 0.75)) return; T.f[i] = 0.01; this.mark(i); },
+  // irrigation (Farm Upgrade II): water every tilled tile, if the water tower is still standing
+  irrigate(why) {
+    if (!W.tower.intact()) { this.log('🚱 The water tower is broken — no irrigation until it is repaired'); return false; }
+    const T = W.tiles; let n = 0;
+    for (let i = 0; i < TILES_TOTAL; i++) if (G.plots[W.plotOf(i)] && (T.s[i] || T.c[i] >= 0)) { if (T.f[i] > 0) this.extinguish(i); if (!T.w[i]) { T.w[i] = 1; this.mark(i); n++; } }
+    if (why) this.log(why);
+    return true;
+  },
   extinguish(i) { const T = W.tiles; if (T.f[i] > 0) { T.f[i] = 0; this.mark(i); } },
   cropPuff(i) {
     const T = W.tiles, p = W.tilePos(i), c = CROPS[T.c[i]] || CROPS[0];
@@ -217,7 +276,7 @@ const Game = {
   chaosPeppers() { let n = 0; for (let i = 0; i < TILES_TOTAL; i++) if (W.tiles.c[i] === 17) n++; return n; },
   tileDiff() {
     const T = W.tiles, out = [];
-    for (const i of this.dirty) out.push([i, T.s[i], T.c[i], T.st[i], T.m[i], T.f[i] > 0 ? 1 : 0, this.destroyed && this.destroyed.has(i) ? 1 : 0]);
+    for (const i of this.dirty) out.push([i, T.s[i], T.c[i], T.st[i], T.m[i], T.f[i] > 0 ? 1 : 0, this.destroyed && this.destroyed.has(i) ? 1 : 0, T.w[i]]);
     this.dirty.clear(); if (this.destroyed) this.destroyed.clear();
     return out;
   },
@@ -251,7 +310,7 @@ const Game = {
       // auto pickup
       if (!P.dead && !P.inBunker && Math.hypot(p.x - P.pos.x, p.z - P.pos.z) < 1.4 && Math.abs(p.y - P.pos.y) < 2) {
         const n = p.items ? Object.values(p.items).reduce((a, b) => a + b, 0) : 1;
-        if (P.packN + n > P.capacity() && p.type !== 'bag') { if (!p.warned) { p.warned = true; UI.toast('Backpack full!'); } }
+        if (P.packN + n > P.capacity() && p.type !== 'bag' && p.type !== 'clover') { if (!p.warned) { p.warned = true; UI.toast('Backpack full!'); } }
         else if (!this.pickReq[p.id] || this.pickReq[p.id] < t) { this.pickReq[p.id] = t + 1; this.request({ k: 'pick', id: p.id }); AU.play('pickup', null, 0.6); }
       }
       if (G.isHost && p.type !== 'bag' && p.t > 300) { this.pickups.splice(i, 1); W.scene.remove(m); this.broadcast({ k: 'pk-', id: p.id }); }
@@ -266,10 +325,12 @@ const Game = {
     if (this.growT >= 1) {
       const step = this.growT; this.growT = 0;
       let mult = EV.has('timewarp') ? 6 : 1; if (EV.has('eclipse')) mult = 0;
-      const moon = EV.has('lowgrav');
+      const moon = EV.has('lowgrav'), drought = EV.has('drought');
       for (let i = 0; i < TILES_TOTAL; i++) {
         if (T.c[i] < 0 || T.st[i] === 3) continue;
-        T.g[i] += step * mult * (moon && CROPS[T.c[i]].moon ? 3 : 1);
+        // watered crops grow 60% faster; in a drought only watered crops grow at all
+        const wet = T.w[i] ? 1.6 : drought ? 0 : 1;
+        T.g[i] += step * mult * wet * (moon && CROPS[T.c[i]].moon ? 3 : 1);
         const st = this.stageOf(i); if (st !== T.st[i]) { T.st[i] = st; this.mark(i); }
       }
     }
@@ -298,6 +359,8 @@ const Game = {
       if (this.sleepCD <= 0) { this.sleepCD = -1; this.sleepUntilMorning(); }
     } else this.sleepCD = -1;
     if (G.day() !== this.lastDay) { this.lastDay = G.day(); this.morning(false); }
+    // Farm Upgrade III: the pipes water the fields again in the afternoon
+    if (G.has('farm3') && G.hour() >= 14 && G.hour() < 20 && this.noonDay !== G.day()) { this.noonDay = G.day(); this.irrigate('💧 Afternoon irrigation: the fields are watered again'); }
     if (G.final) this.finalUpdate(dt);
     // autosave
     this.saveT += dt; if (this.saveT > 90) { this.saveT = 0; this.save(); }
@@ -314,7 +377,7 @@ const Game = {
   },
 
   morning(slept) {
-    const lines = [];
+    const lines = []; let dry = false;
     EV.endAll(); this.broadcast({ k: 'evx' }); W.waterLevel = -10; G.priceMult = 1;
     const day = G.day(); G.stats.days = day;
     lines.push(`<h3>Day ${day}</h3>`);
@@ -324,16 +387,28 @@ const Game = {
       const night = [
         ['🌨️ A hailstorm hit overnight', 0.08], ['🧙 Gnomes raided the fields while you slept', 0.06], ['🦝 Raccoons had a midnight snack', 0.05],
         ['👻 Something howled in the fields all night', 0], ['🌧️ It rained all night (nice!)', 0], ['🛸 Lights in the sky... a cow is missing', 'cow'],
+        ['🐀 Rats got into the fields overnight', 0.05], ['🦊 A fox got into the chicken coop', 'fox'],
+        ['🪣 The well ran dry overnight. It refills at 10:00', 'dry'], ['🐄 One of the cows looks extra happy today (double milk)', 'milk'],
+        ['🪟 Something cracked a greenhouse overnight', 'glass'], ['✨ One of your crops turned to gold overnight', 'gold'],
       ];
       const n = Math.random() < 0.4 * S.d.host.freq ? (Math.random() < 0.3 ? 2 : 1) : 0;
       for (let k = 0; k < n; k++) {
         const [txt, frac] = U.pick(night);
-        if (frac === 'cow') { const cows = AN.list.filter(a => a.kind === 'cow' && a.state !== 'gone'); if (cows.length > 2) { U.pick(cows).state = 'gone'; G.stats.abducted++; } lines.push(txt); }
+        if (frac === 'cow') { const cows = AN.list.filter(a => a.kind === 'cow' && a.state !== 'gone'); if (cows.length > 1) { U.pick(cows).state = 'gone'; G.stats.abducted++; lines.push(txt); } else lines.push('🛸 Lights in the sky... but the aliens left empty-handed'); }
+        else if (frac === 'dry') { dry = true; lines.push(txt); }
+        else if (frac === 'milk') { const cows = AN.list.filter(a => a.kind === 'cow'); if (cows.length) { U.pick(cows).milk2 = true; lines.push(txt); } }
+        else if (frac === 'glass') { const ghs = W.ghs.filter(b => !b.hidden); if (ghs.length) { const b = U.pick(ghs), ps = b.pieces.filter(p => !p.broken); if (ps.length) { const p = U.pick(ps); this.breakPiece(b.id, p.idx, p.center.x, p.center.y, p.center.z, 2); lines.push(txt); } } }
+        else if (frac === 'gold') { const c = crops.filter(i => T.c[i] >= 0); if (c.length) { this.mutateTile(U.pick(c), 6); lines.push(txt); } }
+        else if (frac === 'fox') { const ch = AN.list.filter(a => a.kind === 'chicken' && a.state !== 'gone'); if (ch.length > 3) { U.pick(ch).state = 'gone'; lines.push(txt + ': one chicken is missing'); } else lines.push('🦊 A fox sniffed around the coop, but the chickens were safe'); }
         else if (frac > 0) { let lost = 0; for (const i of crops) if (T.c[i] >= 0 && !W.greenhouse(i) && Math.random() < frac) { this.destroyTile(i, 'overnight'); lost++; } lines.push(`${txt}: ${lost} crops lost`); }
         else lines.push(txt);
       }
     }
-    AN.morning();
+    const lost = AN.morning();
+    if (lost) lines.push(`🛸 ${lost} animal${lost > 1 ? 's are' : ' is'} gone for good. Buy new ones in the shop (Animals).`);
+    // yesterday's water dried up; the irrigation waters everything again
+    W.tiles.w.fill(0); for (let i = 0; i < TILES_TOTAL; i++) if (W.tiles.s[i] || W.tiles.c[i] >= 0) this.mark(i);
+    if (G.has('farm2') && this.irrigate()) lines.push('💧 The irrigation watered all your fields');
     if (G.bin > 0) { G.money += G.bin; G.stats.earned += G.bin; lines.push(`💰 Shipping paid out <b>${U.money(G.bin)}</b> for ${G.binItems} items`); AU.play('coin'); }
     else lines.push('📦 Nothing was shipped yesterday.');
     G.bin = 0; G.binItems = 0;
@@ -353,7 +428,7 @@ const Game = {
     const unlocked = CROPS.filter(c => c.day === day).map(c => c.name);
     if (unlocked.length && !G.endless) lines.push(`🌱 New seeds in the shop: ${unlocked.join(', ')}`);
     if (G.money < 0) lines.push('😬 You are in the red. Ship something!');
-    const msg = { k: 'morning', lines, slept };
+    const msg = { k: 'morning', lines, slept, dry };
     this.clientMsg(msg, true); this.broadcast(msg);
     this.sleepers.clear(); this.sendState();
     this.save();
@@ -396,7 +471,7 @@ const Game = {
     const T = W.tiles;
     return {
       time: G.time, money: G.money, debt: G.debt, seeds: G.seeds, upgrades: G.upgrades, plots: G.plots, bin: G.bin, binItems: G.binItems, pm: G.priceMult, stats: G.stats, endless: G.endless, insured: G.insured,
-      tiles: { s: Array.from(T.s), c: Array.from(T.c), st: Array.from(T.st), m: Array.from(T.m), f: Array.from(T.f, v => v > 0 ? 1 : 0) },
+      tiles: { s: Array.from(T.s), c: Array.from(T.c), st: Array.from(T.st), m: Array.from(T.m), f: Array.from(T.f, v => v > 0 ? 1 : 0), w: Array.from(T.w) },
       broken: W.brokenList(), pickups: this.pickups.map(p => ({ id: p.id, type: p.type, x: p.x, z: p.z, y: p.y, items: p.items })),
       events: EV.active.map(e => ({ id: e.id, type: e.type, seed: e.seed, t0: e.t0, warn: e.warn, dur: e.dur, p: e.p })),
       final: G.final ? { phase: G.final.phase } : null, host: S.d.host,
@@ -439,7 +514,8 @@ const Game = {
         Object.assign(G, { time: s.time, money: s.money, debt: s.debt, seeds: s.seeds, upgrades: s.upgrades, plots: s.plots, bin: s.bin, binItems: s.binItems, priceMult: s.pm, stats: s.stats, endless: s.endless, insured: s.insured });
         S.d.host = Object.assign({}, S.d.host, s.host);
         const T = W.tiles; s.tiles.s.forEach((v, i) => T.s[i] = v); s.tiles.c.forEach((v, i) => T.c[i] = v); s.tiles.st.forEach((v, i) => T.st[i] = v); s.tiles.m.forEach((v, i) => T.m[i] = v); s.tiles.f.forEach((v, i) => T.f[i] = v);
-        W.repairAll(); for (const [bi, pi] of s.broken) this.setBrokenSilent(bi, pi);
+        if (s.tiles.w) s.tiles.w.forEach((v, i) => T.w[i] = v);
+        W.refreshPlots(); W.repairAll(); for (const [bi, pi] of s.broken) this.setBrokenSilent(bi, pi);
         for (const p of s.pickups) this.addPickup(p);
         for (const e of s.events) EV.add(e);
         if (s.final) G.final = { phase: s.final.phase, t: 0, boarded: {} };
@@ -460,7 +536,7 @@ const Game = {
       }
       case 'tl': {
         const T = W.tiles;
-        for (const [i, s, c, st, mu, f, x] of m.d) { if (x && T.c[i] >= 0) this.cropPuff(i); T.s[i] = s; T.c[i] = c; T.st[i] = st; T.m[i] = mu; T.f[i] = f; }
+        for (const [i, s, c, st, mu, f, x, w] of m.d) { if (x && T.c[i] >= 0) this.cropPuff(i); T.s[i] = s; T.c[i] = c; T.st[i] = st; T.m[i] = mu; T.f[i] = f; T.w[i] = w || 0; }
         W.cropsDirty = true; return;
       }
       case 's': {
@@ -478,6 +554,8 @@ const Game = {
       case 'pk-': { const i = this.pickups.findIndex(p => p.id === m.id); if (i >= 0) { W.scene.remove(this.pickups[i].mesh); this.pickups.splice(i, 1); } return; }
       case 'give': P.give(m.items); return;
       case 'toast': UI.toast(m.text); AU.play('deny'); return;
+      case 'boost': P.hotT = Math.max(P.hotT, m.t); UI.toast(`🍀 Lucky clover! You run faster for ${m.t} s`); AU.play('chime'); return;
+      case 'zapme': P.hurt(20, 'shocked by a thunder sheep'); P.launch(U.rand(-4, 4), 6, U.rand(-4, 4)); AU.play('zap', null, 0.8); FX.flash(0.3, '#bfe0ff'); return;
       case 'ok': AU.play('buy'); return;
       case 'log': UI.log(m.text); return;
       case 'chat': UI.log(`<span style="color:#${new THREE.Color(m.c).getHexString()}">${UI.esc(m.name)}:</span> ${UI.esc(m.text)}`); AU.play('pickup', null, 0.3); return;
@@ -486,6 +564,7 @@ const Game = {
       case 'morning': {
         if (!local) { EV.endAll(); W.waterLevel = -10; AN.morning(); }
         if (P.sleeping) { P.sleeping = false; P.pos.set(W.bedPos.x + 1.4, 0, W.bedPos.z); }
+        G.wellDry = m.dry ? G.day() : 0;
         UI.morning(m.lines); AU.play('chime');
         return;
       }
@@ -494,7 +573,7 @@ const Game = {
   },
   // host: break a building piece everywhere
   breakPiece(bi, pi, x, y, z, f) {
-    const p = W.buildings[bi] && W.buildings[bi].pieces[pi]; if (!p || p.broken) return;
+    const p = W.buildings[bi] && W.buildings[bi].pieces[pi]; if (!p || p.broken || W.buildings[bi].hidden) return;
     W.breakPiece(bi, pi, x, y, z, f);
     this.broadcast({ k: 'br', b: bi, i: pi, x: +x.toFixed(1), y: +y.toFixed(1), z: +z.toFixed(1), f });
   },
@@ -591,6 +670,8 @@ const Game = {
       if (G.final) { UI.toast('No time to sleep — evacuate!'); return; }
       P.sleeping = true; this.request({ k: 'sleep', on: true });
     } });
+    list.push({ pos: W.wellPos, r: 3, label: () => P.slot === 3 ? `Fill the watering can (${P.can}/${CAN_MAX()})` : `Well — hold the watering can (${K.keyName(S.d.keys.slot4)}) to fill it`, act: () => P.fillCan() });
+    if (G.has('farm2')) list.push({ pos: W.hoopPos, r: 8, label: () => `Shoot a hoop${P.streak ? ` (${P.streak} in a row)` : ''}${P.hotT > 0 ? ` · 🔥 ${Math.ceil(P.hotT)}s` : ''}`, act: () => P.shoot() });
     if (G.has('bunker')) list.push({ pos: new V3(-32, 0.5, -14), r: 2.8, label: () => 'Enter the bunker', act: () => { P.inBunker = true; AU.setMuffled(true); P.pos.set(0, W.bunkerY + 0.1, 0); P.vel.set(0, 0, 0); AU.play('land'); } });
     if (this.heli && G.final && G.final.phase === 'evac' && !P.boarded) list.push({ pos: this.heli.position.clone().add(new V3(0, 1.5, 0)), r: 7, label: () => 'BOARD THE HELICOPTER', act: () => this.board() });
     return list.concat(AN.interactables());

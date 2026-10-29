@@ -295,9 +295,9 @@ class Building {
     this.group = new THREE.Group(); this.group.position.set(x, 0, z);
     W.scene.add(this.group); W.buildings.push(this);
   }
-  // b: MB, opts: {solid, roof, sup:[indices], color, chunks}
+  // b: MB (or a ready mesh), opts: {solid, roof, sup:[indices], color, chunks}
   piece(b, o = {}) {
-    const mesh = b.mesh();
+    const mesh = b instanceof THREE.Object3D ? b : b.mesh();
     this.group.add(mesh);
     const p = { mesh, broken: false, solid: !!o.solid, roof: !!o.roof, sup: o.sup || [], color: o.color || 0x8a5a33, idx: this.pieces.length, deps: [] };
     this.pieces.push(p);
@@ -309,17 +309,29 @@ class Building {
       p.box = new THREE.Box3().setFromObject(p.mesh);
       p.center = p.box.getCenter(new V3());
       p.home = p.mesh.matrix.clone();
-      if (p.solid) { p.col = { min: p.box.min, max: p.box.max, piece: p }; W.colliders.push(p.col); }
+      // roofs are solid too: you can stand on them, but walk under them (see P.collide)
+      if (p.solid || p.roof) { p.col = { min: p.box.min, max: p.box.max, piece: p, roof: !p.solid }; W.colliders.push(p.col); }
       if (p.roof) W.roofs.push(p.mesh);
       for (const s of p.sup) this.pieces[s].deps.push(p.idx);
     }
   }
+  // buildings bought later (greenhouses, water tower) exist from the start but are hidden until owned
+  setHidden(on) {
+    this.hidden = on; this.group.visible = !on;
+    for (const p of this.pieces) {
+      if (p.col) p.col.dead = on || p.broken;
+      const ri = W.roofs.indexOf(p.mesh);
+      if (p.roof && !on && !p.broken && ri < 0) W.roofs.push(p.mesh);
+      if (on && ri >= 0) W.roofs.splice(ri, 1);
+    }
+  }
+  intact() { return this.pieces.filter(p => p.broken).length / this.pieces.length < 0.35; }
 }
 W.Building = Building;
 
 // break a piece: identical on every client (host decides which pieces break and broadcasts)
 W.breakPiece = function (bi, pi, ox, oy, oz, force = 8) {
-  const b = W.buildings[bi]; if (!b) return;
+  const b = W.buildings[bi]; if (!b || b.hidden) return;
   const p = b.pieces[pi]; if (!p || p.broken) return;
   p.broken = true; p.mesh.visible = false;
   if (p.col) p.col.dead = true;
@@ -338,19 +350,19 @@ W.repairAll = function () {
   let n = 0;
   for (const b of W.buildings) for (const p of b.pieces) {
     if (!p.broken) continue;
-    p.broken = false; p.mesh.visible = true; if (p.col) p.col.dead = false;
-    if (p.roof && !W.roofs.includes(p.mesh)) W.roofs.push(p.mesh);
+    p.broken = false; p.mesh.visible = true; if (p.col) p.col.dead = !!b.hidden;
+    if (p.roof && !b.hidden && !W.roofs.includes(p.mesh)) W.roofs.push(p.mesh);
     n++;
   }
   return n;
 };
-W.brokenCount = () => W.buildings.reduce((s, b) => s + b.pieces.filter(p => p.broken).length, 0);
+W.brokenCount = () => W.buildings.reduce((s, b) => s + (b.hidden ? 0 : b.pieces.filter(p => p.broken).length), 0);
 W.brokenList = () => { const l = []; W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => { if (p.broken) l.push([bi, pi]); })); return l; };
 // host helper: list pieces near a point
 W.piecesNear = function (x, y, z, r) {
   const out = [];
   W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => {
-    if (p.broken) return;
+    if (p.broken || b.hidden) return;
     const dx = Math.max(p.box.min.x - x, 0, x - p.box.max.x), dy = Math.max(p.box.min.y - y, 0, y - p.box.max.y), dz = Math.max(p.box.min.z - z, 0, z - p.box.max.z);
     if (dx * dx + dy * dy + dz * dz < r * r) out.push([bi, pi, p]);
   }));
@@ -440,16 +452,29 @@ function buildBarn() {
     B.piece(b, { solid: true, color: COL.hay });
   }
   B.finish();
+  // interior: animal stalls, a workbench and tools (not breakable)
+  const I = new MB(), X = 16, Z = -26;
+  for (const z of [-6, -2, 2]) I.box(3.2, 1.2, 0.12, COL.wood, X + 4.2, 0.6, Z + z);
+  for (const z of [-4, 0]) { I.box(0.6, 0.4, 2.6, COL.woodDark, X + 5.5, 0.2, Z + z); I.box(0.5, 0.06, 2.4, COL.hay, X + 5.5, 0.42, Z + z); I.box(2.6, 0.03, 3.6, 0xd8bc5a, X + 4.2, 0.02, Z + z); }
+  I.box(0.9, 0.08, 2.6, COL.woodLight, X - 5.4, 0.9, Z + 3);
+  for (const [x, z] of [[-5.75, 1.8], [-5.05, 1.8], [-5.75, 4.2], [-5.05, 4.2]]) I.box(0.08, 0.9, 0.08, COL.woodDark, X + x, 0.45, Z + z);
+  I.box(0.06, 0.25, 0.5, COL.metal, X - 5.75, 1.6, Z + 2.4); I.box(0.06, 0.06, 0.4, COL.woodDark, X - 5.75, 1.4, Z + 3.4); I.box(0.06, 0.2, 0.12, COL.darkMetal, X - 5.75, 1.45, Z + 3.65);
+  I.box(0.05, 1.8, 0.05, COL.woodLight, X - 5.6, 0.9, Z + 5.2, 0, 0, 0.15); for (let i = -1; i <= 1; i++) I.box(0.03, 0.35, 0.03, COL.metal, X - 5.48 + i * 0.08, 1.85, Z + 5.2);
+  for (let i = 0; i < 3; i++) I.ico(0.35, 0, 0xd9c9a3, X - 4.6 + i * 0.7, 0.32, Z + 6.6, 1, 0.8, 0.8, 0.05);
+  I.box(0.04, 1.6, 0.04, 0x333333, X, 4.2, Z); I.box(0.22, 0.3, 0.22, 0xffd27a, X, 3.3, Z);
+  const im = I.mesh(); W.scene.add(im);
+  W.colliders.push({ min: { x: X - 5.85, y: 0, z: Z + 1.7 }, max: { x: X - 4.95, y: 0.95, z: Z + 4.3 } });
   return B;
 }
 
 function buildHouse() {
   const B = new Building(W.buildings.length, 'Farmhouse', -20, -24);
   const C = COL.houseWall, w = 10, d = 8, h = 3.3, th = 0.25;
-  const panel = (pw, ph, x, y, z, rotY, win) => {
+  const panel = (pw, ph, x, y, z, rotY, win, noBase) => {
     const b = new MB();
     b.add(new THREE.BoxGeometry(pw, ph, th), C, x, y, z, 0, rotY, 0);
-    b.add(new THREE.BoxGeometry(pw + 0.02, 0.3, th + 0.04), 0xd9c9a3, x, 0.15, z, 0, rotY, 0);
+    // (no skirting under the piece above the door: it made the doorway's collider reach the floor)
+    if (!noBase) b.add(new THREE.BoxGeometry(pw + 0.02, 0.3, th + 0.04), 0xd9c9a3, x, 0.15, z, 0, rotY, 0);
     if (win) {
       const ox = Math.cos(rotY), oz = -Math.sin(rotY), nx = Math.sin(rotY), nz = Math.cos(rotY);
       for (const o of win) {
@@ -465,7 +490,7 @@ function buildHouse() {
     return B.piece(b, { solid: true, color: C });
   };
   const fl = panel(4.3, h, -2.85, h / 2, d / 2, 0, [-0.6]), fr = panel(4.3, h, 2.85, h / 2, d / 2, 0, [0.6]);
-  const fo = panel(1.4, h - 2.3, 0, 2.3 + (h - 2.3) / 2, d / 2, 0);
+  const fo = panel(1.4, h - 2.3, 0, 2.3 + (h - 2.3) / 2, d / 2, 0, null, true);
   const bk = [panel(5, h, -2.5, h / 2, -d / 2, 0, [0]), panel(5, h, 2.5, h / 2, -d / 2, 0, [0])];
   const sl = [panel(4, h, -w / 2, h / 2, -2, Math.PI / 2, [0]), panel(4, h, -w / 2, h / 2, 2, Math.PI / 2)];
   const sr = [panel(4, h, w / 2, h / 2, -2, Math.PI / 2), panel(4, h, w / 2, h / 2, 2, Math.PI / 2, [0])];
@@ -499,6 +524,37 @@ function buildHouse() {
   // bed (not breakable — you always need to be able to sleep)
   const bed = new THREE.Mesh(M.bed(), M.mat); bed.position.set(-23.2, 0, -26.2); bed.rotation.y = Math.PI / 2; bed.castShadow = true; W.scene.add(bed);
   W.bedPos = new V3(-23.2, 0.6, -26.2);
+  // interior (not breakable): kitchen, dining chairs, sofa by the fireplace, bookshelf, plants
+  const I = new MB(), X = -20, Z = -24;
+  I.box(3.4, 0.9, 0.6, COL.woodLight, X + 1.9, 0.45, Z - 3.55); I.box(3.5, 0.06, 0.68, 0xe8e2d4, X + 1.9, 0.93, Z - 3.55);
+  I.box(0.6, 0.03, 0.42, 0x9aa4ad, X + 1.0, 0.97, Z - 3.55); I.cyl(0.025, 0.025, 0.35, 5, COL.metal, X + 1.0, 1.1, Z - 3.78);
+  for (let i = 0; i < 3; i++) I.box(0.9, 0.7, 0.02, COL.wood, X + 0.6 + i * 1.1, 0.45, Z - 3.24);
+  I.box(0.8, 0.92, 0.64, 0x3a3c44, X + 4.0, 0.46, Z - 3.55);
+  for (const [dx, dz] of [[-0.18, -0.15], [0.18, -0.15], [-0.18, 0.15], [0.18, 0.15]]) I.cyl(0.11, 0.11, 0.02, 8, 0x151515, X + 4.0 + dx, 0.93, Z - 3.55 + dz);
+  I.box(0.8, 1.9, 0.7, 0xf2f2f2, X + 4.5, 0.95, Z - 2.6); I.box(0.04, 0.5, 0.04, COL.metal, X + 4.08, 1.35, Z - 2.35); I.box(0.82, 0.02, 0.72, 0xd0d0d0, X + 4.5, 1.25, Z - 2.6);
+  const chair = (x, z, ry) => { I.box(0.45, 0.06, 0.45, COL.wood, x, 0.47, z); for (const [a, c] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) I.box(0.05, 0.46, 0.05, COL.woodDark, x + a, 0.23, z + c); I.box(0.06, 0.55, 0.45, COL.wood, x + Math.cos(ry) * 0.2, 0.78, z); };
+  chair(X + 1.55, Z - 1.5, Math.PI); chair(X + 3.45, Z - 1.5, 0);
+  I.box(0.24, 0.24, 0.24, 0xf3eee2, X + 2.5, 1.0, Z - 1.5); I.ico(0.16, 0, 0xe23b2e, X + 2.5, 1.18, Z - 1.5);
+  // fireplace on the left wall, sofa facing it
+  I.box(0.7, 1.4, 1.8, 0x8d8f94, X - 4.55, 0.7, Z + 1.8); I.box(0.72, 0.15, 2.0, 0x6b6e73, X - 4.5, 1.45, Z + 1.8); I.box(0.5, 0.7, 1.0, 0x1a1412, X - 4.25, 0.4, Z + 1.8);
+  I.box(0.6, 1.9, 0.8, 0x8d8f94, X - 4.65, 2.4, Z + 1.8);
+  for (let i = 0; i < 3; i++) I.cyl(0.07, 0.07, 0.8, 5, COL.woodDark, X - 4.2, 0.15 + i * 0.06, Z + 1.55 + i * 0.25, 0, 0, Math.PI / 2);
+  I.box(0.85, 0.45, 2.0, 0x4f6a8f, X - 2.4, 0.25, Z + 1.8); I.box(0.25, 0.85, 2.0, 0x4f6a8f, X - 1.95, 0.6, Z + 1.8);
+  I.box(0.85, 0.65, 0.22, 0x445d7f, X - 2.4, 0.35, Z + 0.8); I.box(0.85, 0.65, 0.22, 0x445d7f, X - 2.4, 0.35, Z + 2.8);
+  I.box(0.15, 0.35, 0.5, 0xe6c56a, X - 2.15, 0.6, Z + 1.3, 0, 0, 0.3);
+  // bookshelf on the right wall
+  I.box(0.35, 2.0, 1.2, COL.woodDark, X + 4.75, 1.0, Z - 0.4);
+  for (let s = 0; s < 4; s++) for (let i = 0; i < 6; i++) I.box(0.22, 0.32, 0.12, [0xb3322b, 0x3d6fa8, 0x4f9a5a, 0xe6c56a, 0x8a62c8][(s * 6 + i) % 5], X + 4.68, 0.35 + s * 0.48, Z - 0.85 + i * 0.17);
+  // plants, a picture and the lamp
+  for (const [x, z] of [[-1.0, 3.5], [1.0, 3.5]]) { I.cyl(0.2, 0.16, 0.35, 8, 0xb0603a, X + x, 0.18, Z + z); I.ico(0.32, 0, 0x4a8a30, X + x, 0.6, Z + z, 1, 1.2, 1, 0.08); }
+  I.box(1.0, 0.7, 0.05, COL.woodDark, X - 0.2, 1.9, Z - 3.84); I.box(0.85, 0.55, 0.06, 0x7fb0d8, X - 0.2, 1.9, Z - 3.83); I.box(0.85, 0.2, 0.07, 0x6aa83a, X - 0.2, 1.72, Z - 3.82);
+  I.box(0.05, 0.6, 0.05, 0x333333, X, 2.95, Z); I.cone(0.3, 0.25, 8, 0xe6c56a, X, 2.6, Z);
+  W.scene.add(I.mesh());
+  const glow = new MB(); glow.box(0.4, 0.2, 0.7, 0xff8a20, X - 4.25, 0.28, Z + 1.8); glow.ico(0.18, 0, 0xffc040, X - 4.25, 0.45, Z + 1.7);
+  W.fireGlow = glow.mesh(M.matGlow, false); W.scene.add(W.fireGlow);
+  W.houseLamp = new THREE.PointLight(0xffd8a0, 0.6, 10); W.houseLamp.position.set(X, 2.4, Z); W.scene.add(W.houseLamp);
+  for (const c of [[X + 0.2, X + 4.9, Z - 3.9, Z - 3.2], [X + 4.1, X + 4.9, Z - 3.0, Z - 2.2], [X + 4.55, X + 4.95, Z - 1.0, Z + 0.2], [X - 4.95, X - 4.15, Z + 0.85, Z + 2.75], [X - 2.85, X - 1.8, Z + 0.7, Z + 2.9]])
+    W.colliders.push({ min: { x: c[0], y: 0, z: c[2] }, max: { x: c[1], y: 1.0, z: c[3] } });
   return B;
 }
 
@@ -524,6 +580,11 @@ function buildCoop() {
   { const b = new MB(); for (const [x, z] of [[-1.4, -1.1], [1.4, -1.1], [-1.4, 1.1], [1.4, 1.1]]) b.box(0.15, 0.4, 0.15, COL.woodDark, x, 0.15, z); B.piece(b, { color: COL.woodDark }); }
   for (const sx of [-1, 1]) { const b = new MB(); b.box(1.9, 0.12, 3.0, 0x9a3a2a, sx * 0.8, 2.25, 0, 0, 0, -sx * 0.41); B.piece(b, { roof: true, color: 0x9a3a2a, sup: w }); }
   B.finish();
+  // nest boxes and a perch inside
+  const I = new MB();
+  for (let i = -1; i <= 1; i++) { I.box(0.8, 0.5, 0.6, COL.woodLight, -4 + i * 0.9, 0.75, -38.85); I.box(0.7, 0.12, 0.5, COL.hay, -4 + i * 0.9, 0.9, -38.8); I.ico(0.07, 1, 0xf7ecd8, -4 + i * 0.9 + 0.1, 0.99, -38.75, 1, 1.3, 1); }
+  I.box(2.6, 0.06, 0.06, COL.woodDark, -4, 1.3, -38.0); I.box(2.8, 0.03, 2.2, COL.hay, -4, 0.32, -38);
+  W.scene.add(I.mesh());
 }
 
 function buildWindmill() {
@@ -564,12 +625,17 @@ W.buildFarm = function () {
   // extraction landing pad (used on the final day)
   { const b = new MB(); b.cyl(5, 5, 0.05, 20, 0x5a5f55, 0, 0.03, 0); b.box(0.6, 0.06, 4, 0xf2f2f2, -1, 0.06, 0); b.box(0.6, 0.06, 4, 0xf2f2f2, 1, 0.06, 0); b.box(2, 0.06, 0.6, 0xf2f2f2, 0, 0.06, 0); W.pad = add(b.geo(), 0, 0, 46); }
   W.padPos = new V3(0, 0, 46);
+  // the well: fill the watering can here (the bucket fills at the pond)
+  add(M.well(), -6, 0, -5, 0, [1.1, 1.1, 1.0]);
+  W.wellPos = new V3(-6, 1.0, -5);
+  W.pondPos = new V3(44, 0, 32);
 };
 
 // ---------------- fields & crops ----------------
 W.tiles = {
   s: new Uint8Array(TILES_TOTAL), c: new Int8Array(TILES_TOTAL).fill(-1), g: new Float32Array(TILES_TOTAL),
   st: new Uint8Array(TILES_TOTAL), m: new Uint8Array(TILES_TOTAL), f: new Float32Array(TILES_TOTAL),
+  w: new Uint8Array(TILES_TOTAL), // watered today (grows faster, hard to set on fire)
 };
 W.tilePos = function (i) {
   const p = PLOTS[Math.floor(i / 64)], k = i % 64;
@@ -588,7 +654,8 @@ W.tilesNear = function (x, z, r) {
   return out;
 };
 W.plotOf = i => Math.floor(i / 64);
-W.greenhouse = i => G.has('gh' + W.plotOf(i));
+// a greenhouse only protects while it is mostly standing
+W.greenhouse = i => G.has('gh' + W.plotOf(i)) && (!W.ghs || W.ghs[W.plotOf(i)].intact());
 
 W.buildFields = function () {
   // furrowed soil tile
@@ -626,6 +693,8 @@ W.buildFields = function () {
   W.highlight.visible = false; W.scene.add(W.highlight);
   W.highlight3 = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(TILE * 3, 0.15, TILE * 3)), W.highlight.material);
   W.highlight3.visible = false; W.scene.add(W.highlight3);
+  W.highlight2 = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(TILE * 2, 0.15, TILE * 2)), new THREE.LineBasicMaterial({ color: 0x8fd4ff, transparent: true, opacity: 0.9 }));
+  W.highlight2.visible = false; W.scene.add(W.highlight2);
   W.cropsDirty = true;
 };
 W.refreshPlots = function () {
@@ -645,7 +714,7 @@ W.rebuildCrops = function () {
       _m.compose(_pv.set(p.x, 0, p.z), _qq.identity(), _sv.set(1, 1, 1));
       W.soil.setMatrixAt(soil, _m);
       const burnt = T.f[i] > 0, rad = T.m[i] === 2;
-      _col.setHex(burnt ? 0x2a2420 : rad ? 0x5a6a2a : 0x5e3f26);
+      _col.setHex(burnt ? 0x2a2420 : rad ? 0x5a6a2a : T.w[i] ? 0x3a2616 : 0x5e3f26);
       W.soil.setColorAt(soil, _col);
       soil++;
     }
@@ -684,22 +753,97 @@ W.buildUpgradeProps = function () {
   }
   // sprinkler heads on each plot corner
   P.sprinkler = PLOTS.map(p => { const b = new MB(); b.cyl(0.05, 0.05, 1.2, 5, COL.metal, 0, 0.6, 0); b.cyl(0.15, 0.1, 0.12, 6, 0xd04040, 0, 1.25, 0); return mk(b.geo(), p.x - 0.2, p.z - 0.2); });
-  // greenhouses
-  P.gh = PLOTS.map(p => {
-    const g = new THREE.Group(), s = PLOT_N * TILE + 0.6, h = 3.2;
-    const fr = new MB(), ga = Math.atan2(1.2, s / 2), gl = Math.hypot(s / 2, 1.2);
-    for (let i = 0; i <= 4; i++) { const z = -s / 2 + i * s / 4; fr.box(0.1, h, 0.1, 0xe8eef2, -s / 2, h / 2, z); fr.box(0.1, h, 0.1, 0xe8eef2, s / 2, h / 2, z); fr.box(gl, 0.1, 0.1, 0xe8eef2, -s / 4, h + 0.6, z, 0, 0, ga); fr.box(gl, 0.1, 0.1, 0xe8eef2, s / 4, h + 0.6, z, 0, 0, -ga); }
-    fr.box(0.1, 0.1, s, 0xe8eef2, 0, h + 1.2, 0); fr.box(0.1, 0.1, s, 0xe8eef2, -s / 2, h, 0); fr.box(0.1, 0.1, s, 0xe8eef2, s / 2, h, 0);
-    g.add(new THREE.Mesh(fr.geo(), M.mat));
-    const glass = new THREE.Group();
-    const pane = (w, hh, x, y, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), M.matGlass); m.position.set(x, y, z); m.rotation.y = ry; glass.add(m); };
-    pane(s, h, -s / 2, h / 2, 0, Math.PI / 2); pane(s, h, s / 2, h / 2, 0, Math.PI / 2); pane(s, h, 0, h / 2, -s / 2, 0);
-    pane(s, h * 0.55, 0, h * 0.3, s / 2, 0);
-    for (const sx of [-1, 1]) { const pg = new THREE.PlaneGeometry(gl, s); pg.rotateX(-Math.PI / 2); pg.rotateZ(-sx * ga); const m = new THREE.Mesh(pg, M.matGlass); m.position.set(sx * s / 4, h + 0.6, 0); glass.add(m); }
-    g.add(glass);
-    g.position.set(p.x + (s - 0.6) / 2, 0, p.z + (s - 0.6) / 2);
-    W.scene.add(g); return g;
+  // greenhouses: solid glass buildings with a door on the north side. Events can smash them,
+  // and a mostly broken greenhouse stops protecting its field until it is repaired.
+  const FR = 0xe8eef2;
+  W.ghs = PLOTS.map(p => {
+    const s = PLOT_N * TILE + 0.6, h = 3.2, hs = s / 2, ga = Math.atan2(1.2, hs), gl = Math.hypot(hs, 1.2);
+    const B = new Building(W.buildings.length, 'Greenhouse', p.x + (s - 0.6) / 2, p.z + (s - 0.6) / 2);
+    // one glass wall panel with a white frame, from (x1,z1) to (x2,z2)
+    const wallP = (x1, z1, x2, z2, y0 = 0, y1 = h) => {
+      const len = Math.hypot(x2 - x1, z2 - z1), ry = -Math.atan2(z2 - z1, x2 - x1), cx = (x1 + x2) / 2, cz = (z1 + z2) / 2, hh = y1 - y0;
+      const fr = new MB();
+      fr.box(0.1, hh, 0.1, FR, x1, y0 + hh / 2, z1); fr.box(0.1, hh, 0.1, FR, x2, y0 + hh / 2, z2);
+      fr.box(len, 0.1, 0.1, FR, cx, y1 - 0.05, cz, 0, ry, 0); fr.box(len, 0.12, 0.12, FR, cx, y0 + 0.06, cz, 0, ry, 0);
+      const m = fr.mesh(), g = new THREE.Mesh(new THREE.PlaneGeometry(len, hh), M.matGlass);
+      g.position.set(cx, y0 + hh / 2, cz); g.rotation.y = ry; m.add(g);
+      return B.piece(m, { solid: true, color: 0xcfe8f5 });
+    };
+    const side = { '-1': [], '1': [] };
+    for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) side[sx].push(wallP(sx * hs, -hs + i * s / 4, sx * hs, -hs + (i + 1) * s / 4));
+    const back = [0, 1, 2, 3].map(i => wallP(-hs + i * s / 4, hs, -hs + (i + 1) * s / 4, hs));
+    const mid = (hs + 1) / 2;
+    const front = [wallP(-hs, -hs, -mid, -hs), wallP(-mid, -hs, -1, -hs), wallP(1, -hs, mid, -hs), wallP(mid, -hs, hs, -hs)];
+    front.push(wallP(-1, -hs, 1, -hs, 2.3, h));
+    // glass gables
+    for (const [z, sup] of [[-hs, front], [hs, back]]) {
+      const fr = new MB(); fr.box(gl, 0.08, 0.08, FR, -hs / 2, h + 0.6, z, 0, 0, ga); fr.box(gl, 0.08, 0.08, FR, hs / 2, h + 0.6, z, 0, 0, -ga);
+      const m = fr.mesh(), sh = new THREE.Shape(); sh.moveTo(-hs, 0); sh.lineTo(hs, 0); sh.lineTo(0, 1.2); sh.lineTo(-hs, 0);
+      const g = new THREE.Mesh(new THREE.ShapeGeometry(sh), M.matGlass); g.position.set(0, h, z); m.add(g);
+      B.piece(m, { color: 0xcfe8f5, sup });
+    }
+    // glass roof: 2 slopes × 2 segments
+    for (const sx of [-1, 1]) for (let i = 0; i < 2; i++) {
+      const zc = -hs / 2 + i * hs, fr = new MB();
+      fr.box(gl, 0.08, 0.08, FR, sx * hs / 2, h + 0.6, zc - hs / 2 + 0.05, 0, 0, -sx * ga); fr.box(gl, 0.08, 0.08, FR, sx * hs / 2, h + 0.6, zc + hs / 2 - 0.05, 0, 0, -sx * ga);
+      fr.box(0.1, 0.1, hs, FR, 0, h + 1.2, zc);
+      const m = fr.mesh(), pg = new THREE.PlaneGeometry(gl, hs); pg.rotateX(-Math.PI / 2); pg.rotateZ(-sx * ga);
+      const g = new THREE.Mesh(pg, M.matGlass); g.position.set(sx * hs / 2, h + 0.6, zc); m.add(g);
+      B.piece(m, { roof: true, color: 0xcfe8f5, sup: [side[sx][i * 2], side[sx][i * 2 + 1]] });
+    }
+    B.finish();
+    return B;
   });
+  // water tower (Farm Upgrade II): feeds the irrigation, breakable like the other buildings
+  {
+    const B = new Building(W.buildings.length, 'Water tower', -38, 12), legs = [];
+    for (const [x, z] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) { const b = new MB(); b.box(0.3, 6, 0.3, COL.woodDark, x, 3, z); legs.push(B.piece(b, { solid: true, color: COL.woodDark })); }
+    { const b = new MB(); for (const y of [1.8, 4.2]) { b.box(2.7, 0.12, 0.12, COL.wood, 0, y, -1.3); b.box(2.7, 0.12, 0.12, COL.wood, 0, y, 1.3); b.box(0.12, 0.12, 2.7, COL.wood, -1.3, y, 0); b.box(0.12, 0.12, 2.7, COL.wood, 1.3, y, 0); } B.piece(b, { color: COL.wood, sup: legs }); }
+    let tank;
+    { const b = new MB(); b.cyl(1.9, 1.9, 2.6, 12, 0x9a6a42, 0, 7.3, 0); for (const y of [6.3, 7.3, 8.3]) b.cyl(1.94, 1.94, 0.12, 12, COL.darkMetal, 0, y, 0); b.cyl(2.0, 2.0, 0.15, 12, COL.woodDark, 0, 6.0, 0); tank = B.piece(b, { solid: true, color: 0x9a6a42, sup: legs }); }
+    { const b = new MB(); b.cone(2.2, 1.2, 12, 0x5e6670, 0, 9.2, 0); B.piece(b, { roof: true, color: 0x5e6670, sup: [tank] }); }
+    { const b = new MB(); b.cyl(0.12, 0.12, 6, 6, COL.metal, 1.6, 3, 0); b.box(3.6, 0.2, 0.2, COL.metal, 3.4, 0.1, 0); b.box(0.2, 0.2, 0.2, COL.metal, 5.2, 0.1, 0); for (let i = 0; i < 9; i++) b.box(0.5, 0.05, 0.05, COL.woodLight, -1.45, 0.5 + i * 0.6, 0); B.piece(b, { color: COL.metal, sup: legs }); }
+    B.finish();
+    W.tower = B;
+  }
+  // props that only exist after an upgrade; their colliders switch with them
+  P.cols = {};
+  const prop = (key, list) => { P[key] = new THREE.Group(); W.scene.add(P[key]); P.cols[key] = []; for (const [geo, x, z, ry, col] of list) { const m = new THREE.Mesh(geo, M.mat); m.position.set(x, W.height(x, z), z); m.rotation.y = ry || 0; m.castShadow = true; m.receiveShadow = true; P[key].add(m); if (col) { const c = { min: { x: x - col[0], y: -1, z: z - col[1] }, max: { x: x + col[0], y: col[2], z: z + col[1] } }; W.colliders.push(c); P.cols[key].push(c); } } };
+  const fenceGeo = (pts, gap) => { const b = new MB(); for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; if (gap === i) continue; const len = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(len / 2.2)), ry = -Math.atan2(z2 - z1, x2 - x1); for (let k = 0; k <= n; k++) b.box(0.14, 1.1, 0.14, COL.woodLight, x1 + (x2 - x1) * k / n, 0.55, z1 + (z2 - z1) * k / n); b.box(len, 0.1, 0.06, COL.woodLight, (x1 + x2) / 2, 0.8, (z1 + z2) / 2, 0, ry, 0); b.box(len, 0.1, 0.06, COL.woodLight, (x1 + x2) / 2, 0.45, (z1 + z2) / 2, 0, ry, 0); } return b.geo(); };
+  const trough = () => { const b = new MB(); b.box(2.4, 0.6, 0.9, COL.woodDark, 0, 0.3, 0); b.box(2.2, 0.05, 0.7, 0x4f8fc0, 0, 0.55, 0); return b.geo(); };
+  // basketball court (Farm Upgrade II): shoot hoops for a speed boost
+  {
+    const b = new MB(); b.box(10, 0.04, 9, 0xb8643a, 0, 0.02, 0);
+    for (const [w, d, x, z] of [[10, 0.08, 0, -4.45], [10, 0.08, 0, 4.45], [0.08, 9, -4.96, 0], [0.08, 9, 4.96, 0], [3.6, 0.08, 0, -0.6], [0.08, 4.4, -1.8, -2.8], [0.08, 4.4, 1.8, -2.8]]) b.box(w, 0.05, d, 0xf4f4f4, x, 0.03, z);
+    b.tor(1.8, 0.04, 3, 20, 0xf4f4f4, 0, 0.04, -0.6, Math.PI / 2, 0, 0, Math.PI); b.tor(6.0, 0.04, 3, 30, 0xf4f4f4, 0, 0.04, -4.5, -Math.PI / 2, 0, 0, Math.PI);
+    const rack = new MB(); rack.box(1.2, 0.5, 0.4, COL.darkMetal, 0, 0.25, 0); for (let i = 0; i < 3; i++) rack.ico(0.13, 1, 0xe0702a, -0.4 + i * 0.4, 0.6, 0);
+    prop('court', [[b.geo(), -5, -25.5], [M.hoop(), -5, -29.8, 0, [0.2, 0.2, 3.6]], [rack.geo(), 0.7, -22, Math.PI / 2]]);
+    W.hoopPos = new V3(-5, 3.05, -29.5);
+  }
+  // tool shed (Farm Upgrade III)
+  {
+    const b = new MB(); b.box(3.2, 2.4, 2.6, COL.wood, 0, 1.2, 0); b.box(1.1, 1.9, 0.06, COL.woodDark, 0, 0.95, 1.31); b.prism(3.5, 1.1, 2.9, COL.roof, 0, 2.4, 0, 0, 0, 0);
+    b.box(0.5, 0.5, 0.06, COL.glass, 1.0, 1.6, 1.31); b.box(0.05, 1.2, 0.05, COL.woodLight, 1.5, 0.6, 1.4, 0.2, 0, 0); b.box(0.3, 0.05, 0.15, COL.metal, 1.5, 1.2, 1.45);
+    prop('shed', [[b.geo(), -27, -35, 0, [1.6, 1.3, 3.5]]]);
+  }
+  // pens bought in the Animals tab
+  {
+    const Z = ZONES.sty, x0 = Z.x0 - 0.5, x1 = Z.x1 + 0.5, z0 = Z.z0 - 0.5, z1 = Z.z1 + 0.5;
+    const mud = new MB(); mud.cyl(1, 1, 0.04, 14, 0x5a3e24, 0, 0.02, 0, 0, 0, 0, 4, 1, 2.6);
+    const hut = new MB(); hut.box(3, 1.4, 0.15, COL.wood, 0, 0.7, -1); hut.box(0.15, 1.4, 2, COL.wood, -1.45, 0.7, 0); hut.box(0.15, 1.4, 2, COL.wood, 1.45, 0.7, 0); hut.box(3.3, 0.12, 2.4, COL.roof, 0, 1.5, 0, 0.15, 0, 0);
+    prop('sty', [[fenceGeo([[x0, z0], [x0, (z0 + z1) / 2 - 1.2], [x0, (z0 + z1) / 2 + 1.2], [x0, z1], [x1, z1], [x1, z0], [x0, z0]], 1), 0, 0], [mud.geo(), 39, 10], [trough(), 36, 14.5], [hut.geo(), 43.5, 7, 0, [1.5, 1.1, 1.5]]]);
+  }
+  {
+    const Z = ZONES.pasture, x0 = Z.x0 - 0.5, x1 = Z.x1 + 0.5, z0 = Z.z0 - 0.5, z1 = Z.z1 + 0.5;
+    const hay = new MB(); hay.cyl(0.8, 0.8, 1.2, 10, COL.hay, 0, 0.6, 0, Math.PI / 2, 0, 0);
+    prop('pasture', [[fenceGeo([[x0, z0], [x0, -12], [x0, -8], [x0, z1], [x1, z1], [x1, z0], [x0, z0]], 1), 0, 0], [trough(), 56, -16, Math.PI / 2], [hay.geo(), 52, -4, 0.7, [0.8, 0.8, 1.2]]]);
+  }
+  {
+    const Z = ZONES.coop2, x0 = Z.x0 - 0.5, x1 = Z.x1 + 0.5, z0 = Z.z0 - 0.5, z1 = Z.z1 + 0.5;
+    const hut = new MB(); hut.box(2.6, 1.4, 2, 0xd9b25a, 0, 1.0, 0); for (const sx of [-1, 1]) hut.box(1.6, 0.1, 2.3, 0x9a3a2a, sx * 0.7, 1.95, 0, 0, 0, -sx * 0.42); hut.box(0.5, 0.5, 0.05, 0x2a2420, 0, 0.6, 1.01); hut.box(0.4, 0.05, 1.2, COL.woodDark, 0, 0.2, 1.5, 0.35, 0, 0);
+    for (const [x, z] of [[-1.1, -0.8], [1.1, -0.8], [-1.1, 0.8], [1.1, 0.8]]) hut.box(0.12, 0.35, 0.12, COL.woodDark, x, 0.15, z);
+    prop('coop2', [[fenceGeo([[x0, z1], [12, z1], [14.5, z1], [x1, z1], [x1, z0], [x0, z0], [x0, z1]], 1), 0, 0], [hut.geo(), 13, -45.5, 0, [1.4, 1.1, 2.0]]]);
+  }
   // bunker room (far underground; you are teleported there)
   const room = new MB(); const RY = -40;
   room.box(8, 0.2, 8, 0x5a5f66, 0, RY, 0); room.box(8, 0.2, 8, 0x4a4f56, 0, RY + 3.2, 0);
@@ -723,7 +867,11 @@ W.refreshUpgradeProps = function () {
   P.scare.forEach((m, i) => m.visible = G.has('scarecrow') && G.plots[i]);
   P.windfence.forEach(m => m.visible = G.has('windfence'));
   P.sprinkler.forEach((m, i) => m.visible = G.has('sprinkler') && G.plots[i]);
-  P.gh.forEach((g, i) => g.visible = G.has('gh' + i) && G.plots[i]);
+  W.ghs.forEach((b, i) => { const on = G.has('gh' + i) && G.plots[i]; if (b.hidden !== !on) b.setHidden(!on); });
+  if (W.tower.hidden !== !G.has('farm2')) W.tower.setHidden(!G.has('farm2'));
+  for (const [key, on] of [['court', G.has('farm2')], ['shed', G.has('farm3')], ['sty', G.has('pigsty')], ['pasture', G.has('pasture')], ['coop2', G.has('coop2')]]) {
+    P[key].visible = on; for (const c of P.cols[key]) c.dead = !on;
+  }
 };
 
 // is a point under an intact roof?
@@ -737,6 +885,10 @@ W.update = function (dt) {
   W.timeUniform.value += dt;
   if (W.windmill && W.windmill.blades.visible) W.windmill.blades.rotation.z += dt * (0.5 + W.windUniform.value * 3);
   W.updateClouds(dt);
+  // the house lamp and fireplace glow brighter at night
+  const hr = G.hour(), dark = hr < 6.5 || hr > 19;
+  W.houseLamp.intensity = (dark ? 1.1 : 0.35) * (W.house.pieces.every(p => !p.broken) ? 1 : 0.6);
+  W.fireGlow.scale.y = 0.8 + Math.sin(W.timeUniform.value * 9) * 0.15 + Math.random() * 0.1;
   if (W.cropsDirty) W.rebuildCrops();
   // flood water
   W.flood.visible = W.waterLevel > -1;

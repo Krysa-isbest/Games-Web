@@ -81,6 +81,7 @@ const EV = {
     for (const id in this.defs) {
       const d = this.defs[id];
       if (d.tier === 'apoc' || (d.minDay > day && !G.endless) || this.active.some(e => e.type === id)) continue;
+      if (d.night && !(G.hour() >= 20 || G.hour() < 5)) continue;
       pool.push([id, d.w]);
     }
     let sum = pool.reduce((s, p) => s + p[1], 0), r = Math.random() * sum;
@@ -167,6 +168,27 @@ const H = {
       const dx = (P.pos.x - x) / (d || 1), dz = (P.pos.z - z) / (d || 1);
       P.launch(dx * launch * k, launch * 0.7 * k + 2, dz * launch * k); P.fallCause = cause;
     }
+  },
+  // the burning building piece the local player is aiming water at, if any
+  burnTarget(cp, dir) {
+    let best = null, bd = 7;
+    for (const type of WATER_EVENTS) {
+      const e = EV.get(type); if (!e) continue;
+      for (const f of e.d.fires) {
+        const c = W.buildings[f.bi].pieces[f.pi].center, dx = c.x - cp.x, dy = c.y - cp.y, dz = c.z - cp.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < bd && (dx * dir.x + dy * dir.y + dz * dir.z) / d > 0.8) { bd = d; best = { type, bi: f.bi, pi: f.pi }; }
+      }
+    }
+    return best;
+  },
+  // a big kickable event creature (giant chicken, robot) the local player is facing
+  bigTarget(cp, dir) {
+    for (const type of ['giantchicken', 'robot']) {
+      const e = EV.get(type); if (!e || !e.d.r || e.d.u.done) continue;
+      const dx = e.d.r.x - cp.x, dz = e.d.r.z - cp.z, d = Math.hypot(dx, dz);
+      if (d < 5 && (dx * dir.x + dz * dir.z) / d > 0.55) return type;
+    }
+    return null;
   },
   ambientFire(x, z, n = 2) { for (let i = 0; i < n; i++) FX.glow(x + U.rand(-0.5, 0.5), W.height(x, z) + 0.3, z + U.rand(-0.5, 0.5), U.rand(-0.3, 0.3), U.rand(1.5, 3), U.rand(-0.3, 0.3), 0.6, 0.6, Math.random() < 0.5 ? 0xff8a20 : 0xffc040, { drag: 1, grow: -0.5 }); },
 };
@@ -270,7 +292,7 @@ EV.def('fishrain', { name: 'Fish Rain', icon: '🐟', tier: 'minor', w: 0.8, min
 });
 
 EV.def('chickens', { name: 'Angry Chickens', icon: '🐔', tier: 'minor', w: 0.9, minDay: 2, warn: 5, dur: [20, 30], msg: 'The chickens have had enough. Kick them away!',
-  begin(e) { if (G.isHost) for (const a of AN.list) if (a.kind === 'chicken' && a.state !== 'gone') { a.state = 'angry'; a.t = e.dur; } },
+  begin(e) { if (G.isHost) for (const a of AN.list) if (a.kind === 'chicken' && a.state !== 'gone' && a.state !== 'carried') { a.state = 'angry'; a.t = e.dur; } },
   update(e, dt) { if (Math.random() < dt * 2) AU.play('cluck', AN.list.find(a => a.state === 'angry'), 0.8); },
   end(e) { if (G.isHost) for (const a of AN.list) if (a.state === 'angry') a.state = 'return'; },
 });
@@ -378,6 +400,49 @@ EV.def('locusts', { name: 'Locust Swarm', icon: '🦗', tier: 'minor', w: 0.8, m
     if (d < 6 && !P.inBunker) P.hurt(3 * dt, 'eaten alive by locusts');
   },
   host(e, dt) { if (e.d.p) H.crops(dt, 0.09, 'devoured by locusts', { gh: true, pest: true, x: e.d.p.x, z: e.d.p.z, r: 5.5 }); },
+});
+
+EV.def('rats', { name: 'Rat Plague', icon: '🐀', tier: 'minor', w: 0.9, minDay: 2, warn: 6, dur: [30, 42], msg: 'Rats are swarming the fields! Kick them before they eat everything.',
+  host(e, dt, at) {
+    e.d.sp = (e.d.sp || 0) - dt;
+    const rats = AN.gnomes.filter(g => g.kind === 'rat');
+    if (at < e.dur * 0.6 && e.d.sp <= 0 && rats.length < 24) {
+      e.d.sp = 0.7;
+      // barn cats catch most rats on their way in
+      if (G.has('cats') && Math.random() < 0.65) { if (!e.d.caught) { e.d.caught = true; Game.log('🐈 The barn cats are hunting the rats!'); } }
+      else { const a = Math.random() * 6.28; AN.spawnGnome(Math.cos(a) * 62, -5 + Math.sin(a) * 62, 'rat'); }
+    }
+    if (G.has('cats') && rats.length && Math.random() < dt * 0.35) { const r = U.pick(rats); W.scene.remove(r.mesh); AN.gnomes.splice(AN.gnomes.indexOf(r), 1); }
+  },
+  end() { if (G.isHost) for (const g of AN.gnomes) if (g.kind === 'rat' && g.state === 'seek') g.state = 'flee'; },
+});
+
+EV.def('crows', { name: 'Crow Flock', icon: '🐦', tier: 'minor', w: 0.8, minDay: 2, warn: 5, dur: [24, 34], msg: 'Crows are diving on the crops! Run at the flock to scare it away.',
+  init(e) { e.d.a = e.rng.range(0.1, 0.18); e.d.b = e.rng.range(0.07, 0.13); e.d.ph = e.rng() * 6; },
+  pos(e, at) { return { x: Math.cos(at * e.d.a * 6 + e.d.ph) * 26, z: 18 + Math.sin(at * e.d.b * 6 + e.d.ph) * 15 }; },
+  update(e, dt, at) {
+    const p = this.pos(e, at); e.d.p = p;
+    for (let i = 0; i < 14 * S.d.particles; i++) { const a = at * 2 + i * 0.7, r = 2 + (i % 5); FX.emit(p.x + Math.cos(a) * r, 1.5 + (i % 4) + Math.sin(at * 6 + i) * 0.4, p.z + Math.sin(a) * r, -Math.sin(a) * 4, U.rand(-0.5, 0.5), Math.cos(a) * 4, 0.12, 0.28, 0x16161a); }
+    if (Math.random() < dt * 1.5) AU.play('caw', { x: p.x, y: 3, z: p.z }, 0.8);
+  },
+  // a farmer standing in the flock scares it off those crops
+  host(e, dt) { const p = e.d.p; if (!p || Game.alivePlayers().some(q => Math.hypot(q.x - p.x, q.z - p.z) < 5)) return; H.crops(dt, 0.06, 'eaten by crows', { gh: true, pest: true, x: p.x, z: p.z, r: 5 }); },
+});
+
+EV.def('drought', { name: 'Drought', icon: '🏜️', tier: 'minor', w: 0.7, minDay: 3, warn: 5, dur: [60, 90], msg: 'Drought! Only watered crops grow — grab the watering can or the bucket.',
+  update(e, dt, at) { const k = Math.min(1, at / 4, (e.dur - at) / 4); W.tint(0xe8b060, 0.18 * k); W.env.sunGlow = 1 + k; },
+  // watered soil dries out quickly in the heat
+  host(e, dt) { const T = W.tiles; for (let i = 0; i < TILES_TOTAL; i++) if (T.w[i] && !W.greenhouse(i) && Math.random() < dt * 0.025) { T.w[i] = 0; Game.mark(i); } },
+});
+
+EV.def('loose', { name: 'Animals Escaped', icon: '🐖', tier: 'minor', w: 0.7, minDay: 2, warn: 4, dur: [45, 60], msg: 'The animals broke out and are eating your crops! Carry them back to their pens (F).',
+  begin() { if (G.isHost) for (const a of AN.list) if (a.kind !== 'chicken' && CALM(a.state)) { a.state = 'loose'; a.t = 0; } },
+  end() { if (G.isHost) for (const a of AN.list) if (a.state === 'loose') a.state = 'return'; },
+});
+
+EV.def('goldeggs', { name: 'Golden Eggs', icon: '🥚', tier: 'minor', w: 0.4, minDay: 2, warn: 3, dur: [40, 60], msg: 'The chickens are laying GOLDEN eggs. Collect them, they sell for a lot!',
+  begin() { if (G.isHost) for (const a of AN.list) if (a.kind === 'chicken') a.eggT = U.rand(1, 8); },
+  update(e, dt, at) { const k = Math.min(1, at / 2, (e.dur - at) / 2); W.tint(0xffd860, 0.08 * k); },
 });
 
 EV.def('reversegrav', { name: 'Gravity Flip', icon: '🙃', tier: 'minor', w: 0.6, minDay: 2, warn: 6, dur: [6, 8], msg: 'GRAVITY FLIP in a few seconds! Hold onto something...',
@@ -556,9 +621,70 @@ EV.def('wildfire', { name: 'Wildfire', icon: '🔥', tier: 'major', w: 0.8, minD
   },
 });
 
+// something spreads over a building piece by piece (fire, termites); each piece breaks after `life`
+// seconds unless someone hits it with water. o: { verb, done, life, spread, hurt, sprinkler, fx(c), wood }
+const WATER_EVENTS = ['barnfire', 'termites'];
+function spreadDef(o) {
+  return {
+    init(e) { e.d.fires = []; },
+    begin(e) {
+      if (!G.isHost) return;
+      let cands = [W.barn, W.house, W.buildings.find(b => b.name === 'Chicken coop'), W.buildings.find(b => b.name === 'Windmill')];
+      if (!o.wood) cands = cands.concat(W.ghs.filter(b => !b.hidden));
+      cands = cands.filter(b => b && b.pieces.some(p => !p.broken && p.solid));
+      const b = U.pick(cands); if (!b) return;
+      const low = b.pieces.filter(p => !p.broken && p.solid && p.center.y < 3);
+      for (let n = 0; n < o.start && low.length; n++) { const p = low.splice(Math.floor(Math.random() * low.length), 1)[0]; e.d.fires.push({ bi: b.id, pi: p.idx, t: 0 }); }
+      Game.log(o.verb(b.name.toLowerCase()));
+    },
+    sync(e) { return e.d.fires.map(f => [f.bi, f.pi]); },
+    unsync(e, v) { e.d.fires = v.map(([bi, pi]) => ({ bi, pi })); },
+    update(e, dt) {
+      let near = 99;
+      for (const f of e.d.fires) {
+        const c = W.buildings[f.bi].pieces[f.pi].center;
+        o.fx(c);
+        const d = Math.hypot(c.x - P.pos.x, c.z - P.pos.z); near = Math.min(near, d);
+        if (o.hurt && d < 1.3 && Math.abs(c.y - P.pos.y - 1) < 2) P.hurt(o.hurt * dt, 'burned in a building fire');
+      }
+      if (e.d.fires.length) AU.loop(o.loop, U.clamp(1 - near / 30, 0, 0.8));
+    },
+    host(e, dt) {
+      const rate = o.sprinkler && G.has('sprinkler') ? 0.5 : 1;
+      for (let i = e.d.fires.length - 1; i >= 0; i--) {
+        const f = e.d.fires[i], b = W.buildings[f.bi], p = b.pieces[f.pi];
+        f.t += dt * rate;
+        if (p.broken) { e.d.fires.splice(i, 1); continue; }
+        // spread to a neighbouring piece every few seconds
+        f.sp = (f.sp || 0) + dt * rate;
+        if (f.sp > o.spread) { f.sp = 0; const nb = b.pieces.filter(q => !q.broken && q !== p && !e.d.fires.some(x => x.bi === f.bi && x.pi === q.idx) && q.center.distanceTo(p.center) < 4.5); if (nb.length && e.d.fires.length < 10) e.d.fires.push({ bi: f.bi, pi: U.pick(nb).idx, t: 0 }); }
+        if (f.t > o.life) { Game.breakPiece(f.bi, f.pi, p.center.x, p.center.y - 1, p.center.z, 3); e.d.fires.splice(i, 1); }
+      }
+    },
+    douse(e, bi, pi, from) {
+      const i = e.d.fires.findIndex(f => f.bi === bi && f.pi === pi); if (i < 0) return;
+      e.d.fires.splice(i, 1);
+      if (!e.d.fires.length) Game.log(o.done(Game.pname(from)));
+    },
+  };
+}
+EV.def('barnfire', Object.assign({ name: 'Building Fire', icon: '🧯', tier: 'major', w: 0.8, minDay: 3, warn: 5, dur: [40, 55], msg: 'A building is on fire! Put it out with the watering can or the bucket.' }, spreadDef({
+  start: 2, life: 16, spread: 6, hurt: 15, sprinkler: true, loop: 'fire',
+  verb: n => `🔥 The ${n} is on fire!`, done: who => `🧯 ${who} put out the fire!`,
+  fx(c) {
+    if (Math.random() < 0.7 * S.d.particles) FX.glow(c.x + U.rand(-1, 1), c.y + U.rand(-0.5, 1), c.z + U.rand(-1, 1), U.rand(-0.3, 0.3), U.rand(1.5, 3), U.rand(-0.3, 0.3), 0.7, 0.8, Math.random() < 0.5 ? 0xff8a20 : 0xffc040, { drag: 1, grow: -0.5 });
+    if (Math.random() < 0.15) FX.emit(c.x, c.y + 1.5, c.z, 0, 2, 0, 2.5, 1.2, 0x3a3434, { grow: 2 });
+  },
+})));
+EV.def('termites', Object.assign({ name: 'Termites', icon: '🪵', tier: 'major', w: 0.7, minDay: 3, warn: 5, dur: [45, 60], msg: 'Termites are eating a wooden building! Spray them off with water.' }, spreadDef({
+  start: 3, life: 24, spread: 7, wood: true, loop: 'buzz',
+  verb: n => `🪵 Termites are eating the ${n}!`, done: who => `💦 ${who} washed off the last termites!`,
+  fx(c) { if (Math.random() < 0.5 * S.d.particles) FX.emit(c.x + U.rand(-1.2, 1.2), c.y + U.rand(-1, 1), c.z + U.rand(-1.2, 1.2), U.rand(-0.4, 0.4), U.rand(-0.6, 0.2), U.rand(-0.4, 0.4), 0.8, 0.09, Math.random() < 0.5 ? 0xd8c08a : 0x6b4a2f, { g: 2 }); },
+})));
+
 EV.def('meteors', { name: 'Meteor Shower', icon: '☄️', tier: 'major', w: 1, minDay: 3, warn: 8, dur: [20, 32], msg: 'METEOR SHOWER! Watch the sky and dodge the red circles.',
   init(e) {
-    const targets = [W.barn, W.house].concat(W.buildings.filter(b => b !== W.barn && b !== W.house));
+    const targets = [W.barn, W.house].concat(W.buildings.filter(b => b !== W.barn && b !== W.house && !b.hidden));
     H.schedule(e, [0.7, 1.7], () => {
       let p;
       if (e.rng() < 0.35) { const b = targets[Math.floor(e.rng() * targets.length) % targets.length]; const pc = b.pieces[Math.floor(e.rng() * b.pieces.length) % b.pieces.length]; p = { x: pc.center.x + e.rng.range(-2, 2), z: pc.center.z + e.rng.range(-2, 2) }; }
@@ -582,9 +708,10 @@ EV.def('meteors', { name: 'Meteor Shower', icon: '☄️', tier: 'major', w: 1, 
   },
 });
 
-EV.def('aliens', { name: 'Alien Abduction', icon: '👽', tier: 'major', w: 0.9, minDay: 3, warn: 7, dur: [30, 38], msg: 'UFO spotted! They want your cows. Press E on a rising cow to pull it down.',
+EV.def('aliens', { name: 'Alien Abduction', icon: '👽', tier: 'major', w: 0.9, minDay: 3, warn: 7, dur: [30, 38], msg: 'UFO spotted! They want your animals. Press E on a rising animal to pull it down — abducted animals never come back.',
   siren: 'ufo',
-  hostParams() { const cows = AN.list.filter(a => a.kind === 'cow' && (a.state === 'wander' || a.state === 'idle')); const pick = []; while (pick.length < Math.min(3, cows.length)) { const c = U.pick(cows); if (!pick.includes(c.id)) pick.push(c.id); } return { cows: pick }; },
+  // cows first; with no cows left they take whatever is in the pens
+  hostParams() { const calm = AN.list.filter(a => a.state === 'wander' || a.state === 'idle'); let cows = calm.filter(a => a.kind === 'cow'); if (!cows.length) cows = calm; const pick = []; while (pick.length < Math.min(3, cows.length)) { const c = U.pick(cows); if (!pick.includes(c.id)) pick.push(c.id); } return { cows: pick }; },
   init(e) { e.d.ufo = e.add(new THREE.Mesh(M.ufo(), M.matGlow)); e.d.ufo.visible = false;
     e.d.beam = e.add(new THREE.Mesh(new THREE.CylinderGeometry(0.6, 2.4, 1, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x9cffd0, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }))); e.d.beam.visible = false;
     e.d.u = { x: 0, y: 80, z: -60, beam: 0 }; e.d.r = { x: 0, y: 80, z: -60 }; },
@@ -605,15 +732,16 @@ EV.def('aliens', { name: 'Alien Abduction', icon: '👽', tier: 'major', w: 0.9,
     const slot = Math.floor(at / 10), local = at - slot * 10;
     const cow = AN.byId(cows[slot]);
     if (!cow || slot >= cows.length) { u.beam = 0; u.y = U.lerp(u.y, 90, dt); u.x += dt * 20; return; }
-    if (local < 3) { u.beam = 0; u.x = U.lerp(u.x, cow.x, dt * 2); u.z = U.lerp(u.z, cow.z, dt * 2); u.y = U.lerp(u.y, 16, dt * 2); if (cow.state !== 'gone' && cow.state !== 'abducted') { cow.state = 'idle'; cow.t = 2; } return; }
-    if (cow.state === 'gone') { u.beam = 0; return; }
+    // an animal someone is carrying can't be beamed up
+    if (local < 3) { u.beam = 0; u.x = U.lerp(u.x, cow.x, dt * 2); u.z = U.lerp(u.z, cow.z, dt * 2); u.y = U.lerp(u.y, 16, dt * 2); if (cow.state !== 'gone' && cow.state !== 'abducted' && cow.state !== 'carried') { cow.state = 'idle'; cow.t = 2; } return; }
+    if (cow.state === 'gone' || cow.state === 'carried') { u.beam = 0; return; }
     if (local < 8.5) {
       u.beam = 1; u.x = cow.x; u.z = cow.z;
       if (cow.state !== 'abducted' && !e.d['saved' + cow.id]) { cow.state = 'abducted'; e.d['laser' + cow.id] = G.has('laser') && Math.random() < 0.75; AU.play('ufo', cow); }
       if (cow.state === 'abducted') {
         cow.y += dt * 2.6; cow.yaw += dt * 2;
         if (e.d['laser' + cow.id] && local > 6) { cow.state = 'flung'; cow.vy = 0; e.d['saved' + cow.id] = true; Game.log('🔫 The laser shot the UFO — the cow fell back down!'); }
-        if (cow.y > 15.5) { cow.state = 'gone'; G.stats.abducted++; Game.log('🛸 A cow was abducted! It will come back... probably.'); }
+        if (cow.y > 15.5) { cow.state = 'gone'; G.stats.abducted++; Game.log(`🛸 A ${cow.kind} was abducted! It's gone for good — buy a new one in the shop.`); }
       }
     } else u.beam = 0;
   },
@@ -700,7 +828,7 @@ EV.def('minibh', { name: 'Mini Black Hole', icon: '⚫', tier: 'major', w: 0.6, 
     H.pieces(dt, 0.12 * k, -10, 1, { x: p.x, y: p.y, z: p.z, r: 13, ox: p.x, oy: p.y, oz: p.z });
     for (const a of AN.near(p.x, p.z, 12)) {
       const dx = p.x - a.x, dz = p.z - a.z, d = Math.hypot(dx, dz);
-      if (d < 2) { const z = ZONES[KINDS[a.kind].zone]; a.x = U.rand(z.x0, z.x1); a.z = U.rand(z.z0, z.z1); AN.fling(a, 0, 15, 0); }
+      if (d < 2) { const z = ZONES[a.zone]; a.x = U.rand(z.x0, z.x1); a.z = U.rand(z.z0, z.z1); AN.fling(a, 0, 15, 0); }
       else if (a.state !== 'flung') AN.fling(a, dx / d * 8, 6, dz / d * 8);
     }
   },
@@ -840,9 +968,9 @@ EV.def('blackhole', { name: 'THE BLACK HOLE', icon: '🕳️', tier: 'apoc', w: 
   },
   host(e, dt, at) {
     const k = U.clamp(at / (e.dur - 4), 0, 1), kk = U.clamp(at / (e.dur - 3), 0, 1), hy = U.lerp(120, 34, kk), hz = U.lerp(-120, -5, kk);
-    const all = []; W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => { if (!p.broken) all.push([bi, pi, p]); }));
+    const all = []; W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => { if (!p.broken && !b.hidden) all.push([bi, pi, p]); }));
     all.sort((a, b) => b[2].center.y - a[2].center.y);
-    const total = W.buildings.reduce((s, b) => s + b.pieces.length, 0), target = Math.floor(total * k);
+    const total = W.buildings.reduce((s, b) => s + (b.hidden ? 0 : b.pieces.length), 0), target = Math.floor(total * k);
     for (let n = total - all.length; n < target && all.length; n++) { const [bi, pi] = all.shift(); Game.breakPiece(bi, pi, 0, hy, hz, -18); }
     for (let i = 0; i < TILES_TOTAL; i++) if ((W.tiles.c[i] >= 0 || W.tiles.s[i]) && Math.random() < dt * k * 0.5) Game.resetTile(i, 'consumed by a black hole');
     for (const a of AN.list) if (a.state !== 'gone' && Math.random() < dt * k) { a.state = 'gone'; }
@@ -853,7 +981,7 @@ EV.def('blackhole', { name: 'THE BLACK HOLE', icon: '🕳️', tier: 'apoc', w: 
       for (let i = 0; i < TILES_TOTAL; i++) Game.resetTile(i, 'consumed by a black hole');
       W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => { if (!p.broken) Game.breakPiece(bi, pi, 0, -50, 0, -18); }));
       // the white hole spits the animals back out, unharmed
-      for (const a of AN.list) { const z = ZONES[KINDS[a.kind].zone]; a.state = 'flung'; a.x = U.rand(z.x0, z.x1); a.z = U.rand(z.z0, z.z1); a.y = 30; a.vx = a.vz = 0; a.vy = 0; a.rx = a.x; a.rz = a.z; }
+      for (const a of AN.list) { const z = ZONES[a.zone]; a.state = 'flung'; a.by = ''; a.x = U.rand(z.x0, z.x1); a.z = U.rand(z.z0, z.z1); a.y = 30; a.vx = a.vz = 0; a.vy = 0; a.rx = a.x; a.rz = a.z; }
       Game.log('⚪ A white hole spat your animals back out. They seem fine.');
     }
   },
@@ -901,6 +1029,221 @@ EV.def('supernova', { name: 'SUPERNOVA', icon: '☀️', tier: 'apoc', w: 0, min
       W.buildings.forEach((b, bi) => b.pieces.forEach((p, pi) => { if (!p.broken) Game.breakPiece(bi, pi, p.center.x, 0, p.center.z, 20); }));
       for (let i = 0; i < 25; i++) { const p = H.farmPoint(U.rng(Math.random() * 1e9)); Game.spawnPickup('stardust', p.x, p.z); }
       Game.log('✨ The sun is... back? Stardust is falling everywhere. It sells for a lot.');
+    }
+  },
+});
+
+// ======================================================================
+// MORE EVENTS
+// ======================================================================
+// helpers for something the host moves around and syncs (bees, ghost, giant chicken, robot)
+const _mover = (e, x, z) => { e.d.u = { x, z, done: 0, n: 0, i: 0 }; e.d.r = { x, z }; };
+const _moverSync = {
+  sync(e) { return [+e.d.u.x.toFixed(1), +e.d.u.z.toFixed(1), e.d.u.done ? 1 : 0, e.d.u.n || 0]; },
+  unsync(e, v) { e.d.u.x = v[0]; e.d.u.z = v[1]; e.d.u.done = v[2]; e.d.u.n = v[3]; },
+};
+const _lerpMover = (e, dt) => { const k = Math.min(1, dt * (G.isHost ? 30 : 8)); e.d.r.x = U.lerp(e.d.r.x, e.d.u.x, k); e.d.r.z = U.lerp(e.d.r.z, e.d.u.z, k); return e.d.r; };
+const _step = (u, tx, tz, spd, dt) => { const dx = tx - u.x, dz = tz - u.z, d = Math.hypot(dx, dz); if (d > 0.05) { const s = Math.min(d, spd * dt); u.x += dx / d * s; u.z += dz / d * s; } return d; };
+const _nearest = (x, z) => { let best = null, bd = 1e9; for (const p of Game.alivePlayers()) { const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; best = p; } } return best; };
+const _walk = (m, dt, speed) => { m.userData.ph = (m.userData.ph || 0) + dt * speed; const sw = Math.sin(m.userData.ph) * 0.6; m.userData.legs[0].rotation.x = sw; m.userData.legs[1].rotation.x = -sw; if (m.userData.arms) { m.userData.arms[0].rotation.x = -sw; m.userData.arms[1].rotation.x = sw; } };
+
+EV.def('bees', Object.assign({ name: 'Angry Bees', icon: '🐝', tier: 'minor', w: 0.8, minDay: 2, warn: 5, dur: [25, 35], msg: 'A bee swarm is chasing people! Outrun it, or dive into the pond.',
+  init(e) { const a = e.rng() * 6.28; _mover(e, Math.cos(a) * 50, -5 + Math.sin(a) * 50); },
+  host(e, dt) { const u = e.d.u, p = _nearest(u.x, u.z); if (p) _step(u, p.x, p.z, 4.6, dt); },
+  update(e, dt) {
+    const r = _lerpMover(e, dt);
+    for (let i = 0; i < 20 * S.d.particles; i++) { const a = Math.random() * 6.28, d = Math.random() * 1.8; FX.emit(r.x + Math.cos(a) * d, 1.2 + Math.random() * 1.4, r.z + Math.sin(a) * d, U.rand(-3, 3), U.rand(-1, 1), U.rand(-3, 3), 0.25, 0.1, i % 3 ? 0xf2c230 : 0x1a1a1a); }
+    const d = H.d(r.x, r.z); AU.loop('buzz', U.clamp(1 - d / 20, 0, 0.6));
+    if (d < 2.2 && !P.swim && !P.inBunker && P.pos.y < 4) P.hurt(7 * dt, 'stung by angry bees');
+  },
+}, _moverSync));
+
+EV.def('mushrooms', { name: 'Mushroom Season', icon: '🍄', tier: 'minor', w: 0.6, minDay: 2, warn: 3, dur: [35, 50], msg: 'Wild mushrooms are popping up everywhere. Pick them, they sell well!',
+  host(e, dt, at) { e.d.t = (e.d.t || 0) - dt; if (e.d.t <= 0 && at < e.dur * 0.7 && Game.countPickups('mushroom') < 24) { e.d.t = 0.8; const p = Math.random() < 0.6 ? H.fieldPoint(Math.random) : H.farmPoint({ range: U.rand }); Game.spawnPickup('mushroom', p.x, p.z); } },
+  update(e, dt, at) { W.tint(0x8a7aa0, 0.08 * Math.min(1, at / 3, (e.dur - at) / 3)); },
+});
+
+EV.def('rainbow', { name: 'Rainbow', icon: '🌈', tier: 'minor', w: 0.5, minDay: 2, warn: 3, dur: [20, 26], msg: 'A rainbow! Crops under its end turn into Rainbow crops (worth 6×).',
+  init(e) {
+    const p = H.fieldPoint(e.rng), g = new THREE.Group(); e.d.p = p;
+    [0xff3b3b, 0xff9a2a, 0xffe14a, 0x4fd04a, 0x3f8fff, 0x8a4aff].forEach((c, i) => g.add(new THREE.Mesh(new THREE.TorusGeometry(30 - i * 0.9, 0.45, 4, 48, Math.PI), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0, depthWrite: false, fog: false }))));
+    g.position.set(p.x - 30, -1, p.z); e.d.g = e.add(g);
+  },
+  update(e, dt, at) {
+    const k = Math.min(1, at / 3, (e.dur - at) / 3); e.d.g.children.forEach(m => m.material.opacity = 0.45 * k);
+    if (Math.random() < 0.6) FX.glow(e.d.p.x + U.rand(-3, 3), U.rand(0.3, 3), e.d.p.z + U.rand(-3, 3), 0, 0.3, 0, 1, 0.25, U.pick([0xff9a2a, 0xffe14a, 0x4fd04a, 0x3f8fff, 0x8a4aff]));
+  },
+  host(e, dt, at) { if (at > 6 && !e.d.done) { e.d.done = true; for (const i of W.tilesNear(e.d.p.x, e.d.p.z, 4.5)) if (W.tiles.c[i] >= 0 && Math.random() < 0.5) Game.mutateTile(i, 5); } },
+});
+
+EV.def('pigrace', { name: 'Pig Race', icon: '🏁', tier: 'minor', w: 0.6, minDay: 2, warn: 4, dur: [35, 45], msg: 'The pigs are racing around the farmyard! Catch one (F) for $150.',
+  begin() { if (G.isHost) for (const a of AN.list) if (a.kind === 'pig' && CALM(a.state)) { a.state = 'race'; a.ra = undefined; } },
+  end() { if (G.isHost) for (const a of AN.list) if (a.state === 'race') a.state = 'return'; },
+  update(e, dt) { for (const a of AN.list) if (a.state === 'race' && Math.random() < dt * 4) FX.emit(a.x, 0.2, a.z, U.rand(-1, 1), 1, U.rand(-1, 1), 0.8, 0.5, 0xa89068, { grow: 1 }); },
+});
+
+EV.def('thundersheep', { name: 'Thunder Sheep', icon: '⚡', tier: 'minor', w: 0.6, minDay: 2, warn: 4, dur: [30, 40], msg: 'The sheep are full of static! Shearing gives double wool... and a shock. Don\'t bump into them.',
+  update(e, dt) {
+    for (const a of AN.list) {
+      if (a.kind !== 'sheep' || a.state === 'gone') continue;
+      if (Math.random() < dt * 6) FX.glow(a.x + U.rand(-0.5, 0.5), a.y + 1 + U.rand(0, 0.5), a.z + U.rand(-0.5, 0.5), 0, U.rand(0, 1), 0, 0.3, 0.25, 0xbfe0ff);
+      if (Math.hypot(a.x - P.pos.x, a.z - P.pos.z) < 1.1 && (!e.d.zt || e.d.zt < W.timeUniform.value)) { e.d.zt = W.timeUniform.value + 1.2; P.hurt(8, 'shocked by a thunder sheep'); AU.play('zap', a, 0.6); }
+    }
+  },
+});
+
+EV.def('taxman', { name: 'Tax Inspector', icon: '🧾', tier: 'minor', w: 0.6, minDay: 3, warn: 6, dur: [40, 50], msg: 'A tax inspector is touring the farm. Every broken building piece costs a $40 fine when he leaves. Repair fast!',
+  init(e) {
+    e.d.m = e.add(M.farmer(0x2a2a3a)); const tag = M.nameTag('Tax inspector', 0xffffff); tag.position.y = 2.5; e.d.m.add(tag); e.d.m.visible = false;
+    e.d.pts = [[-45, -12], [-20, -16], [16, -14], [38, -22], [6, -30], [-20, -31], [-45, -12]];
+  },
+  update(e, dt, at) {
+    const pts = e.d.pts, f = U.clamp(at / e.dur, 0, 0.999) * (pts.length - 1), i = Math.floor(f), t = f - i, a = pts[i], b = pts[i + 1];
+    const x = U.lerp(a[0], b[0], t), z = U.lerp(a[1], b[1], t), m = e.d.m; m.visible = true;
+    m.position.set(x, W.height(x, z), z); m.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); _walk(m, dt, 7);
+  },
+  // only fines when he finishes his tour (not when the day ends early)
+  end(e) {
+    if (!G.isHost || G.final || G.time - e.t0 - e.warn < e.dur - 1) return;
+    const n = W.brokenCount(), fine = n * 40;
+    if (fine) { G.money -= fine; Game.log(`🧾 The tax inspector fined you ${U.money(fine)} for ${n} broken pieces.`); } else Game.log('🧾 The tax inspector found nothing wrong. He looks disappointed.');
+  },
+});
+
+EV.def('clovers', { name: 'Lucky Clovers', icon: '🍀', tier: 'minor', w: 0.5, minDay: 2, warn: 3, dur: [30, 40], msg: 'Four-leaf clovers sprouted around the farm. Each one makes you run faster for a while!',
+  begin() { if (G.isHost) for (let i = 0; i < 10; i++) { const p = H.farmPoint({ range: U.rand }); Game.spawnPickup('clover', p.x, p.z); } },
+  update(e, dt) { for (const p of Game.pickups) if (p.type === 'clover' && Math.random() < dt * 3) FX.glow(p.x, p.y + 0.4, p.z, 0, 0.5, 0, 0.6, 0.2, 0x8aff7a); },
+});
+
+EV.def('ghost', Object.assign({ name: 'Ghost Farmer', icon: '👻', tier: 'minor', w: 0.8, minDay: 2, warn: 5, dur: [35, 45], night: true, msg: 'A ghost is drifting around the farm, drinking everyone\'s water. Keep away from it!',
+  init(e) {
+    const g = new MB(); g.ico(0.35, 1, 0xffffff, 0, 1.7, 0); g.cone(0.55, 1.5, 10, 0xeef4ff, 0, 0.9, 0); g.ico(0.07, 0, 0x111111, -0.12, 1.75, 0.3); g.ico(0.07, 0, 0x111111, 0.12, 1.75, 0.3); g.box(0.7, 0.06, 0.06, 0x6b4a2f, 0.2, 1.2, 0.35, 0, 0, 0.6);
+    e.d.m = e.add(new THREE.Mesh(g.geo(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false })));
+    const a = e.rng() * 6.28; _mover(e, Math.cos(a) * 40, -5 + Math.sin(a) * 40);
+  },
+  host(e, dt) { const u = e.d.u, p = _nearest(u.x, u.z); if (p) _step(u, p.x, p.z, 3.2, dt); },
+  update(e, dt, at) {
+    const r = _lerpMover(e, dt), m = e.d.m, d = H.d(r.x, r.z);
+    m.position.set(r.x, W.height(r.x, r.z) + 0.3 + Math.sin(at * 2) * 0.25, r.z); m.rotation.y = Math.atan2(P.pos.x - r.x, P.pos.z - r.z);
+    W.darken(0.15); W.tint(0x4a5a8a, 0.12); AU.loop('wind', U.clamp(1 - d / 20, 0, 0.4));
+    if (d < 2.5 && (P.can || P.bucket) && (!e.d.dt || e.d.dt < W.timeUniform.value)) { e.d.dt = W.timeUniform.value + 3; P.can = 0; P.bucket = 0; UI.dirty = true; UI.toast('👻 The ghost drank all your water!'); AU.play('whoosh'); }
+    if (d < 1.2) P.hurt(4 * dt, 'scared to death by a ghost');
+  },
+}, _moverSync));
+
+EV.def('giantchicken', Object.assign({ name: 'Giant Chicken', icon: '🐓', tier: 'major', w: 0.7, minDay: 3, warn: 7, dur: [35, 45], msg: 'A GIANT CHICKEN is stomping through the fields! Kick it enough and it lays a giant egg.',
+  init(e) {
+    e.d.m = AN.makeMesh('chicken'); e.objs.push(e.d.m); e.d.m.scale.setScalar(6); e.d.m.visible = false;
+    e.d.pts = []; for (let i = 0; i < 6; i++) e.d.pts.push(H.fieldPoint(e.rng));
+    const a = e.rng() * 6.28; _mover(e, Math.cos(a) * 60, -5 + Math.sin(a) * 60);
+  },
+  host(e, dt) {
+    const u = e.d.u;
+    if (u.done) { const a = Math.atan2(u.z + 5, u.x); _step(u, u.x + Math.cos(a) * 10, u.z + Math.sin(a) * 10, 7, dt); return; }
+    const t = e.d.pts[u.i % e.d.pts.length]; if (_step(u, t.x, t.z, 3.2, dt) < 0.5) u.i++;
+    e.d.ct = (e.d.ct || 0) + dt; if (e.d.ct > 0.2) { e.d.ct = 0; H.cropsIn(u.x, u.z, 2.2, 'stomped by a giant chicken'); }
+  },
+  kick(e, from) { const u = e.d.u; if (u.done) return; u.n++; if (u.n >= 8) { u.done = 1; Game.spawnPickup('giantegg', u.x, u.z); Game.log(`🥚 ${Game.pname(from)} kicked the giant chicken so hard it laid a GIANT EGG!`); } },
+  update(e, dt) {
+    const r = _lerpMover(e, dt), m = e.d.m, u = e.d.u, px = m.position.x, pz = m.position.z; m.visible = true;
+    m.position.set(r.x, W.height(r.x, r.z), r.z);
+    if (Math.hypot(r.x - px, r.z - pz) > 0.01) m.rotation.y = Math.atan2(r.x - px, r.z - pz);
+    m.userData.phase += dt * 6; const sw = Math.sin(m.userData.phase) * 0.6; m.userData.legs.forEach((l, i) => l.rotation.x = i ? sw : -sw);
+    const d = H.d(r.x, r.z);
+    if (Math.random() < dt * 1.5) { AU.play('cluck', { x: r.x, y: 3, z: r.z }, 1); FX.shake(0.15 * U.clamp(1 - d / 25, 0, 1)); }
+    if (d < 2 && P.pos.y < 3 && !u.done && (!e.d.ht || e.d.ht < W.timeUniform.value)) { e.d.ht = W.timeUniform.value + 1; P.hurt(20, 'stomped by a giant chicken'); P.launch((P.pos.x - r.x) * 4, 8, (P.pos.z - r.z) * 4); P.fallCause = 'stomped by a giant chicken'; }
+    if (u.n !== e.d.ln) { e.d.ln = u.n; if (u.n) { AU.play('cluck', { x: r.x, y: 3, z: r.z }, 1); for (let i = 0; i < 8; i++) FX.emit(r.x, 3, r.z, U.rand(-3, 3), U.rand(1, 4), U.rand(-3, 3), 1.5, 0.3, 0xffffff, { g: 4 }); } }
+  },
+}, _moverSync));
+
+EV.def('mud', { name: 'Mud Flood', icon: '🟫', tier: 'major', w: 0.6, minDay: 3, warn: 6, dur: [30, 40], msg: 'A mudslide! Everything slows down... except the pigs, who love it.',
+  update(e, dt, at) {
+    const k = Math.min(1, at / 5, (e.dur - at) / 5);
+    W.waterLevel = Math.max(W.waterLevel, U.lerp(-0.6, 0.18, k)); W.floodMat.color.setHex(0x6b4a2f);
+    if (P.pos.y < 0.4 && !P.inBunker) W.env.speed *= U.lerp(1, 0.45, k);
+    W.tint(0x8a6a4a, 0.12 * k);
+  },
+  host(e, dt, at) {
+    if (at > 4) H.crops(dt, 0.006, 'buried in mud', { gh: true });
+    if (!e.d.fat && at > e.dur * 0.5) { e.d.fat = true; for (const a of AN.list) if (a.kind === 'pig') a.fat = Math.min(PIG_FAT, a.fat + 1); Game.log('🐖 The pigs rolled in the mud and got fatter!'); }
+  },
+  end() { W.waterLevel = -10; W.floodMat.color.setHex(0x4f8fb0); },
+});
+
+EV.def('robot', Object.assign({ name: 'Rogue Harvester', icon: '🤖', tier: 'major', w: 0.7, minDay: 3, warn: 7, dur: [35, 45], msg: 'A harvesting robot went rogue and is mowing down your crops row by row! Kick it until it breaks.',
+  init(e) {
+    e.d.m = e.add(new THREE.Mesh(M.robot(), M.mat)); e.d.m.visible = false;
+    // mows one owned field, row after row
+    const owned = PLOTS.map((p, i) => i).filter(i => G.plots[i]), p = PLOTS[owned[Math.floor(e.rng() * owned.length) % owned.length] || 0];
+    e.d.pts = []; for (let r = 0; r < 4; r++) { const z = p.z + 1.6 + r * 3.2; e.d.pts.push(r % 2 ? [p.x + 13, z] : [p.x - 1, z], r % 2 ? [p.x - 1, z] : [p.x + 13, z]); }
+    _mover(e, p.x - 8, p.z - 6);
+  },
+  host(e, dt) {
+    const u = e.d.u; if (u.done) return;
+    const t = e.d.pts[u.i % e.d.pts.length]; if (_step(u, t[0], t[1], 2.4, dt) < 0.3) u.i++;
+    e.d.ct = (e.d.ct || 0) + dt; if (e.d.ct > 0.15) { e.d.ct = 0; H.cropsIn(u.x, u.z, 1.4, 'shredded by a rogue robot'); }
+  },
+  kick(e, from) { const u = e.d.u; if (u.done) return; u.n++; if (u.n >= 10) { u.done = 1; for (let i = 0; i < 4; i++) Game.spawnPickup('scrap', u.x + U.rand(-1.5, 1.5), u.z + U.rand(-1.5, 1.5)); Game.log(`🔧 ${Game.pname(from)} broke the rogue robot! Grab the scrap, it sells.`); } },
+  update(e, dt) {
+    const r = _lerpMover(e, dt), m = e.d.m, u = e.d.u, px = m.position.x, pz = m.position.z;
+    m.visible = !e.d.boom; m.position.set(r.x, W.height(r.x, r.z), r.z);
+    if (Math.hypot(r.x - px, r.z - pz) > 0.005) m.rotation.y = Math.atan2(r.x - px, r.z - pz) + Math.PI;
+    if (u.done && !e.d.boom) { e.d.boom = true; FX.explode(r.x, 1, r.z, 1.2); AU.play('explosion', { x: r.x, y: 1, z: r.z }); }
+    if (!u.done) {
+      AU.loop('rumble', U.clamp(1 - H.d(r.x, r.z) / 25, 0, 0.5));
+      if (Math.random() < dt * 10) FX.emit(r.x, 0.5, r.z, U.rand(-2, 2), U.rand(1, 3), U.rand(-2, 2), 0.8, 0.2, 0x7fae3e, { g: 9 });
+      if (H.d(r.x, r.z) < 1.8 && P.pos.y < 2 && (!e.d.ht || e.d.ht < W.timeUniform.value)) { e.d.ht = W.timeUniform.value + 0.8; P.hurt(12, 'shredded by a rogue robot'); P.launch((P.pos.x - r.x) * 5, 5, (P.pos.z - r.z) * 5); }
+    }
+    if (u.n !== e.d.ln) { e.d.ln = u.n; if (u.n) { FX.emit(r.x, 1.5, r.z, U.rand(-2, 2), 3, U.rand(-2, 2), 0.5, 0.15, 0xffd27a, { g: 9 }); AU.play('zap', { x: r.x, y: 1, z: r.z }, 0.4); } }
+  },
+}, _moverSync));
+
+EV.def('sandworm', { name: 'Sandworm', icon: '🪱', tier: 'major', w: 0.5, minDay: 4, warn: 8, dur: [28, 36], msg: 'Something HUGE is moving under the farm. Keep your animals away from the rumbling ground!',
+  init(e) {
+    const zones = Object.keys(ZONES).filter(z => AN.zoneOpen(z)); e.d.pts = []; e.d.eaten = 0;
+    for (let i = 0; i < 6; i++) { if (i % 2) { const Z = ZONES[zones[Math.floor(e.rng() * zones.length) % zones.length]]; e.d.pts.push({ x: e.rng.range(Z.x0, Z.x1), z: e.rng.range(Z.z0, Z.z1) }); } else e.d.pts.push(H.farmPoint(e.rng)); }
+    e.d.m = e.add(new THREE.Mesh(M.worm(), M.mat)); e.d.m.visible = false;
+  },
+  update(e, dt, at) {
+    // tunnels between waypoints and bursts out of the ground at each one (some are in the pens)
+    const n = e.d.pts.length, f = U.clamp(at / e.dur, 0, 0.999) * (n - 1), i = Math.floor(f), ph = f - i, a = e.d.pts[i], b = e.d.pts[i + 1], t = U.smooth(ph);
+    const p = { x: U.lerp(a.x, b.x, t), z: U.lerp(a.z, b.z, t) }, up = ph > 0.8 ? Math.sin((ph - 0.8) / 0.2 * Math.PI) : 0, m = e.d.m;
+    e.d.p = p; e.d.up = up;
+    m.visible = up > 0.02; m.position.set(p.x, W.height(p.x, p.z) - 7 + up * 7.5, p.z); m.rotation.y = at;
+    for (let k = 0; k < 4 * S.d.particles; k++) FX.emit(p.x + U.rand(-2, 2), 0.3, p.z + U.rand(-2, 2), U.rand(-3, 3), U.rand(2, 6) * (1 + up * 2), U.rand(-3, 3), 1, 0.5, 0xb89a6a, { g: 14 });
+    const d = H.d(p.x, p.z); AU.loop('rumble', U.clamp(1 - d / 40, 0, 1)); FX.shake(0.25 * U.clamp(1 - d / 30, 0, 1));
+    if (up > 0.5 && d < 3 && P.pos.y < 4 && (!e.d.ht || e.d.ht < W.timeUniform.value)) { e.d.ht = W.timeUniform.value + 1; P.launch(U.rand(-6, 6), 16, U.rand(-6, 6)); P.hurt(30, 'swallowed by a sandworm'); P.fallCause = 'thrown by a sandworm'; }
+  },
+  host(e, dt) {
+    const p = e.d.p; if (!p) return;
+    e.d.ct = (e.d.ct || 0) + dt; if (e.d.ct > 0.2) { e.d.ct = 0; H.cropsIn(p.x, p.z, 1.8, 'eaten by a sandworm'); }
+    if (e.d.up > 0.6) for (const a of AN.near(p.x, p.z, 2.8)) if (a.state !== 'carried' && e.d.eaten < 2) { a.state = 'gone'; e.d.eaten++; Game.log(`🪱 The sandworm swallowed a ${a.kind}!`); }
+  },
+});
+
+EV.def('toxic', { name: 'Toxic Spill', icon: '☣️', tier: 'major', w: 0.6, minDay: 3, warn: 6, dur: [40, 55], msg: 'Toxic sludge spilled on the fields! Wash the glowing tiles with water before the crops die.',
+  init(e) { e.d.tox = []; },
+  begin(e) {
+    if (!G.isHost) return;
+    const p = H.fieldPoint(Math.random), T = W.tiles;
+    for (const i of W.tilesNear(p.x, p.z, 2.6)) if (G.plots[W.plotOf(i)] && (T.s[i] || T.c[i] >= 0)) { e.d.tox.push({ i, t: 0 }); if (T.w[i]) { T.w[i] = 0; Game.mark(i); } }
+  },
+  sync(e) { return e.d.tox.map(o => o.i); },
+  unsync(e, v) { e.d.tox = v.map(i => ({ i })); },
+  update(e) {
+    for (const o of e.d.tox) if (Math.random() < 0.4 * S.d.particles) { const p = W.tilePos(o.i); FX.glow(p.x + U.rand(-0.7, 0.7), 0.15, p.z + U.rand(-0.7, 0.7), 0, U.rand(0.3, 1), 0, 0.8, 0.25, 0x7aff3a); }
+    W.tint(0x8aff5a, 0.05);
+  },
+  host(e, dt) {
+    const T = W.tiles;
+    for (let k = e.d.tox.length - 1; k >= 0; k--) {
+      const o = e.d.tox[k]; o.t += dt;
+      if (T.w[o.i]) { e.d.tox.splice(k, 1); continue; } // washed clean
+      if (o.t > 18) { Game.resetTile(o.i, 'poisoned by toxic sludge'); e.d.tox.splice(k, 1); continue; }
+      if (Math.random() < dt * 0.06 && e.d.tox.length < 40) {
+        const x = o.i % 8, z = Math.floor((o.i % 64) / 8), d = U.pick([[1, 0], [-1, 0], [0, 1], [0, -1]]), nx = x + d[0], nz = z + d[1];
+        if (nx >= 0 && nx < 8 && nz >= 0 && nz < 8) { const ni = o.i - (o.i % 64) + nz * 8 + nx; if ((T.s[ni] || T.c[ni] >= 0) && !T.w[ni] && !e.d.tox.some(q => q.i === ni)) e.d.tox.push({ i: ni, t: 0 }); }
+      }
     }
   },
 });

@@ -80,10 +80,16 @@ const MUTS = [
   { n: 'Giant',  mult: 5,   tint: [1.25, 1.5, 0.55], scale: 1.8 },
   { n: 'Alien',  mult: 4,   tint: [1.0, 0.55, 1.7],  scale: 1.15 },
   { n: 'Star',   mult: 8,   tint: [1.7, 1.4, 0.5],   scale: 1.25 },
+  { n: 'Rainbow', mult: 6,  tint: [1.5, 0.75, 1.6],  scale: 1.2 },
+  { n: 'Golden', mult: 10,  tint: [1.9, 1.55, 0.35], scale: 1.15 },
 ];
 
 const GOODS = {
   egg:       { name: 'Egg',              value: 15 },
+  goldegg:   { name: 'Golden egg',       value: 160 },
+  giantegg:  { name: 'Giant egg',        value: 500 },
+  mushroom:  { name: 'Wild mushroom',    value: 45 },
+  scrap:     { name: 'Robot scrap',      value: 90 },
   milk:      { name: 'Milk',             value: 40 },
   wool:      { name: 'Wool',             value: 55 },
   truffle:   { name: 'Truffle',          value: 120 },
@@ -116,7 +122,19 @@ const UPGRADES = [
   { id: 'scythe',   cat: 'Tools',    name: 'Scythe',          cost: 1200,  desc: 'Harvests a 3×3 area at once.' },
   { id: 'backpack', cat: 'Tools',    name: 'Big Backpack',    cost: 800,   desc: 'Carry 120 items instead of 40.' },
   { id: 'boots',    cat: 'Tools',    name: 'Running Boots',   cost: 700,   desc: 'Everyone runs 30% faster.' },
+  { id: 'bigcan',   cat: 'Tools',    name: 'Big Watering Can', cost: 500,  desc: 'Holds 30 water instead of 10.' },
+  { id: 'steelbucket', cat: 'Tools', name: 'Steel Bucket',    cost: 700,   desc: 'Holds 8 splashes instead of 4.' },
   { id: 'tractor',  cat: 'Tools',    name: 'Tractor',         cost: 0,     desc: 'Coming in the next update!', soon: true },
+  // farm upgrades: each one builds new things on the farm
+  { id: 'farm2',    cat: 'Farm',     name: 'Farm Upgrade II', cost: 4000,  desc: 'Builds a basketball court and a water tower. The irrigation waters every field each morning.' },
+  { id: 'farm3',    cat: 'Farm',     name: 'Farm Upgrade III',cost: 12000, desc: 'Irrigation pipes water the fields again at 14:00, and a tool shed gives everyone +40 backpack space.', needs: 'farm2' },
+  // animals: pens and animal upgrades (shown in the shop's Animals tab)
+  { id: 'pigsty',   cat: 'Animals',  name: 'Pig Sty',         cost: 1500,  desc: 'A muddy pen east of the fields. Room for 8 more pigs.' },
+  { id: 'coop2',    cat: 'Animals',  name: 'Second Coop',     cost: 1200,  desc: 'A chicken yard behind the barn. Room for 14 more chickens.' },
+  { id: 'pasture',  cat: 'Animals',  name: 'Pasture',         cost: 3000,  desc: 'A big meadow east of the pen. Room for 10 more cows or sheep.' },
+  { id: 'feeder',   cat: 'Animals',  name: 'Chicken Feeder',  cost: 1800,  desc: 'Chickens lay eggs twice as often.' },
+  { id: 'milker',   cat: 'Animals',  name: 'Milking Machine', cost: 2500,  desc: 'Every cow gives 2 milk a day.' },
+  { id: 'pigfeed',  cat: 'Animals',  name: 'Premium Pig Feed',cost: 1200,  desc: 'Pigs fatten twice as fast.' },
   // defenses
   { id: 'rod',      cat: 'Defenses', name: 'Lightning Rods',  cost: 2500,  desc: '80% of lightning hits the rods instead.' },
   { id: 'windfence',cat: 'Defenses', name: 'Wind Fences',     cost: 4000,  desc: 'Tornado, hurricane & sandstorm crop damage halved.' },
@@ -127,6 +145,7 @@ const UPGRADES = [
   { id: 'seismic',  cat: 'Defenses', name: 'Shock Absorbers', cost: 5000,  desc: 'Earthquake, sinkhole & mole damage halved.' },
   { id: 'bunker',   cat: 'Defenses', name: 'Bunker',          cost: 5000,  desc: 'Underground room. Safe from everything except the apocalypse.' },
   { id: 'laser',    cat: 'Defenses', name: 'Anti-Alien Laser',cost: 7000,  desc: 'Shoots UFOs and gnomes. Abductions fail 75% of the time.' },
+  { id: 'cats',     cat: 'Defenses', name: 'Barn Cats',       cost: 1800,  desc: 'Cats catch most rats before they reach the crops.' },
   { id: 'gh0',      cat: 'Greenhouses', name: 'Greenhouse — Field 1', cost: 3000, desc: 'Protects field 1 from rain, hail, snow, heat, frogs, fish & locusts.', plot: 0 },
   { id: 'gh1',      cat: 'Greenhouses', name: 'Greenhouse — Field 2', cost: 3500, desc: 'Same for field 2.', plot: 1 },
   { id: 'gh2',      cat: 'Greenhouses', name: 'Greenhouse — Field 3', cost: 4000, desc: 'Same for field 3.', plot: 2 },
@@ -137,18 +156,31 @@ const UPGRADES = [
   { id: 'gh7',      cat: 'Greenhouses', name: 'Greenhouse — Field 8', cost: 6500, desc: 'Same for field 8.', plot: 7 },
 ];
 
+// animals you can buy in the shop; fat = how many crops a pig eats before it can be sold
+const ANIMAL_SHOP = {
+  cow:     { name: 'Cow',     icon: '🐄', cost: 450, desc: 'Milk once a day.' },
+  pig:     { name: 'Pig',     icon: '🐖', cost: 250, desc: 'Digs up truffles. Feed it crops, then sell it fat.' },
+  sheep:   { name: 'Sheep',   icon: '🐑', cost: 350, desc: 'Wool once a day.' },
+  chicken: { name: 'Chicken', icon: '🐔', cost: 60,  desc: 'Lays eggs.' },
+};
+const PIG_FAT = 5, PIG_PRICE = 650;
+// water tools: the can waters 1 tile, the bucket 2×2
+const CAN_MAX = () => G.has('bigcan') ? 30 : 10;
+const BUCKET_MAX = () => G.has('steelbucket') ? 8 : 4;
+
 const PLAYER_COLORS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc9c, 0xff6fb5];
 
 // ---------------- settings ----------------
 const DEFAULT_KEYS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sprint: 'ShiftLeft',
   crouch: 'KeyC', interact: 'KeyE', nextSeed: 'KeyR', ping: 'KeyQ', chat: 'KeyT', scoreboard: 'Tab',
-  slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3',
+  slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4', slot5: 'Digit5', carry: 'KeyF',
 };
 const KEY_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Move left', right: 'Move right', jump: 'Jump',
   sprint: 'Sprint', crouch: 'Crouch', interact: 'Interact / use', nextSeed: 'Next seed', ping: 'Ping spot',
   chat: 'Chat', scoreboard: 'Scoreboard', slot1: 'Hand / harvest', slot2: 'Hoe', slot3: 'Seeds',
+  slot4: 'Watering can', slot5: 'Bucket', carry: 'Pick up / put down animal',
 };
 
 const S = {
