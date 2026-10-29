@@ -161,6 +161,20 @@ const GAMES = [
     ]
   },
   {
+    file: 'Farm Chaos/index.html', party: 'farm', title: 'Chaos Farm', art: 'farm',
+    desc: 'Grow crops, sell the harvest and pay off the farm\'s debt, while tornadoes, meteors, nukes, aliens and black holes try to wreck everything.',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: '3D farming',
+    updating: true, changelog: [
+      { version: '0.1.0', date: '2026-10-29', notes: [
+        'First playable farm in first person: till, plant, water and harvest 20 kinds of crops.',
+        'Shop with seeds, new fields and upgrades. Pay off the debt, and buy insurance before disaster strikes.',
+        'Chaos events from day 2, like tornadoes, meteors, nukes and aliens, with a black hole or supernova apocalypse at the end.',
+        'Co-op for up to 4 players with an online code, or a direct code for Tailscale and LAN.',
+        'Saves, settings and rebindable keys.'
+      ] }
+    ]
+  },
+  {
     file: 'Prison boss/index.html', party: 'prison', title: 'Prison Boss', subtitle: 'VR & PC edition', art: 'prison',
     desc: 'Run a business from your cell. Craft and sell contraband, climb the ranks, carve a fake key and escape without the guards catching on. Playable on PC or in a VR headset.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Prison sim · VR',
@@ -285,6 +299,18 @@ const ART = {
     <g fill="#3a2a1c"><circle cx="206" cy="132" r="9"/><ellipse cx="206" cy="152" rx="12" ry="14"/><circle cx="198" cy="126" r="4"/><circle cx="214" cy="126" r="4"/></g>
     <g fill="#3a2a1c"><circle cx="96" cy="150" r="7"/><ellipse cx="102" cy="164" rx="12" ry="8"/><path d="M112 162q14-4 12-20" stroke="#3a2a1c" stroke-width="3" fill="none"/></g>
     <rect y="170" width="400" height="30" fill="#3e6339"/>`,
+  farm: `
+    <defs><linearGradient id="g10" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9aa6b8"/><stop offset=".6" stop-color="#d9c79a"/><stop offset="1" stop-color="#c9a464"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g10)"/>
+    <path d="M300 30q-30 0-34 8t26 10-18 12 14 14-6 14 8 22" stroke="#5f6878" stroke-width="10" stroke-linecap="round" fill="none" opacity=".75"/>
+    <path d="M296 34q-22 2-20 8t20 8" stroke="#7a8496" stroke-width="5" fill="none" opacity=".6"/>
+    <circle cx="70" cy="40" r="5" fill="#ffd27a"/><path d="M70 40l-26-22" stroke="#ffb35a" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+    <path d="M0 140q100-14 200-4t200-6v70H0z" fill="#8a6a3a"/>
+    <g stroke="#6e5230" stroke-width="3" opacity=".7"><path d="M0 160q100-10 200-2t200-6M0 178q100-8 200 0t200-4"/></g>
+    <g fill="#5f8f3a"><path d="M40 150q-6-14 0-20q6 8 0 20z"/><path d="M80 148q-6-14 0-20q6 8 0 20z"/><path d="M120 146q-6-14 0-20q6 8 0 20z"/><path d="M160 145q-6-14 0-20q6 8 0 20z"/></g>
+    <path d="M200 140v-40l24-18 24 18v40z" fill="#a3402c"/><path d="M196 102l28-22 28 22" stroke="#6e2a1c" stroke-width="5" fill="none"/>
+    <rect x="216" y="114" width="16" height="26" fill="#6e2a1c"/><path d="M216 114l16 26M232 114l-16 26" stroke="#d9c79a" stroke-width="2"/>
+    <rect x="256" y="96" width="14" height="44" rx="7" fill="#c9c2b0"/><path d="M256 102h14" stroke="#8a8474" stroke-width="2"/>`,
   prison: `
     <defs><linearGradient id="g8" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c7cdd3"/><stop offset="1" stop-color="#8b949c"/></linearGradient>
     <radialGradient id="g8b" cx=".72" cy=".3" r=".45"><stop offset="0" stop-color="#fff1cf" stop-opacity=".9"/><stop offset="1" stop-color="#fff1cf" stop-opacity="0"/></radialGradient></defs>
@@ -428,6 +454,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Rooftop%20snipers/party-adapter.js"></script>
 <script src="Survival/party-adapter.js"></script>
 <script src="contain-the-miller/party-adapter.js"></script>
+<script src="Farm%20Chaos/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
 </html>
