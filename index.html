@@ -146,21 +146,6 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
   {
-    file: 'contain-the-miller/index.html', party: 'miller', title: 'Contain the Miller', art: 'miller', big: true,
-    desc: 'Shipwrecked on an island overrun by monkeys. Chop bamboo and trees, build cages with rope lashing, sneak up on monkeys and feed them to tame them. Every caged monkey earns you money.',
-    mp: null, mpNote: 'Co-op for up to 4 players is planned. For now the party can open it for everyone at once, but each player has their own island.', lang: 'English', genre: '3D survival',
-    updating: true, changelog: [
-      { version: '0.1.0', date: '2026-10-28', notes: [
-        'First playable jungle: chop bamboo and trees, gather stone and fiber.',
-        'Chimpanzees and Basic Monkeys roam the jungle. Sneak (Ctrl) and feed them to tame them.',
-        'Build menu (B) with the rope-lashing build minigame.',
-        'Bamboo cages earn slow income for every monkey inside.',
-        'Day and night cycle with campfires and torches.',
-        'Health, stamina, hunger and thirst. Drink from the river or your canteen.'
-      ] }
-    ]
-  },
-  {
     file: 'Farm Chaos/index.html', party: 'farm', title: 'Chaos Farm', art: 'farm',
     desc: 'Grow crops, sell the harvest and pay off the farm\'s debt, while tornadoes, meteors, nukes, aliens and black holes try to wreck everything.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: '3D farming',
@@ -301,17 +286,6 @@ const GAMES = [
 
 /* Atmospheric card art: gradient sky + layered silhouettes */
 const ART = {
-  miller: `
-    <defs><linearGradient id="g9" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9d9a6"/><stop offset=".55" stop-color="#9cc08a"/><stop offset="1" stop-color="#4f7a4a"/></linearGradient></defs>
-    <rect width="400" height="200" fill="url(#g9)"/><circle cx="310" cy="52" r="20" fill="#fff4d0" opacity=".8"/>
-    <path d="M0 120q60-30 120-8t110 0 90-20 80 6v102H0z" fill="#5f8f55" opacity=".7"/>
-    <g fill="#2f4f2c"><path d="M40 200V96q-2-20 6-36" stroke="#2f4f2c" stroke-width="6" fill="none"/>
-    <path d="M46 60q-34-6-46 18q22-12 46-10z"/><path d="M46 60q32-14 56 2q-28-2-56 6z"/><path d="M46 60q-10-24 6-38q-2 20-2 38z"/>
-    <path d="M360 200V90q2-18-4-32" stroke="#2f4f2c" stroke-width="6" fill="none"/><path d="M356 58q30-10 44 10q-22-8-44-4z"/><path d="M356 58q-28-12-50 6q26-4 50-0z"/></g>
-    <g stroke="#6b4a2a" stroke-width="5"><path d="M150 170V110M178 170V110M206 170V110M234 170V110M262 170V110"/><path d="M144 110h124M144 170h124" stroke-width="7"/></g>
-    <g fill="#3a2a1c"><circle cx="206" cy="132" r="9"/><ellipse cx="206" cy="152" rx="12" ry="14"/><circle cx="198" cy="126" r="4"/><circle cx="214" cy="126" r="4"/></g>
-    <g fill="#3a2a1c"><circle cx="96" cy="150" r="7"/><ellipse cx="102" cy="164" rx="12" ry="8"/><path d="M112 162q14-4 12-20" stroke="#3a2a1c" stroke-width="3" fill="none"/></g>
-    <rect y="170" width="400" height="30" fill="#3e6339"/>`,
   farm: `
     <defs><linearGradient id="g10" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9aa6b8"/><stop offset=".6" stop-color="#d9c79a"/><stop offset="1" stop-color="#c9a464"/></linearGradient></defs>
     <rect width="400" height="200" fill="url(#g10)"/>
@@ -466,7 +440,6 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Last%20shelter/party-adapter.js"></script>
 <script src="Rooftop%20snipers/party-adapter.js"></script>
 <script src="Survival/party-adapter.js"></script>
-<script src="contain-the-miller/party-adapter.js"></script>
 <script src="Farm%20Chaos/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
