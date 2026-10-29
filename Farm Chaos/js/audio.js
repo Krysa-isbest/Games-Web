@@ -106,6 +106,7 @@ const AU = {
       case 'crack': this.burst(0.6, 0.8, 'lowpass', 500, 1, D, true, 0, 80); break;
       case 'chomp': this.burst(0.06, 0.4, 'bandpass', 1200, 3, D); break;
       case 'kick': this.osc('sine', 220, 80, 0.12, 0.4, D); this.burst(0.08, 0.4, 'lowpass', 1200, 1, D); break;
+      case 'cricket': { const f = 4300 + Math.random() * 600, n = 2 + (Math.random() * 3 | 0); for (let i = 0; i < n; i++) this.osc('sine', f, f * 0.97, 0.03, 0.025, D, i * 0.06); break; }
       case 'chirp': { const f = 2500 + Math.random() * 1500; for (let i = 0; i < 2 + (Math.random() * 3 | 0); i++) this.osc('sine', f, f * 1.4, 0.07, 0.05, D, i * 0.11); break; }
       case 'chime':[523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.5, 0.15, D, i * 0.12)); break;
     }

@@ -320,20 +320,7 @@ const Game = {
   // ---------------- host simulation ----------------
   hostUpdate(dt) {
     const T = W.tiles;
-    // crop growth
-    this.growT += dt;
-    if (this.growT >= 1) {
-      const step = this.growT; this.growT = 0;
-      let mult = EV.has('timewarp') ? 6 : 1; if (EV.has('eclipse')) mult = 0;
-      const moon = EV.has('lowgrav'), drought = EV.has('drought');
-      for (let i = 0; i < TILES_TOTAL; i++) {
-        if (T.c[i] < 0 || T.st[i] === 3) continue;
-        // watered crops grow 60% faster; in a drought only watered crops grow at all
-        const wet = T.w[i] ? 1.6 : drought ? 0 : 1;
-        T.g[i] += step * mult * wet * (moon && CROPS[T.c[i]].moon ? 3 : 1);
-        const st = this.stageOf(i); if (st !== T.st[i]) { T.st[i] = st; this.mark(i); }
-      }
-    }
+    this.grow(dt);
     // fire spread
     this.fireT += dt;
     if (this.fireT >= 0.5) {
@@ -366,6 +353,24 @@ const Game = {
     this.saveT += dt; if (this.saveT > 90) { this.saveT = 0; this.save(); }
   },
 
+  // crop growth. The host is the authority for stages; clients run the same math only so the
+  // "growing (x%)" prompt shows real progress (the host never sends the growth timer).
+  grow(dt) {
+    const T = W.tiles;
+    this.growT += dt;
+    if (this.growT < 1) return;
+    const step = this.growT; this.growT = 0;
+    let mult = EV.has('timewarp') ? 6 : 1; if (EV.has('eclipse')) mult = 0;
+    const moon = EV.has('lowgrav'), drought = EV.has('drought');
+    for (let i = 0; i < TILES_TOTAL; i++) {
+      if (T.c[i] < 0 || T.st[i] === 3) continue;
+      // watered crops grow 60% faster; in a drought only watered crops grow at all
+      const wet = T.w[i] ? 1.6 : drought ? 0 : 1, need = CROPS[T.c[i]].grow;
+      T.g[i] += step * mult * wet * (moon && CROPS[T.c[i]].moon ? 3 : 1);
+      if (!G.isHost) { T.g[i] = U.clamp(T.g[i], T.st[i] * need / 3, need - 0.01); continue; }
+      const st = this.stageOf(i); if (st !== T.st[i]) { T.st[i] = st; this.mark(i); }
+    }
+  },
   sleepUntilMorning() {
     const next = G.day() * DAY;
     const skipped = next - G.time;
@@ -536,7 +541,7 @@ const Game = {
       }
       case 'tl': {
         const T = W.tiles;
-        for (const [i, s, c, st, mu, f, x, w] of m.d) { if (x && T.c[i] >= 0) this.cropPuff(i); T.s[i] = s; T.c[i] = c; T.st[i] = st; T.m[i] = mu; T.f[i] = f; T.w[i] = w || 0; }
+        for (const [i, s, c, st, mu, f, x, w] of m.d) { if (x && T.c[i] >= 0) this.cropPuff(i); if (T.c[i] !== c) T.g[i] = 0; T.s[i] = s; T.c[i] = c; T.st[i] = st; T.m[i] = mu; T.f[i] = f; T.w[i] = w || 0; }
         W.cropsDirty = true; return;
       }
       case 's': {
@@ -734,6 +739,7 @@ function frame(now) {
   if (G.started) {
     EV.update(dt);
     if (G.isHost && running) { EV.hostSchedule(dt); AN.hostUpdate(dt); Game.hostUpdate(dt); }
+    else if (!G.isHost) Game.grow(dt);
     P.update(dt);
     Game.renderFire(dt); Game.renderPickups(dt); Game.renderAvatars(dt); Game.updateFinalVisuals(dt);
     Game.netUpdate(dt);
@@ -746,7 +752,8 @@ function frame(now) {
   AN.render(dt);
   // ambience: birds by day, crickets at night
   const h = G.hour(), night = h < 5.5 || h > 20.5;
-  if (G.started) { if (night) AU.loop('crickets', 0.25); else if (Math.random() < dt * 0.5) AU.play('chirp', { x: P.pos.x + U.rand(-30, 30), y: 8, z: P.pos.z + U.rand(-30, 30) }, 0.7); }
+  // (night crickets are short chirps from around you; the old constant loop sounded like a beep)
+  if (G.started) { if (night) { if (Math.random() < dt * 1.5) AU.play('cricket', { x: P.pos.x + U.rand(-25, 25), y: 0.3, z: P.pos.z + U.rand(-25, 25) }, 0.6); } else if (Math.random() < dt * 0.5) AU.play('chirp', { x: P.pos.x + U.rand(-30, 30), y: 8, z: P.pos.z + U.rand(-30, 30) }, 0.7); }
   FX.update(dt);
   W.update(dt);
   W.applyEnv(W.camera.position);
