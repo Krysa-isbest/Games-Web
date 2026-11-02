@@ -38,7 +38,7 @@
     invites: [],                // Tailscale leader: party invites waiting for a reply
     joinReply: '',              // Tailscale guest: reply code to send back
     busy: '', err: '',
-    gameNet: 'peer',            // how games connect: 'peer' | 'ts'
+    gameNet: 'peer',            // how games connect: 'peer' | 'ts' | 'mixed' (each friend the way they joined)
     game: null,                 // the game running now (see launch())
     chat: [],
     mic: false,
@@ -255,9 +255,16 @@
       case 'hello': {
         if (P.role !== 'host') return;
         const id = String(m.id || uid()), name = String(m.name || 'Player').slice(0, 16);
+        const net = l.pc ? 'ts' : 'peer'; // how this friend reached the party
         l.id = id;
         P.links.set(id, l);
-        P.members = P.members.filter(x => x.id !== id).concat({ id, name });
+        P.members = P.members.filter(x => x.id !== id).concat({ id, name, net });
+        // a Tailscale friend in a room-code party: games connect each friend the way they joined
+        if (net === 'ts' && P.mode === 'peer' && P.gameNet === 'peer') {
+          P.gameNet = 'mixed';
+          broadcast({ t: 'net', net: P.gameNet }, id);
+          sys('Games now connect each friend the way they joined (Mixed).');
+        }
         l.send({ t: 'welcome', code: P.code, mode: P.mode, net: P.gameNet });
         roster();
         sys(name + ' joined the party.');
@@ -452,6 +459,21 @@
   /* ---------------- Launching a game for the party ---------------- */
   // How a game connects: Tailscale only if the party chose it AND the game supports it.
   function netFor(adapter, net) { return net === 'ts' && adapter.ts ? 'ts' : 'peer'; }
+  // One friend's way in. 'mixed' = the way they joined the party.
+  function netOf(adapter, id) {
+    const m = P.members.find(x => x.id === id);
+    return netFor(adapter, P.gameNet === 'mixed' ? (m && m.net) || 'peer' : P.gameNet);
+  }
+  // Mixed games (adapter.mixed) host a room AND take Tailscale invites, so every friend gets their own way.
+  // Other games use one way for everyone: with Mixed, Tailscale only if every friend came over Tailscale.
+  function gameNets(adapter) {
+    const ids = P.members.filter(m => m.id !== P.me).map(m => m.id);
+    const nets = new Map(ids.map(id => [id, netOf(adapter, id)]));
+    if (adapter.mixed) return { nets, single: 'mixed' };
+    const single = P.gameNet === 'mixed' ? (ids.length && [...nets.values()].every(n => n === 'ts') ? 'ts' : 'peer') : netFor(adapter, P.gameNet);
+    ids.forEach(id => nets.set(id, single));
+    return { nets, single };
+  }
   let lidSeq = 0;
   const waiters = new Map();
 
@@ -462,12 +484,14 @@
       sys(g.title + ' can\'t be played online, so it opened just for you.');
       return;
     }
-    const net = netFor(adapter, P.gameNet);
-    if (P.gameNet === 'ts' && net !== 'ts') sys(g.title + ' doesn\'t support Tailscale, so it connects with PeerJS.');
+    const { nets, single } = gameNets(adapter);
+    if (P.gameNet !== 'peer' && !adapter.ts) sys(g.title + ' doesn\'t support Tailscale, so it connects with PeerJS.');
+    else if (P.gameNet === 'mixed' && !adapter.mixed && [...nets.values()].some(n => n === 'peer') && P.members.some(m => m.net === 'ts'))
+      sys(g.title + ' can\'t mix PeerJS and Tailscale, so everyone connects with PeerJS.');
     const lid = Date.now() + '-' + (++lidSeq);
     const frame = openFrame(idx);
-    P.game = { idx, lid, net, code: null, queue: [], status: '', frame, adapter, ctx: null };
-    broadcast({ t: 'launch', idx, file: g.file, lid, net });
+    P.game = { idx, lid, net: single, nets, code: null, queue: [], status: '', frame, adapter, ctx: null };
+    nets.forEach((net, id) => send(id, { t: 'launch', idx, file: g.file, lid, net }));
     sys('Starting ' + g.title + ' for everyone' + (P.members.length > adapter.max ? ` (only ${adapter.max} can play it)` : '') + '…');
     runHost(P.game).catch(e => fail(P.game, e));
   }
@@ -476,31 +500,50 @@
     game.error = e.message;
     gStatus('⚠️ ' + e.message + ' You can still use the game\'s own multiplayer menu.');
   }
+  const idsWith = (game, net) => [...game.nets].filter(([, n]) => n === net).map(([id]) => id);
   async function runHost(game) {
     const { adapter, net } = game;
-    const ctx = game.ctx = await readyCtx(game.frame, adapter, { ts: net === 'ts' });
+    const tsIds = idsWith(game, 'ts'), peerIds = idsWith(game, 'peer');
+    const ctx = game.ctx = await readyCtx(game.frame, adapter, { ts: net === 'ts' || tsIds.length > 0 });
     if (adapter.openOnly) { gStatus(adapter.note || 'Opened for everyone.'); return; }
-    if (net === 'ts' && adapter.ts === 'manual') {
+    const manualOnly = adapter.ts === 'manual' && (adapter.mixed ? tsIds.length > 0 && !peerIds.length : net === 'ts');
+    if (manualOnly) {
       gStatus('Opening the game for your friends…');
       await adapter.hostManual(ctx);
-      P.members.forEach(m => { if (m.id !== P.me) game.queue.push(m.id); });
-      inviteLoop(game);
-    } else {
+    } else await openRoom(game);
+    game.hosted = true;
+    // Tailscale friends: invite / reply swap, one after another (the latest list, in case someone joined meanwhile)
+    if (adapter.ts === 'manual' && P.game === game) {
+      idsWith(game, 'ts').forEach(id => { if (!game.queue.includes(id)) game.queue.push(id); });
+      if (game.queue.length) inviteLoop(game);
+    }
+  }
+  // Host the game's room (PeerJS) and hand the code to everyone who connects that way.
+  async function openRoom(game) {
+    if (game.code || game.rooming) return;
+    game.rooming = true;
+    try {
       gStatus('Creating a room…');
-      const code = await adapter.host(ctx, { ts: net === 'ts' });
+      const code = await game.adapter.host(game.ctx, { ts: game.net === 'ts' });
       if (P.game !== game) return;
       game.code = code;
-      broadcast({ t: 'code', lid: game.lid, code });
+      if (game.adapter.mixed) idsWith(game, 'peer').forEach(id => send(id, { t: 'code', lid: game.lid, code }));
+      else broadcast({ t: 'code', lid: game.lid, code });
       gStatus('Room ' + code + ' is open. Friends are joining…');
-    }
+    } finally { game.rooming = false; }
   }
   // A member who joined the party while a game was already running
   function bringIn(id) {
     const game = P.game;
-    send(id, { t: 'launch', idx: game.idx, file: GAMES[game.idx].file, lid: game.lid, net: game.net });
-    if (game.net === 'ts' && game.adapter.ts === 'manual') {
-      if (game.ctx) { game.queue.push(id); inviteLoop(game); }
+    const net = game.adapter && game.adapter.mixed ? netOf(game.adapter, id) : game.net;
+    if (game.nets) game.nets.set(id, net);
+    send(id, { t: 'launch', idx: game.idx, file: GAMES[game.idx].file, lid: game.lid, net });
+    if (!game.adapter) return;
+    // before the host has finished setting up, runHost picks them up from game.nets
+    if (net === 'ts' && game.adapter.ts === 'manual') {
+      if (game.hosted && !game.queue.includes(id)) { game.queue.push(id); inviteLoop(game); }
     } else if (game.code) send(id, { t: 'code', lid: game.lid, code: game.code });
+    else if (game.adapter.mixed && game.hosted) openRoom(game).catch(e => fail(game, e)); // first room-code friend of a Tailscale-only game
   }
   // Tailscale code swap, one friend at a time (some games only keep one invite open)
   async function inviteLoop(game) {
@@ -611,7 +654,7 @@
     else if (v === 'join') joinPeer($('pt-code').value);
     else if (v === 'tsjoin') tsJoin($('pt-inv-in').value);
     else if (v === 'mic') ensureMic();
-    else if (v === 'invite') tsNewInvite();
+    else if (v === 'invite') ensureMic().then(tsNewInvite);
     else if (v === 'accept') { const ta = document.querySelector(`[data-reply="${b.dataset.id}"]`); if (ta && ta.value.trim()) tsAccept(b.dataset.id, ta.value); }
     else if (v === 'dropinv') { const inv = P.invites.find(i => i.id === b.dataset.id); if (inv) { try { inv.pc.close(); } catch (err) { } P.invites = P.invites.filter(i => i !== inv); render(); } }
     else if (v === 'copy') copyText(b.dataset.text || (document.getElementById(b.dataset.from) || {}).value || '', b);
@@ -688,11 +731,12 @@
 
     h += `<div class="pt-sec"><h4>In the party · ${P.members.length}</h4><ul class="pt-list">`;
     P.members.forEach((m, i) => {
-      h += `<li><i style="background:${['#b8502f', '#3f7fa8', '#3f8a5f', '#8a62c8', '#c9a227', '#c2553a'][i % 6]}"></i><b>${esc(m.name)}</b>${i === 0 ? '<em>leader</em>' : ''}${m.id === P.me ? '<em>you</em>' : ''}${m.st && P.game ? `<small>${esc(m.st)}</small>` : ''}</li>`;
+      h += `<li><i style="background:${['#b8502f', '#3f7fa8', '#3f8a5f', '#8a62c8', '#c9a227', '#c2553a'][i % 6]}"></i><b>${esc(m.name)}</b>${i === 0 ? '<em>leader</em>' : ''}${m.id === P.me ? '<em>you</em>' : ''}${m.net === 'ts' && P.mode === 'peer' ? '<em>Tailscale</em>' : ''}${m.st && P.game ? `<small>${esc(m.st)}</small>` : ''}</li>`;
     });
     h += '</ul>';
-    if (host && P.mode === 'ts') {
-      h += '<p class="pt-note">For each friend: send them an invite, paste their reply, press Connect.</p>';
+    // the leader can always invite over Tailscale too, even into a room-code party (mixed party)
+    if (host && (P.mode === 'ts' || P.invites.length)) {
+      h += `<p class="pt-note">${P.mode === 'ts' ? 'For each friend' : 'Tailscale friend'}: send them an invite, paste their reply, press Connect.</p>`;
       P.invites.forEach(inv => {
         h += `<div class="pt-inv"><p class="pt-note">${esc(inv.state)}</p>`;
         if (inv.code) h += `<textarea id="inv-${inv.id}" readonly>${esc(inv.code)}</textarea>
@@ -702,13 +746,15 @@
         h += '</div>';
       });
       h += `<button class="pt-btn" data-p="invite">+ Invite another friend</button>`;
-    }
+    } else if (host) h += `<button class="pt-btn sm" data-p="invite" title="For a friend who can't use the room code: you swap codes over Tailscale">+ Invite a friend over Tailscale</button>`;
     h += '</div>';
 
+    const netName = { peer: 'PeerJS', ts: 'Tailscale', mixed: 'Mixed' };
     h += `<div class="pt-sec"><h4>Games connect with</h4>`;
-    if (host) h += `<div class="pt-seg"><button data-p="net" data-v="peer" class="${P.gameNet === 'peer' ? 'on' : ''}">PeerJS</button><button data-p="net" data-v="ts" class="${P.gameNet === 'ts' ? 'on' : ''}">Tailscale</button></div>`;
-    else h += `<p class="pt-note"><b>${P.gameNet === 'ts' ? 'Tailscale' : 'PeerJS'}</b> (the leader chooses)</p>`;
+    if (host) h += `<div class="pt-seg"><button data-p="net" data-v="peer" class="${P.gameNet === 'peer' ? 'on' : ''}">PeerJS</button><button data-p="net" data-v="ts" class="${P.gameNet === 'ts' ? 'on' : ''}">Tailscale</button><button data-p="net" data-v="mixed" class="${P.gameNet === 'mixed' ? 'on' : ''}" title="Each friend connects the way they joined the party">Mixed</button></div>`;
+    else h += `<p class="pt-note"><b>${netName[P.gameNet] || 'PeerJS'}</b> (the leader chooses)</p>`;
     if (P.gameNet === 'ts') h += '<p class="pt-note">Rooftop Snipers and Divočina only support PeerJS and use it automatically. Allow the microphone when a game asks.</p>';
+    if (P.gameNet === 'mixed') h += '<p class="pt-note">Each friend connects the way they joined the party: room code over PeerJS, invite over Tailscale. Only games that can mix (Chucky\'s House) do both at once; the rest pick one way for everyone.</p>';
     h += '</div>';
 
     h += '<div class="pt-sec"><h4>Now playing</h4>';

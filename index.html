@@ -237,6 +237,23 @@ const GAMES = [
     ]
   },
   {
+    file: 'Chucky\'s house/index.html', party: 'chucky', title: 'Chucky\'s House', art: 'pawn',
+    desc: 'Run a pawn shop to pay off the bank: haggle, ring up sales and spot fakes. At night, drive the pickup out to the Back Alley or the Junkyard and bring back whatever you can carry.',
+    mp: 'Online co-op · up to 4 · voice chat', lang: 'English', genre: 'Shop sim · scavenging',
+    updating: true, changelog: [
+      { version: '0.6.0', date: '2026-11-02', notes: [
+        'New map: the Junkyard. An old man with a shotgun, 2–4 dogs, hiding spots in wrecks and porta-potties.',
+        'Every night rolls a random skull difficulty for each map.',
+        'Pickup truck: dump your bag into the bed to keep your loot safe.',
+        'Big objects like motorbikes: carry them with a friend, drag them alone, or take them apart with tools.',
+        'Weapons: batons, pepper spray and tasers stun, bats and guns kill. Guns need a permit.',
+        'Workshop for repairs, a chicken coop and an egg stand window, Saturday auctions, trust, a register checkout and a magnifier.',
+        'Co-op for up to 4 with a room code or a direct code, plus proximity voice chat and walkie-talkies.',
+        'A city outside the window, more detailed characters and detailed graphics settings.'
+      ] }
+    ]
+  },
+  {
     file: 'Containment/Containment.html', party: 'containment', title: 'Containment', art: 'containment',
     desc: 'Hold a sealed chamber against waves of drones. Pick upgrades between waves, craft gear and face a Warden every fifth wave.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: '3D shooter',
@@ -364,7 +381,18 @@ const ART = {
     <path d="M0 170q60-14 120 0t140 0 140 0v30H0z" fill="#8b6a2c"/>
     <g fill="#8b6a2c"><circle cx="80" cy="166" r="6"/><circle cx="310" cy="164" r="7"/></g>
     <g fill="#4a3615"><ellipse cx="300" cy="70" rx="9" ry="6"/><ellipse cx="80" cy="96" rx="7" ry="5"/></g>
-    <g fill="#fff" opacity=".7"><ellipse cx="297" cy="62" rx="6" ry="4"/><ellipse cx="78" cy="90" rx="5" ry="3"/></g>`
+    <g fill="#fff" opacity=".7"><ellipse cx="297" cy="62" rx="6" ry="4"/><ellipse cx="78" cy="90" rx="5" ry="3"/></g>`,
+  pawn: `
+    <defs><linearGradient id="g11" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2340"/><stop offset="1" stop-color="#6a3a3a"/></linearGradient>
+    <radialGradient id="g11b" cx=".5" cy=".45" r=".4"><stop offset="0" stop-color="#ff5a3a" stop-opacity=".45"/><stop offset="1" stop-color="#ff5a3a" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#g11)"/><rect width="400" height="200" fill="url(#g11b)"/>
+    <g fill="#1c1626" opacity=".8"><rect x="0" y="60" width="70" height="140"/><rect x="330" y="50" width="70" height="150"/></g>
+    <rect x="90" y="70" width="220" height="130" fill="#4a2a22"/>
+    <rect x="140" y="58" width="120" height="22" rx="3" fill="#120808"/><rect x="146" y="64" width="108" height="10" rx="2" fill="#ff3b2f" opacity=".9"/>
+    <rect x="110" y="104" width="80" height="58" fill="#ffcf7a" opacity=".85"/><path d="M150 104v58M110 133h80" stroke="#4a2a22" stroke-width="3"/>
+    <rect x="216" y="112" width="40" height="88" fill="#2a1a12"/><circle cx="249" cy="158" r="3" fill="#c9973f"/>
+    <g fill="#c9973f"><circle cx="286" cy="96" r="7"/><circle cx="276" cy="112" r="7"/><circle cx="296" cy="112" r="7"/><path d="M286 82v8" stroke="#c9973f" stroke-width="2"/></g>
+    <rect y="186" width="400" height="14" fill="#1a1a1e"/>`
 };
 
 const ICON_MP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 13.6c2.6.2 4.5 2 4.5 4.9"/></svg>';
@@ -441,6 +469,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Rooftop%20snipers/party-adapter.js"></script>
 <script src="Survival/party-adapter.js"></script>
 <script src="Farm%20Chaos/party-adapter.js"></script>
+<script src="Chucky's%20house/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
 </html>
