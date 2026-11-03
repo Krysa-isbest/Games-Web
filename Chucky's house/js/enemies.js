@@ -17,6 +17,8 @@ const BASE = {
 };
 // Stuns are shorter the more skulls tonight has.
 export const stunMult = s => 1 / (0.7 + s * 0.3);
+// How far enemies hear a voice. vl = mic loudness 0..1 (0 when the player switched voice noise off).
+export const voiceRange = (vl = 0, hidden = false) => (vl < 0.12 ? 0 : vl < 0.35 ? 5 : vl < 0.6 ? 11 : 17) * (hidden ? 0.3 : 1);
 
 function shotgunMesh() {
   const g = new THREE.Group();
@@ -117,7 +119,14 @@ export function updateEnemiesHost(E, dt, players, cb) {
       const d = Math.hypot(p.pos.x - m.position.x, p.pos.z - m.position.z);
       const visR = en.vision * (p.light ? 1.35 : 1) * (p.crouch ? 0.7 : 1) * (E.ev.id === 'fog' ? 0.6 : E.ev.id === 'day' ? 1.4 : 1);
       const sees = !p.hidden && d < visR && los(m.position, p.pos);
-      const hears = !p.hidden && d < en.hear * (p.run ? 1 : p.crouch ? 0.2 : 0.4) * (p.quiet ? 0.75 : 1);
+      // voice: talking carries a few metres, shouting much further, whispering is safe; muffled in a hiding spot
+      const vr = voiceRange(p.vl, p.hidden) * (en.kind === 'dog' ? 1.3 : 1);
+      const voice = vr > 0 && d < vr;
+      const hears = !p.hidden && (d < en.hear * (p.run ? 1 : p.crouch ? 0.2 : 0.4) * (p.quiet ? 0.75 : 1) || voice);
+      if (p.hidden && voice) { // something in there is talking: come and look, and find them if they keep at it
+        if (d < 1.8) { cb.found(p.pid); en.seenAt = performance.now(); }
+        else if (en.state !== 'chase' && en.state !== 'aim') { en.state = 'search'; en.last = p.pos.clone(); en.path = []; en.repath = 0; }
+      }
       const sniff = p.hidden && en.kind === 'dog' && d < 2.6;
       // it saw you a moment before you got in: it knows where you are
       const sawHide = p.hidden && en.target === p.pid && performance.now() - (en.seenAt || 0) < 1500 + (en.state === 'chase' ? 2500 : 0) && d < 8;

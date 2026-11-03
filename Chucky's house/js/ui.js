@@ -248,6 +248,7 @@ export function settingsPanel(S, apply, onClose, mics = [], tab) {
       ${seg('micMode', 'Microphone', [['open', 'Open mic'], ['ptt', 'Push to talk (V)']])}
       <div class="set"><span>Mic device <small class="dim">(after restart)</small></span><select id="s-mic"><option value="">Default</option>${mics.map(m => `<option value="${m.deviceId}" ${S.micDevice === m.deviceId ? 'selected' : ''}>${m.label || 'Microphone'}</option>`).join('')}</select></div>
       ${check('s-ptttog', 'Push to talk: press once to toggle (instead of holding)', S.pttToggle)}
+      ${check('s-vnoise', 'Enemies can hear my voice at night <small class="dim">(turn off if your mic picks up a noisy room)</small>', S.voiceNoise)}
       <p class="dim small">Hold ${kb('radio')} to talk over the walkie-talkie (if your team owns one): everyone with a radio hears you, anywhere.</p>`,
     keys: () => {
       const groups = {};
@@ -284,7 +285,7 @@ export function settingsPanel(S, apply, onClose, mics = [], tab) {
       $(id + '-o').textContent = { res: pct, viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: pct, music: pct, voiceVol: pct }[key]?.(S[key]) ?? S[key];
       apply();
     };
-    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo', 's-ptttog': 'pttToggle', 's-crouch': 'crouchHold', 's-tips': 'tips' };
+    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo', 's-ptttog': 'pttToggle', 's-crouch': 'crouchHold', 's-tips': 'tips', 's-vnoise': 'voiceNoise' };
     for (const [id, key] of Object.entries(chk)) if ($(id)) $(id).onchange = e => { S[key] = e.target.checked; apply(); };
     panel.querySelectorAll('[data-bind]').forEach(b => b.onclick = () => {
       listening = b.dataset.bind; render();

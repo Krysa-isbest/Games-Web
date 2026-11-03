@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { G, ACTIONS, pick, rand, rng, clamp, me } from './state.js';
 import { itemById, makeItemMesh, makeInst, part, hitMat, canvasTex } from './data.js';
 import { MAP, free, los, buildAlley, buildJunkyard, LOOT_TABLES } from './maps.js';
-import { spawnEnemies, updateEnemiesHost, noise, stunMult, enemySnap, mirrorEnemies, lerpEnemies } from './enemies.js';
+import { spawnEnemies, updateEnemiesHost, noise, stunMult, enemySnap, mirrorEnemies, lerpEnemies, voiceRange } from './enemies.js';
 import { PhysWorld, throwFrom } from './physics.js';
 import { dismantle } from './minigames.js';
 import { SKULLS, value } from './economy.js';
@@ -714,7 +714,7 @@ function trapMesh(kind, x, z) {
 function playersForAI() {
   return Object.values(G.players).filter(p => p.world === 'exp').map(p => ({
     pid: p.id, pos: V(p.x, 1.6, p.z), down: p.down || p.dead, hidden: p.hidden !== false && p.hidden != null, run: p.run, crouch: p.crouch, light: p.light,
-    quiet: perk(p.id, 'scav') >= 3,
+    quiet: perk(p.id, 'scav') >= 3, vl: p.dead ? 0 : p.vl || 0,
   }));
 }
 const aiCb = {
@@ -993,8 +993,13 @@ export function update(dt) {
   if (G.running && !E.down && (E.stepT -= dt) <= 0) { E.stepT = 0.6; noiseRing(E.scene, P().x, P().z, 8, 0xffffff); }
   const base = E.down || E.hidden != null || E.inCab ? 0 : E.carrying != null ? 0.75 : G.running ? 0.6 : E.crouch ? 0.08 : 0.25;
   E.noise = Math.max(base * (moving || E.carrying != null ? 1 : 0.3), E.noise - dt * 0.8);
+  // your own voice: it shows on the noise meter, and as a light-blue ring as far as enemies can hear it
+  const my = me(), vr = voiceRange(my?.vl, E.hidden != null);
+  if (vr > 0 && !E.dead) {
+    E.noise = Math.max(E.noise, Math.min(1, vr / 17));
+    if ((E.voiceT = (E.voiceT || 0) - dt) <= 0) { E.voiceT = 0.8; noiseRing(E.scene, P().x, P().z, vr, 0x8fd0ff); }
+  }
   // publish local state for the AI / voice / other players
-  const my = me();
   if (my) Object.assign(my, { hp: E.hp, down: E.down, dead: E.dead, bleed: E.down && !E.dead ? E.bleed : 0, hidden: E.hidden ?? false, cab: E.inCab, crouch: E.crouch, light: E.lightOn });
   if (E.down) spectate();
   if ((E.hudT -= dt) <= 0) { E.hudT = 0.2; hud(); }

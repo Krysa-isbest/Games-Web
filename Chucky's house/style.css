@@ -340,6 +340,16 @@ select { width: auto; }
 .ch1-badge { background: linear-gradient(90deg, #6a4a10, #3a2a08); border: 1px solid var(--brass2); border-radius: 8px; padding: 10px 16px; font-weight: bold; color: #ffd86a; }
 .ch1-badge small { display: block; font-weight: normal; color: var(--dim); }
 
+/* heading out: the 3 s countdown, and "click to continue" */
+#travel { position: fixed; inset: 0; z-index: 30; background: radial-gradient(#0008, #000d); display: flex; align-items: center; justify-content: center; animation: tin .3s; }
+.travel-box { text-align: center; text-shadow: 0 2px 8px #000; }
+.travel-box h2 { color: var(--brass2); font-size: 30px; margin: 8px 0; }
+.travel-box b { display: block; font: 80px Impact, sans-serif; color: #fff; margin-top: 10px; }
+#click-in { position: fixed; inset: 0; z-index: 31; background: #000a; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+#click-in div { text-align: center; padding: 24px 40px; border: 2px solid var(--brass2); border-radius: 14px; background: #20160fee; animation: pulse 1.4s infinite; }
+#click-in b { display: block; font-size: 28px; color: var(--brass2); }
+#click-in small { color: var(--dim); }
+
 /* the host's pause */
 #paused-banner { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: none; text-align: center;
   font: 54px Impact, sans-serif; letter-spacing: 6px; color: #ffd86a; text-shadow: 0 0 20px #000, 0 4px 0 #000; animation: blink 2s infinite; }

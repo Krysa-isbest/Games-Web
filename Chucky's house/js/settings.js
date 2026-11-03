@@ -14,7 +14,7 @@ export const S = {
   preset: 'medium', ...PRESETS.medium,
   aa: true, ps1: false, brightness: 1, fov: 70, sens: 1, bob: true, fpsCap: 0, showFps: false,
   volume: 0.6, voiceVol: 1, music: 0.5, echo: true, micMode: 'open', micDevice: '', name: '',
-  crouchHold: false, pttToggle: false, tips: true,
+  crouchHold: false, pttToggle: false, tips: true, voiceNoise: true,
 };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* bad settings, use defaults */ }
 export const saveSettings = () => localStorage.setItem(KEY, JSON.stringify(S));

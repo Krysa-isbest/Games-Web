@@ -319,7 +319,7 @@ export function netTick(dt, camera) {
     const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
     my.x = camera.position.x; my.y = camera.position.y; my.z = camera.position.z; my.ry = Math.atan2(dir.x, dir.z); my.world = G.world;
     broadcast({ t: 'p', x: +my.x.toFixed(2), y: +my.y.toFixed(2), z: +my.z.toFixed(2), ry: +my.ry.toFixed(2), world: my.world, hp: my.hp, down: my.down,
-      dead: my.dead, bleed: +(my.bleed || 0).toFixed(1), emote: my.emote || null,
+      dead: my.dead, bleed: +(my.bleed || 0).toFixed(1), emote: my.emote || null, vl: +(my.vl || 0).toFixed(2),
       hidden: my.hidden, run: my.run, crouch: my.crouch, light: my.light, cab: my.cab, talking: my.talking, radio: my.radio, name: S.name });
   }
   if (isHost() && G.world === 'shop' && G.mode === 'play' && (snapT -= dt) <= 0) {

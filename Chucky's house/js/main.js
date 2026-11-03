@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { G, ACTIONS, pick, me, ensurePlayer } from './state.js';
 import { itemById, makeItemMesh, part, FRAGILE } from './data.js';
@@ -219,7 +219,7 @@ function updateCarry() {
   const snap = v => Math.round(v * 4) / 4;
   placeShelf(s, snap(camera.position.x + f.x * 2.2), snap(camera.position.z + f.z * 2.2), s.userData.r);
   s.userData.ok = carryValid(s.userData.box);
-  UI.hint(s.userData.ok ? `${kb('furniture')} Place · ${kb('rotate')} Rotate` : `<span class="down">Can't place here</span> · ${kb('rotate')} Rotate`);
+  UI.hint(s.userData.ok ? `${kb('furniture')} Place Â· ${kb('rotate')} Rotate` : `<span class="down">Can't place here</span> Â· ${kb('rotate')} Rotate`);
 }
 
 function toggleCarry() {
@@ -242,21 +242,21 @@ function hintFor(t) {
   const E = kb('interact'), F = kb('furniture'), Gk = kb('grab'), h = me().holding;
   if (t.customer) {
     const c = t.customer;
-    if (c.iconE === '❗' || c.state === 'flee') return `${E} <b class="down">Stop the shoplifter!</b>`;
-    if (c.iconE === '🙋' || (c.help > 0 && !c.helped)) return `${E} Help this customer <span class="dim">("Can I see that?" → they pay more)</span>`;
-    if (c.detective) return '🕵️ <span class="dim">A detective. Hope you have nothing stolen…</span>';
+    if (c.iconE === 'âť—' || c.state === 'flee') return `${E} <b class="down">Stop the shoplifter!</b>`;
+    if (c.iconE === 'đź™‹' || (c.help > 0 && !c.helped)) return `${E} Help this customer <span class="dim">("Can I see that?" â†’ they pay more)</span>`;
+    if (c.detective) return 'đź•µď¸Ź <span class="dim">A detective. Hope you have nothing stolenâ€¦</span>';
     return isFirstInQueue(c) ? `${E} Serve customer${c.reg ? ` <b>${c.reg}</b>` : ''} <span class="dim">(${c.seller ? 'selling' : 'buying'})</span>`
-      : c.state === 'queue' ? '<span class="dim">Waiting in line…</span>' : '';
+      : c.state === 'queue' ? '<span class="dim">Waiting in lineâ€¦</span>' : '';
   }
   if (t.body) return h ? '<span class="dim">Hands full</span>' : `${E} Pick up ${itemById(t.body.inst.id).icon} ${itemById(t.body.inst.id).name}`;
   if (t.kind === 'spill') {
-    const k = SPILLS[t.spill.kind], tool = k.tool === 'mop' ? '🧽 mop' : '🧹 broom';
-    if (h?.kind === 'tool' && h.tool === k.tool) return scrubP >= 0 ? `Cleaning… <span class="bar"><i style="width:${Math.round(scrubP * 100)}%"></i></span>` : `Hold ${kb('attack')} to clean the ${k.name.toLowerCase()}`;
+    const k = SPILLS[t.spill.kind], tool = k.tool === 'mop' ? 'đź§˝ mop' : 'đź§ą broom';
+    if (h?.kind === 'tool' && h.tool === k.tool) return scrubP >= 0 ? `Cleaningâ€¦ <span class="bar"><i style="width:${Math.round(scrubP * 100)}%"></i></span>` : `Hold ${kb('attack')} to clean the ${k.name.toLowerCase()}`;
     return `${k.name} <span class="dim">(needs the ${tool}, from the cleaning corner)</span>`;
   }
   switch (t.kind) {
     case 'computer': return `${E} Use computer`;
-    case 'opensign': return G.phase === 'prep' ? `${E} Open the store` : G.phase === 'evening' ? `${E} Head out for the night` : G.phase === 'open' ? 'Open until 6:00 PM' : 'Closing…';
+    case 'opensign': return G.phase === 'prep' ? `${E} Open the store` : G.phase === 'evening' ? `${E} Head out for the night` : G.phase === 'open' ? 'Open until 6:00 PM' : 'Closingâ€¦';
     case 'door': return `${E} ${G.doorOpen ? 'Close' : 'Open'} the front door <span class="dim">(closed = no new customers)</span>`;
     case 'trash': return h && h.kind !== 'trash' || h?.n >= 8 ? '<span class="dim">Hands full</span>' : `${E} Pick up trash`;
     case 'bin':
@@ -265,13 +265,13 @@ function hintFor(t) {
       return `Trash bin (${G.binCount}/${G.up.binCap})`;
     case 'dumpster': return h?.kind === 'bag' ? `${E} Throw bag in dumpster` : 'Dumpster';
     case 'storage': return h?.kind === 'item' ? `${E} Put it in the stock crates` : `${E} Stock crates (${G.backstock.length} items)`;
-    case 'egg': return `${E} Collect egg 🥚`;
-    case 'chicken': return '🐔';
-    case 'hatch': return G.standWaiting ? `${E} Sell eggs (${G.eggs} in the basket)` : `Egg stand · ${G.eggs} eggs <span class="dim">(customers ring the bell)</span>`;
+    case 'egg': return `${E} Collect egg đźĄš`;
+    case 'chicken': return 'đź”';
+    case 'hatch': return G.standWaiting ? `${E} Sell eggs (${G.eggs} in the basket)` : `Egg stand Â· ${G.eggs} eggs <span class="dim">(customers ring the bell)</span>`;
     case 'bench': return G.up.workshop ? `${E} Repair a broken item` : '';
-    case 'wsdoor': return G.up.workshop ? '' : 'Workshop: for rent <span class="dim">(computer → Upgrades)</span>';
+    case 'wsdoor': return G.up.workshop ? '' : 'Workshop: for rent <span class="dim">(computer â†’ Upgrades)</span>';
     case 'closet': return h?.kind === 'tool' ? `${E} Put the ${h.tool === 'sign' ? 'sign' : h.tool} back` : h ? '<span class="dim">Hands full</span>' : `${E} Cleaning corner: mop, broom, wet floor sign`;
-    case 'sink': return h?.kind === 'tool' && h.tool === 'mop' ? `${E} Rinse the mop${h.dirt ? ` (dirty ×${h.dirt})` : ''}` : 'Sink <span class="dim">(rinse the mop here)</span>';
+    case 'sink': return h?.kind === 'tool' && h.tool === 'mop' ? `${E} Rinse the mop${h.dirt ? ` (dirty Ă—${h.dirt})` : ''}` : 'Sink <span class="dim">(rinse the mop here)</span>';
     case 'wetsign': return h ? '<span class="dim">Hands full</span>' : `${E} Pick up the wet floor sign`;
     case 'radio': { const st = STATIONS[G.radio]; return `${E} Radio: <b>${st.name}</b> <span class="dim">(next station)</span>`; }
     case 'board': return `${E} Order board (${G.orders.length})`;
@@ -282,9 +282,9 @@ function hintFor(t) {
   const slot = t.slot;
   if (slot?.item) {
     const d = itemById(slot.item.id);
-    return `${d.icon} ${d.name}: <b>${UI.money(slot.item.price)}</b> <span class="dim">(today ~${UI.money(marketPrice(d.id))})</span> · ${E} Price · ${Gk} Take · ${kb('stock')} To stock`;
+    return `${d.icon} ${d.name}: <b>${UI.money(slot.item.price)}</b> <span class="dim">(today ~${UI.money(marketPrice(d.id))})</span> Â· ${E} Price Â· ${Gk} Take Â· ${kb('stock')} To stock`;
   }
-  if (slot) return h?.kind === 'item' ? `${E} Put ${itemById(h.inst.id).name} here` : `Empty slot · ${E} Place from stock (${G.backstock.length}) · ${F} Move`;
+  if (slot) return h?.kind === 'item' ? `${E} Put ${itemById(h.inst.id).name} here` : `Empty slot Â· ${E} Place from stock (${G.backstock.length}) Â· ${F} Move`;
   if (t.shelf) return `${F} Move ${SHELF_TYPES[t.shelf.userData.type].name.toLowerCase()}`;
   return '';
 }
@@ -305,8 +305,8 @@ async function interact() {
   const h = me().holding;
   if (t.customer) {
     const c = t.customer;
-    if (c.iconE === '❗' || c.state === 'flee') return act('catchThief', c.cid);
-    if (c.iconE === '🙋' || (c.help > 0 && !c.helped)) return act('helpCustomer', c.cid);
+    if (c.iconE === 'âť—' || c.state === 'flee') return act('catchThief', c.cid);
+    if (c.iconE === 'đź™‹' || (c.help > 0 && !c.helped)) return act('helpCustomer', c.cid);
     if (isFirstInQueue(c)) serve(c.cid);
     return;
   }
@@ -321,13 +321,13 @@ async function interact() {
     case 'storage':
       if (h?.kind === 'item') return act('putInStock');
       if (h) return;
-      return UI.stockPanel('📦 Stock crates: take an item', inst => { act('takeFromStock', inst.uid); G.relock(); });
+      return UI.stockPanel('đź“¦ Stock crates: take an item', inst => { act('takeFromStock', inst.uid); G.relock(); });
     case 'egg': return act('collectEgg', t.ref.userData.eid);
     case 'chicken': return sfx.cluck();
     case 'hatch': return act('serveStand');
     case 'bench':
       if (!G.up.workshop) return;
-      return UI.stockPanel('🔧 Repair: pick a broken item', async inst => {
+      return UI.stockPanel('đź”§ Repair: pick a broken item', async inst => {
         const score = await repairGame(inst);
         if (score == null) return;
         await act('repair', inst.uid, score);
@@ -351,7 +351,7 @@ async function interact() {
     return UI.pricePanel(itemById(inst.id), inst, marketPrice(inst.id), v => act('setPrice', sid, slot.i, v), () => act('inspectItem', inst.uid).then(e => { if (e) inst.est = e; }));
   }
   if (h?.kind === 'item') return act('putOnShelf', sid, slot.i);
-  UI.stockPanel('📦 Place an item', inst => { act('placeFromStock', sid, slot.i, inst.uid); G.relock(); }, i => !itemById(i.id).big);
+  UI.stockPanel('đź“¦ Place an item', inst => { act('placeFromStock', sid, slot.i, inst.uid); G.relock(); }, i => !itemById(i.id).big);
 }
 
 function grabOrThrow() {
@@ -381,9 +381,9 @@ G.phys.onImpact = (b, speed) => {
   b.inst.broken = true;
   spawnSpill('glass', b.p.x, b.p.z);
   sfx.glass();
-  UI.toast(`💥 The ${itemById(b.inst.id).name} broke! Sweep up the glass (broom).`, 'bad');
+  UI.toast(`đź’Ą The ${itemById(b.inst.id).name} broke! Sweep up the glass (broom).`, 'bad');
 };
-G.onBonk = () => { shake = 0.25; UI.toast('🦆 Bonk!'); };
+G.onBonk = () => { shake = 0.25; UI.toast('đź¦† Bonk!'); };
 function duckBonks() {
   const now = performance.now();
   for (const b of G.phys.bodies) {
@@ -403,14 +403,35 @@ function openStore() {
   act('openStore');
 }
 
+// Somebody picked a location: everybody sees a 3 s "into the truck" countdown, then the whole team goes.
 ACTIONS.startNight = (pid, loc) => {
-  if (G.phase !== 'evening' || G.world === 'exp') return false;
+  if (G.phase !== 'evening' || G.world === 'exp' || G.leaving) return false;
+  G.leaving = true;
   const ev = Math.random() < 0.4 ? 'night' : pick(['day', 'angry', 'fog', 'blackout', 'night']);
   const params = { loc, seed: Math.random() * 2 ** 31 | 0, skulls: G.night?.[loc] ?? 1, ev };
-  broadcast({ t: 'xstart', params });
-  G.startExpedition(params);
+  const soon = { loc, name: G.players[pid]?.name || 'Someone', solo: !online() };
+  broadcast({ t: 'xsoon', ...soon });
+  G.onLeaving(soon);
+  setTimeout(() => {
+    G.leaving = false;
+    if (G.world === 'exp') return;
+    broadcast({ t: 'xstart', params });
+    G.startExpedition(params);
+  }, online() ? 3000 : 600);
   return true;
 };
+G.onLeaving = ({ loc, name, solo }) => {
+  UI.closePanel(false);
+  const el = UI.$('travel'), l = EXP.LOCATIONS[loc];
+  el.innerHTML = `<div class="travel-box"><span class="huge">đź›»</span><h2>${solo ? `Off to the ${l.name}` : `${name} is taking the truck to the ${l.name}!`}</h2>
+    <p>${solo ? '' : 'Everybody in the truckâ€¦'}</p><b id="travel-n"></b></div>`;
+  el.classList.remove('hidden');
+  sfx.engine();
+  let n = solo ? 0 : 3;
+  const tickT = () => { const b = UI.$('travel-n'); if (b) b.textContent = n > 0 ? n : ''; if (n-- > 0) setTimeout(tickT, 1000); };
+  tickT();
+};
+on('xsoon', m => G.onLeaving(m));
 ACTIONS.sleep = () => {
   if (G.phase !== 'evening') return false;
   G.phase = 'prep';
@@ -421,9 +442,9 @@ ACTIONS.sleep = () => {
 // What's new this morning (shop event, letters, orders).
 function morningNews() {
   const ev = todayEvent(), n = unread();
-  return [G.day === MESS_FROM ? '🧽 <b>New:</b> from today customers spill coffee (and drag mud in when it rains). Get the mop from the cleaning corner.' : '',
-    ev ? `${ev.icon} <b>${ev.name}</b> today: ${ev.desc}` : '', n ? `📬 ${n} new letter${n > 1 ? 's' : ''} in the mailbox.` : '',
-    G.orders.some(o => o.due === G.day) ? '📋 An order is due today!' : ''].filter(Boolean).map(t => `<p>${t}</p>`).join('');
+  return [G.day === MESS_FROM ? 'đź§˝ <b>New:</b> from today customers spill coffee (and drag mud in when it rains). Get the mop from the cleaning corner.' : '',
+    ev ? `${ev.icon} <b>${ev.name}</b> today: ${ev.desc}` : '', n ? `đź“¬ ${n} new letter${n > 1 ? 's' : ''} in the mailbox.` : '',
+    G.orders.some(o => o.due === G.day) ? 'đź“‹ An order is due today!' : ''].filter(Boolean).map(t => `<p>${t}</p>`).join('');
 }
 G.onSleep = () => {
   G.phase = isGuest() ? G.phase : 'prep';
@@ -431,7 +452,7 @@ G.onSleep = () => {
   UI.closePanel(); UI.hud();
   UI.toast(`You slept through the night. Good morning, Day ${G.day}!`);
   const ev = todayEvent(); if (ev) UI.toast(`${ev.icon} ${ev.name}: ${ev.desc}`);
-  if (G.day === MESS_FROM) UI.toast('🧽 From today customers spill coffee. The mop is in the cleaning corner.');
+  if (G.day === MESS_FROM) UI.toast('đź§˝ From today customers spill coffee. The mop is in the cleaning corner.');
 };
 
 G.startExpedition = params => {
@@ -440,10 +461,13 @@ G.startExpedition = params => {
   Object.assign(me(), { world: 'exp', hp: 100, down: false, dead: false, bleed: 0, hidden: false, cab: false, emote: null });
   if (G.holdMesh) G.holdMesh.visible = false;
   UI.closePanel(false);
+  UI.$('travel').classList.add('hidden');
   showHud(true);
   EXP.start(params, camera);
   apply();
+  // the browser only lets the game grab the mouse after a click: if it can't, ask for one
   G.relock();
+  setTimeout(() => { if (!controls.isLocked && G.world === 'exp') clickToPlay(); }, 400);
 };
 
 G.endExpedition = r => {
@@ -458,21 +482,21 @@ G.endExpedition = r => {
   if (!isGuest()) { G.phase = 'prep'; updateSign(); G.save(); }
   const list = ids => ids.map(id => itemById(id).icon + ' ' + itemById(id).name).join(', ');
   const mine = r.kept[G.me] || [], lost = r.lost[G.me] || [];
-  const title = { drive: '🏠 Back home safe', time: '🛻 The truck left', wiped: '💀 Everybody went down' }[r.reason];
+  const title = { drive: 'đźŹ  Back home safe', time: 'đź›» The truck left', wiped: 'đź’€ Everybody went down' }[r.reason];
   const hosp = Object.entries(r.hospital || {});
   UI.openPanel(`<h2>${title}</h2>
-    <p class="dim">${r.loc} · ${UI.skulls(r.skulls)} · ${r.ev}</p>
+    <p class="dim">${r.loc} Â· ${UI.skulls(r.skulls)} Â· ${r.ev}</p>
     ${r.reason === 'time' && lost.length ? '<p>You weren\'t in the truck when it left. You walked home all night, and somebody robbed your bag.</p>' : ''}
     ${r.reason === 'wiped' ? '<p>Nobody was left standing. Somebody towed the truck home. Whatever was in your bags is gone.</p>' : ''}
-    <p>🛻 The truck brought home <b>${r.cargo.length}</b> item(s)${r.cargo.length ? ': ' + list(r.cargo) : '.'}</p>
-    ${mine.length ? `<p>🎒 Your bag: ${list(mine)}</p>` : ''}
+    <p>đź›» The truck brought home <b>${r.cargo.length}</b> item(s)${r.cargo.length ? ': ' + list(r.cargo) : '.'}</p>
+    ${mine.length ? `<p>đźŽ’ Your bag: ${list(mine)}</p>` : ''}
     ${lost.length ? `<p class="down">Lost: ${list(lost)}</p>` : ''}
-    ${r.cash ? `<p class="up">💵 Rusty's cash: ${UI.money(r.cash)}</p>` : ''}
-    ${(r.pages || []).map(p => `<div class="okbox ledger">📜 New ledger page!<br><i>${p}</i></div>`).join('')}
-    ${hosp.length ? `<div class="alert">🏥 <b>Hospital bill: ${UI.money(r.bill)}</b><br>${hosp.map(([n, v]) => `${n}: ${UI.money(v)}`).join(' · ')}</div>` : ''}
+    ${r.cash ? `<p class="up">đź’µ Rusty's cash: ${UI.money(r.cash)}</p>` : ''}
+    ${(r.pages || []).map(p => `<div class="okbox ledger">đź“ś New ledger page!<br><i>${p}</i></div>`).join('')}
+    ${hosp.length ? `<div class="alert">đźŹĄ <b>Hospital bill: ${UI.money(r.bill)}</b><br>${hosp.map(([n, v]) => `${n}: ${UI.money(v)}`).join(' Â· ')}</div>` : ''}
     ${morningNews()}
     <p class="dim">Everything is in the stock crates. Check prices on the computer before you sell. Broken items can be repaired in the workshop.</p>
-    <div class="row"><button id="ex-ok">Start Day ${G.day} ☀</button></div>`, { esc: false });
+    <div class="row"><button id="ex-ok">Start Day ${G.day} â€</button></div>`, { esc: false });
   UI.$('ex-ok').onclick = () => { UI.closePanel(); UI.hud(); };
 };
 
@@ -496,10 +520,10 @@ function dayTick(dt) {
   }
   if (isAuctionDay() && G.auction?.started && G.phase !== 'evening') auctionTick(dt, (kind, lot) => {
     const d = itemById(lot.inst.id), say = text => { UI.toast(text); broadcast({ t: 'say', text }); };
-    if (kind === 'start') say(`🔨 Auction: ${d.name}, starting at ${UI.money(lot.bid)}`);
-    if (kind === 'won') { sfx.gavel(); say(`🔨 SOLD to your team! ${d.name} for ${UI.money(lot.bid)}. It's in the stock crates.`); }
-    if (kind === 'lost') { sfx.gavel(); say(`🔨 ${d.name} went to another dealer for ${UI.money(lot.bid)}.`); }
-    if (kind === 'broke') say(`🔨 You couldn't pay for the ${d.name}. The auction house is not amused.`);
+    if (kind === 'start') say(`đź”¨ Auction: ${d.name}, starting at ${UI.money(lot.bid)}`);
+    if (kind === 'won') { sfx.gavel(); say(`đź”¨ SOLD to your team! ${d.name} for ${UI.money(lot.bid)}. It's in the stock crates.`); }
+    if (kind === 'lost') { sfx.gavel(); say(`đź”¨ ${d.name} went to another dealer for ${UI.money(lot.bid)}.`); }
+    if (kind === 'broke') say(`đź”¨ You couldn't pay for the ${d.name}. The auction house is not amused.`);
   });
   pendingTick(dt);
 }
@@ -534,7 +558,7 @@ function prison(s) {
     <p class="dim">You kept Chucky's House open for ${s.day} days. Loan left: ${UI.money(G.debt)}</p>`, () => location.reload());
 }
 
-// The loan is paid: the win cutscene (inspiration → twist → CHAPTER 2). The save stays, marked "Chapter 1 complete".
+// The loan is paid: the win cutscene (inspiration â†’ twist â†’ CHAPTER 2). The save stays, marked "Chapter 1 complete".
 G.win = () => {
   if (G.winning) return;
   G.winning = true;
@@ -551,7 +575,7 @@ G.win = () => {
 
 // ---------- input ----------
 // Keyboard keys and mouse buttons go through the same two functions, so anything can be bound to anything
-// (Settings → Controls). code = e.code, or 'Mouse0' / 'Mouse1' / 'Mouse2' for mouse buttons.
+// (Settings â†’ Controls). code = e.code, or 'Mouse0' / 'Mouse1' / 'Mouse2' for mouse buttons.
 function press(code, e) {
   if (G.chatting || G.cine) return;
   keys[code] = true;
@@ -559,7 +583,7 @@ function press(code, e) {
   if (is('deny', code) && approveKey(false)) return;
   if (G.mode !== 'play') return;
   if (is('ptt', code) && S.micMode === 'ptt' && !e.repeat) setPTT(S.pttToggle ? !VOICE.ptt : true);
-  if (is('radio', code) && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
+  if (is('radio', code) && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer â†’ Tools).'); }
   if (is('chat', code) && online() && !G.uiOpen) { e.preventDefault?.(); return openChat(() => G.relock()); }
   if (G.world === 'exp' && is('roulette', code) && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
   if (G.uiOpen || !controls.isLocked || G.paused) return; // paused: talking and chat still work, nothing else
@@ -614,7 +638,7 @@ function showMenu() {
   const done = G.hasSave && G.story.ch1;
   UI.$('m-continue').classList.toggle('hidden', !G.hasSave || done);
   UI.$('m-ch1').classList.toggle('hidden', !done);
-  if (G.hasSave) UI.$('m-info').textContent = `Day ${G.day} · ${UI.money(G.money)} cash · Loan ${UI.money(G.debt)}`;
+  if (G.hasSave) UI.$('m-info').textContent = `Day ${G.day} Â· ${UI.money(G.money)} cash Â· Loan ${UI.money(G.debt)}`;
   showHud(false);
 }
 
@@ -635,7 +659,7 @@ function enterPlay() {
 G.onCoopStart = () => { UI.closePanel(false); if (G.cine) G.pendingStart = true; else enterPlay(); };
 G.onStoryIntro = () => {
   UI.closePanel(false); menu.classList.add('hidden');
-  playIntro(() => { if (G.pendingStart) { G.pendingStart = false; enterPlay(); } else UI.toast('Waiting for the host…'); });
+  playIntro(() => { if (G.pendingStart) { G.pendingStart = false; enterPlay(); } else UI.toast('Waiting for the hostâ€¦'); });
 };
 // Host: start the game for the co-op (the host's save, or a new game with the intro).
 G.hostStartGame = () => {
@@ -656,7 +680,7 @@ const showPause = () => {
   if (!(G.mode === 'play' && !G.uiOpen && !G.ended && !G.chatting && !G.cine)) return;
   const canPause = !isGuest();
   UI.$('p-pause').classList.toggle('hidden', !canPause);
-  UI.$('p-pause').innerHTML = G.paused ? '▶ Unpause the game' : '⏸ Pause the game';
+  UI.$('p-pause').innerHTML = G.paused ? 'â–¶ Unpause the game' : 'âŹ¸ Pause the game';
   UI.$('p-note').textContent = G.paused ? 'The game is paused.' : canPause ? 'The game keeps running.' : 'The game keeps running. Only the host can pause it.';
   pause.classList.remove('hidden');
 };
@@ -669,10 +693,17 @@ ACTIONS.setPause = (pid, on) => {
 };
 on('pause', m => { G.paused = m.on; G.pausedBy = m.by; });
 G.relock = () => { if (G.mode === 'play' && !G.ended && !UI.panelOpen() && !G.cine) controls.lock(); };
-controls.addEventListener('lock', () => pause.classList.add('hidden'));
+controls.addEventListener('lock', () => { pause.classList.add('hidden'); UI.$('click-in').classList.add('hidden'); });
+// "Click to continue": when the game couldn't grab the mouse by itself (it needs a click from the player)
+function clickToPlay() {
+  if (G.mode !== 'play' || G.cine || G.ended || UI.panelOpen() || controls.isLocked) return;
+  pause.classList.add('hidden');
+  UI.$('click-in').classList.remove('hidden');
+}
+UI.$('click-in').onclick = () => controls.lock();
 // Opening any window frees the mouse: held keys are let go, but a TOGGLED push-to-talk stays on.
 controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; mouseHeld = false; if (!S.pttToggle) setPTT(false); setRadio(false); showEmoteBar(false); showPause(); });
-document.addEventListener('pointerlockerror', showPause);
+document.addEventListener('pointerlockerror', clickToPlay);
 
 const mics = async () => (await navigator.mediaDevices?.enumerateDevices?.() || []).filter(d => d.kind === 'audioinput');
 const back = () => { UI.closePanel(false); };
@@ -695,11 +726,11 @@ UI.$('m-saves').onclick = savesPanel;
 function savesPanel() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { d = null; }
-  const info = d ? `<b>Day ${d.day}</b> · ${UI.money(d.money)} cash · loan ${UI.money(d.debt)}${d.story?.ch1 ? ' · 🏆 Chapter 1 complete' : ''}` : '<span class="dim">No save yet.</span>';
-  UI.openPanel(`<h2>💾 Saves</h2>
+  const info = d ? `<b>Day ${d.day}</b> Â· ${UI.money(d.money)} cash Â· loan ${UI.money(d.debt)}${d.story?.ch1 ? ' Â· đźŹ† Chapter 1 complete' : ''}` : '<span class="dim">No save yet.</span>';
+  UI.openPanel(`<h2>đź’ľ Saves</h2>
     <p>Your shop: ${info}</p>
-    <div class="row"><button id="sv-exp" ${d ? '' : 'disabled'}>⬇ Export to a file</button><button id="sv-imp">⬆ Import a file</button>
-      <button id="sv-del" class="danger" ${d ? '' : 'disabled'}>🗑 Delete the save</button></div>
+    <div class="row"><button id="sv-exp" ${d ? '' : 'disabled'}>â¬‡ Export to a file</button><button id="sv-imp">â¬† Import a file</button>
+      <button id="sv-del" class="danger" ${d ? '' : 'disabled'}>đź—‘ Delete the save</button></div>
     <p class="dim small">Export makes a backup file you can keep, or move to another computer. Importing replaces the current save.
       Settings and key binds are kept separately and aren't touched.</p>
     <input type="file" id="sv-file" accept=".json,application/json" class="hidden">
@@ -741,14 +772,14 @@ document.querySelectorAll('.menu-box button').forEach(b => b.addEventListener('c
 
 function micStatus() {
   const st = VOICE.status;
-  UI.$('mic-line').innerHTML = { on: '🎙️ Microphone ready for voice chat', denied: '🔇 Microphone blocked. Voice chat is off (text chat still works).', none: '🔇 No microphone found', asking: '🎙️ Allow the microphone for voice chat…', off: '' }[st];
+  UI.$('mic-line').innerHTML = { on: 'đźŽ™ď¸Ź Microphone ready for voice chat', denied: 'đź”‡ Microphone blocked. Voice chat is off (text chat still works).', none: 'đź”‡ No microphone found', asking: 'đźŽ™ď¸Ź Allow the microphone for voice chatâ€¦', off: '' }[st];
   UI.$('mic-retry').classList.toggle('hidden', st === 'on' || st === 'asking');
 }
 
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.8.1';
+UI.$('ver').textContent = 'Prototype v0.8.2';
 initMusic().then(() => { if (G.mode === 'menu' && !G.cine) setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
@@ -858,8 +889,8 @@ renderer.setAnimationLoop(now => {
     updateVoice(camera);
     const ind = UI.$('mic-ind');
     ind.className = VOICE.status !== 'on' ? 'off' : (my?.talking ? 'talk' : '') + (VOICE.radioKey ? ' radio' : '');
-    ind.textContent = VOICE.status !== 'on' ? '🔇' : VOICE.radioKey ? '📻'
-      : S.micMode === 'ptt' ? (VOICE.ptt ? (S.pttToggle ? '🎙️ ON' : '🎙️') : '🔇 ' + keyName('ptt')) : '🎙️';
+    ind.textContent = VOICE.status !== 'on' ? 'đź”‡' : VOICE.radioKey ? 'đź“»'
+      : S.micMode === 'ptt' ? (VOICE.ptt ? (S.pttToggle ? 'đźŽ™ď¸Ź ON' : 'đźŽ™ď¸Ź') : 'đź”‡ ' + keyName('ptt')) : 'đźŽ™ď¸Ź';
     ind.classList.toggle('hidden', !online());
   }
   renderer.render(sc, camera);

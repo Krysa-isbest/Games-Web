@@ -173,7 +173,11 @@ let localBuf;
 export function updateVoice(camera) {
   const my = me();
   if (VOICE.analyser) { localBuf ??= new Uint8Array(VOICE.analyser.fftSize); VOICE.level = transmitting() ? loud(VOICE.analyser, localBuf) : 0; }
-  if (my) my.talking = VOICE.level > 0.06;
+  if (my) {
+    my.talking = VOICE.level > 0.06;
+    // how loud you are for the enemies at night (0 = they can't hear you: setting off, or dead)
+    my.vl = S.voiceNoise && !my.dead && G.world === 'exp' ? VOICE.level : 0;
+  }
   if (!VOICE.master || !my) return;
   const ctx = audioCtx(), now = ctx.currentTime;
   VOICE.master.gain.setTargetAtTime(S.voiceVol, now, 0.1);
