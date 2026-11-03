@@ -7,7 +7,7 @@ import { MAP, free, los, buildAlley, buildJunkyard, buildPlant, LOOT_TABLES } fr
 import { spawnEnemies, updateEnemiesHost, noise, stunMult, enemySnap, mirrorEnemies, lerpEnemies, voiceRange, DOGS } from './enemies.js';
 import { PhysWorld, throwFrom } from './physics.js';
 import { dismantle } from './minigames.js';
-import { SKULLS, value } from './economy.js';
+import { SKULLS, value, marketPrice } from './economy.js';
 import { NET, act, send, broadcast, on, tell, isGuest } from './net.js';
 import { addJob, bagCap, perk } from './jobs.js';
 import { noiseRing, resetChips } from './fun.js';
@@ -507,6 +507,64 @@ export async function dropSelected() {
   const { p, v } = throwFrom(E.camera, 3);
   await act('xDropBag', E.bag.length - 1, p.toArray(), v.toArray());
 }
+
+// ---------- the backpack (Tab): what you carry, roughly what it's worth, drop or load single items ----------
+let bagShown = false, bagSig = '';
+const bagPanelUp = () => !!document.querySelector('.panel.bag-panel:not(.hidden)');
+export const bagOpen = () => bagShown && bagPanelUp();
+// Price shown: today's market price without a magnifier (condition unknown), a worth range with one.
+function bagPrice(inst) {
+  const d = itemById(inst.id);
+  if (inst.id === 'ledger') return { text: 'priceless', lo: 0, hi: 0 };
+  if (inst.id === 'cashbundle' || inst.id === 'fuelrod') { const v = value(inst); return { text: `~${UI.money(v)}`, lo: v, hi: v }; }
+  const mag = G.tools.magnifier;
+  if (!mag) { const v = marketPrice(d.id) * (inst.broken ? 0.3 : 1); return { text: `~${UI.money(v)}`, lo: v, hi: v }; }
+  const err = [0.35, 0.15, 0.05][mag - 1], v = value(inst);
+  const h = [...inst.uid].reduce((s, c) => (s * 31 + c.charCodeAt(0)) % 1000, 7) / 1000 - 0.5; // stable per item
+  const lo = Math.round(v * (1 - err) * (1 + h * err)), hi = Math.round(v * (1 + err) * (1 + h * err));
+  return { text: `${UI.money(lo)}–${UI.money(hi)}`, lo, hi };
+}
+function renderBag() {
+  if (!E) return;
+  const cap = bagCap(G.me), used = bagSize(E.bag), atTruck = nearTruckBed() && E.hidden == null, canDrop = E.hidden == null;
+  let lo = 0, hi = 0;
+  const rows = E.bag.map((inst, i) => {
+    const d = itemById(inst.id), p = bagPrice(inst), sz = d.size || 1;
+    lo += p.lo; hi += p.hi;
+    return `<div class="bag-item${sz > 1 ? ' wide' : ''}"><span class="big">${d.icon}</span><b>${d.name}</b>
+      <small>${inst.broken ? '<span class="down">🔧 broken</span> · ' : ''}${sz > 1 ? `${sz} slots · ` : ''}<span class="price">${p.text}</span></small>
+      <div class="row">${atTruck ? `<button data-truck="${i}">🛻 Into the truck</button>` : ''}${canDrop ? `<button data-drop="${i}" class="ghost">Drop</button>` : ''}</div></div>`;
+  });
+  for (let k = used; k < cap; k++) rows.push('<div class="bag-item empty"></div>');
+  const total = lo === hi ? `~${UI.money(lo)}` : `${UI.money(lo)}–${UI.money(hi)}`;
+  UI.openPanel(`<h2>🎒 Backpack <small class="dim">${used}/${cap} slots</small></h2>
+    <div class="bag-grid">${rows.join('')}</div>
+    <p>Worth about <b class="price">${E.bag.length ? total : '$0'}</b> · 🛻 In the truck: <b>${E.cargoCount ?? 0}</b> item${E.cargoCount === 1 ? '' : 's'}
+      <br><small class="dim">${G.tools.magnifier ? 'Your magnifier gives a worth range.' : 'Without a magnifier you only know today\'s market price, not the condition.'} The game keeps running!${canDrop ? '' : ' (You can\'t drop things while hiding.)'}</small></p>
+    <div class="row">${atTruck && E.bag.length ? '<button id="bg-dump">🛻 Dump everything into the truck</button>' : ''}<button id="bg-x" class="ghost">Close (${kb('bag')})</button></div>`,
+    { cls: 'wide bag-panel' });
+  bagShown = true; bagSig = sigNow();
+  UI.$('bg-x').onclick = closeBag;
+  if (UI.$('bg-dump')) UI.$('bg-dump').onclick = async () => { await act('xDump'); };
+  document.querySelectorAll('[data-drop]').forEach(b => b.onclick = async () => {
+    const { p, v } = throwFrom(E.camera, 1.2);
+    await act('xDropBag', +b.dataset.drop, p.toArray(), v.toArray());
+  });
+  document.querySelectorAll('[data-truck]').forEach(b => b.onclick = async () => {
+    const c = E.truck.bedCenter;
+    await act('xDropBag', +b.dataset.truck, [c.x + rand(-0.5, 0.5), 1.6, c.z + rand(-0.5, 0.5)], [0, 0, 0]);
+  });
+}
+export function openBag() { if (E && !E.down && !E.inCab) renderBag(); }
+export function closeBag() { bagShown = false; UI.closePanel(); }
+// re-draw when the bag changes (picked up, dropped, the host sent a new bag) or you walk up to the truck
+function bagTick() {
+  if (!bagShown) return;
+  if (!bagPanelUp()) { bagShown = false; return; } // closed with Esc, or another window replaced it
+  if (!E || E.down || E.inCab) { UI.closePanel(false); bagShown = false; return; }
+  if (sigNow() !== bagSig) renderBag();
+}
+const sigNow = () => E.bag.map(i => i.uid).join() + (nearTruckBed() && E.hidden == null) + (E.cargoCount ?? 0);
 
 function hide(h) {
   const taken = Object.values(G.players).some(p => p.id !== G.me && p.hidden === h.id);
@@ -1069,7 +1127,7 @@ export function update(dt) {
   // publish local state for the AI / voice / other players
   if (my) Object.assign(my, { hp: E.hp, down: E.down, dead: E.dead, bleed: E.down && !E.dead ? E.bleed : 0, hidden: E.hidden ?? false, cab: E.inCab, crouch: E.crouch, light: E.lightOn });
   if (E.down) spectate();
-  if ((E.hudT -= dt) <= 0) { E.hudT = 0.2; hud(); }
+  if ((E.hudT -= dt) <= 0) { E.hudT = 0.2; hud(); bagTick(); }
 }
 
 let specIdx = 0;
@@ -1092,7 +1150,7 @@ export function hud() {
     : `<span class="${left <= 60 ? 'warn' : ''}">🛻 leaves in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`);
   UI.$('exp-hp').style.width = Math.max(0, E.hp) + '%';
   UI.$('exp-hp-num').textContent = E.dead ? 'DEAD' : E.down ? 'DOWN' : `${Math.ceil(E.hp)} HP`;
-  UI.$('exp-bag').innerHTML = `🎒 ${bagSize(E.bag)}/${bagCap(G.me)} ${E.bag.map(i => itemById(i.id).icon).join('')} · 🛻 bed: ${E.cargoCount ?? 0}${E.crouch ? ' · <b>crouching</b>' : ''}`
+  UI.$('exp-bag').innerHTML = `🎒 ${bagSize(E.bag)}/${bagCap(G.me)} ${E.bag.map(i => itemById(i.id).icon).join('')} <small class="dim">${kb('bag')}</small> · 🛻 bed: ${E.cargoCount ?? 0}${E.crouch ? ' · <b>crouching</b>' : ''}`
     + `<div class="noise-meter" title="How much noise you make"><span>🔊</span><div><i style="width:${Math.round(E.noise * 100)}%"></i></div></div>`
     + (E.objective ? `<div class="obj small">⭐ ${E.objective}${E.safe?.open ? ' <span class="ok">✓ open</span>' : ''}</div>` : '');
   const team = Object.values(G.players).filter(p => p.world === 'exp');

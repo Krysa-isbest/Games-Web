@@ -4,7 +4,7 @@
 // Empty lists fall back to a synthesized track (see STYLES) where there is one. Shop music plays from the radio on the counter (positional).
 // The ending track is synthesized live (an original slow build that explodes), so it needs no file.
 import * as THREE from 'three';
-import { G, ACTIONS, pick } from './state.js';
+import { G, ACTIONS } from './state.js';
 import { part } from './data.js';
 import { interactive, STATIC } from './world.js';
 import { trustMods } from './economy.js';
@@ -65,15 +65,40 @@ export function setMood(mood, viaRadio = false) {
     if (SYNTH[mood]) { const d = synthDeck(SYNTH[mood], viaRadio ? M.radioIn : M.direct); M.decks.push(d); d.g.gain.setTargetAtTime(1, now, 0.8); }
     return;
   }
+  let fails = 0;
   const playNext = () => {
     if (M.mood !== mood) return;
-    const d = deck(pick(files), viaRadio);
+    const d = deck(nextTrack(mood, files), viaRadio);
     M.decks.push(d);
-    d.el.onended = () => { M.decks.splice(M.decks.indexOf(d), 1); playNext(); };
-    d.el.play().catch(() => { /* waits for the first click (autoplay rules) */ addEventListener('pointerdown', () => d.el.play().catch(() => {}), { once: true }); });
+    let done = false;
+    const next = bad => {
+      if (done) return; done = true;
+      fails = bad ? fails + 1 : 0;
+      const k = M.decks.indexOf(d); if (k >= 0) M.decks.splice(k, 1);
+      d.g.disconnect();
+      if (fails < files.length) playNext(); // a missing file: skip it (give up if none of them load)
+    };
+    d.el.onended = () => next(false);
+    d.el.onerror = () => next(true);
+    d.el.play().catch(e => {
+      if (e?.name === 'NotAllowedError') addEventListener('pointerdown', () => d.el.play().catch(() => {}), { once: true }); // autoplay rules: wait for a click
+      else next(true);
+    });
     d.g.gain.setTargetAtTime(1, c.currentTime, 0.7);
   };
   playNext();
+}
+// Playlists go through every track in a shuffled order before any repeats (and never the same one twice in a row).
+const queues = {};
+function nextTrack(mood, files) {
+  let q = queues[mood];
+  if (!q || !q.list.length || q.files !== files.join('|')) {
+    const list = [...files].sort(() => Math.random() - 0.5);
+    if (files.length > 1 && list[0] === q?.last) list.push(list.shift());
+    q = queues[mood] = { list, files: files.join('|'), last: q?.last };
+  }
+  q.last = q.list.shift();
+  return q.last;
 }
 
 // Extra layer that fades in when an enemy is chasing you (needs a "chase" track).

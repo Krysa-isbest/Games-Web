@@ -21,6 +21,7 @@ export const ACTIONS = {
   flashlight: { def: 'KeyF', name: 'Flashlight', ctx: 'night', group: 'Night' },
   dismantle: { def: 'KeyX', name: 'Take apart (with tools)', ctx: 'night', group: 'Night' },
   drop: { def: 'KeyG', name: 'Drop a bag item', ctx: 'night', group: 'Night' },
+  bag: { def: 'Tab', name: 'Backpack (see, drop or load items)', ctx: 'night', group: 'Night' },
   crouch: { def: 'KeyC', name: 'Crouch', ctx: 'night', group: 'Night' },
   spectate: { def: 'Space', name: 'Spectate next player (down / dead)', ctx: 'night', group: 'Night' },
   roulette: { def: 'KeyR', name: 'Ghost roulette (when dead)', ctx: 'night', group: 'Night' },

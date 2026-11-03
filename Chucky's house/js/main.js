@@ -594,6 +594,11 @@ function press(code, e) {
   if (is('radio', code) && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
   if (is('chat', code) && online() && !G.uiOpen) { e.preventDefault?.(); return openChat(() => G.relock()); }
   if (G.world === 'exp' && is('roulette', code) && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
+  if (G.world === 'exp' && is('bag', code) && !e.repeat) {
+    e.preventDefault?.(); // Tab would move the focus
+    if (EXP.bagOpen()) return EXP.closeBag();
+    if (!G.uiOpen && !G.paused && !EXP.isDead() && !EXP.isOver()) return EXP.openBag();
+  }
   if (G.uiOpen || !controls.isLocked || G.paused) return; // paused: talking and chat still work, nothing else
   if (is('emote', code) && !e.repeat) showEmoteBar(true);
   const n = code.startsWith('Digit') ? +code.slice(5) : -1;
@@ -808,7 +813,7 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.9.0';
+UI.$('ver').textContent = 'Prototype v0.9.1';
 initMusic().then(() => { if (G.mode === 'menu' && !G.cine) setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
