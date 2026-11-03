@@ -340,6 +340,11 @@ select { width: auto; }
 .ch1-badge { background: linear-gradient(90deg, #6a4a10, #3a2a08); border: 1px solid var(--brass2); border-radius: 8px; padding: 10px 16px; font-weight: bold; color: #ffd86a; }
 .ch1-badge small { display: block; font-weight: normal; color: var(--dim); }
 
+/* the host's pause */
+#paused-banner { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: none; text-align: center;
+  font: 54px Impact, sans-serif; letter-spacing: 6px; color: #ffd86a; text-shadow: 0 0 20px #000, 0 4px 0 #000; animation: blink 2s infinite; }
+#paused-banner small { display: block; font: 16px "Segoe UI", sans-serif; letter-spacing: 1px; color: #fff; }
+
 /* first-time tip cards */
 #tip-card { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); width: 330px; display: flex; gap: 12px; align-items: flex-start; z-index: 24;
   background: linear-gradient(#20160ff2, #140e0bf2); border: 1px solid var(--brass2); border-left: 5px solid var(--brass2); border-radius: 12px; padding: 12px 14px;

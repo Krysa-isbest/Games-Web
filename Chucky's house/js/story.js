@@ -195,6 +195,8 @@ on('storyIntro', () => G.onStoryIntro?.());
 
 export async function playIntro(done) {
   G.uiOpen = true;
+  G.cine = G.cine || { scene: new THREE.Scene(), camera: cineCam(), update() {} }; // mark "in a cutscene" right away
+  setMood(null); // the bank office is quiet: no menu music in the intro
   if (document.pointerLockElement) document.exitPointerLock();
   overlay(true); big('');
   $('story-fade').style.opacity = 1;

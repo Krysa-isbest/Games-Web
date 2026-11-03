@@ -15,7 +15,7 @@ import { PhysWorld, throwFrom } from './physics.js';
 import { pendingTick } from './shop.js';
 import { updateCoop, updateChickens, eggSave, eggLoad } from './chickens.js';
 import { repairGame } from './minigames.js';
-import { act, send, broadcast, isGuest, isHost, online, leaveNet } from './net.js';
+import { act, send, broadcast, on, isGuest, isHost, online, leaveNet } from './net.js';
 import { VOICE, initMic, updateVoice, setPTT, setRadio, updateMicTrack, closeVoice } from './voice.js';
 import { openCoop, netTick, updateAvatars, approveKey, openChat, shopSnap } from './coop.js';
 import { buildCleaning, updateMess, scrubTick, toolMesh, closetPanel, messSave, messLoad, spawnSpill, SPILLS } from './mess.js';
@@ -27,7 +27,7 @@ import { reportCard, myPerk } from './jobs.js';
 import { todayEvent, SHOP_EVENTS } from './events.js';
 import { alert } from './social.js';
 import { startIntro, playIntro, buildStory, applyIntroWorld, updateTutorial, readNote, mailPanel, updateMailbox, weekLine, playWin, unread } from './story.js';
-import { K, is, kb } from './keys.js';
+import { K, is, kb, keyName } from './keys.js';
 import { updateTips } from './tips.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
@@ -562,7 +562,7 @@ function press(code, e) {
   if (is('radio', code) && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
   if (is('chat', code) && online() && !G.uiOpen) { e.preventDefault?.(); return openChat(() => G.relock()); }
   if (G.world === 'exp' && is('roulette', code) && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
-  if (G.uiOpen || !controls.isLocked) return;
+  if (G.uiOpen || !controls.isLocked || G.paused) return; // paused: talking and chat still work, nothing else
   if (is('emote', code) && !e.repeat) showEmoteBar(true);
   const n = code.startsWith('Digit') ? +code.slice(5) : -1;
   if (keys[K.emote] && EMOTES[n]) { me().emote = EMOTES[n][0]; sfx.click(); return; }
@@ -650,10 +650,28 @@ G.newGameReload = () => {
   location.reload();
 };
 
-const showPause = () => { if (G.mode === 'play' && !G.uiOpen && !G.ended && !G.chatting && !G.cine) pause.classList.remove('hidden'); };
+// Esc only opens this menu: the game keeps running. Only the "Pause the game" button stops it
+// (in co-op only the host can, and it pauses for everyone).
+const showPause = () => {
+  if (!(G.mode === 'play' && !G.uiOpen && !G.ended && !G.chatting && !G.cine)) return;
+  const canPause = !isGuest();
+  UI.$('p-pause').classList.toggle('hidden', !canPause);
+  UI.$('p-pause').innerHTML = G.paused ? '▶ Unpause the game' : '⏸ Pause the game';
+  UI.$('p-note').textContent = G.paused ? 'The game is paused.' : canPause ? 'The game keeps running.' : 'The game keeps running. Only the host can pause it.';
+  pause.classList.remove('hidden');
+};
+ACTIONS.setPause = (pid, on) => {
+  if (pid !== 'p0') return false;
+  G.paused = !!on;
+  G.pausedBy = G.players[pid]?.name || '';
+  broadcast({ t: 'pause', on: G.paused, by: G.pausedBy });
+  return G.paused;
+};
+on('pause', m => { G.paused = m.on; G.pausedBy = m.by; });
 G.relock = () => { if (G.mode === 'play' && !G.ended && !UI.panelOpen() && !G.cine) controls.lock(); };
 controls.addEventListener('lock', () => pause.classList.add('hidden'));
-controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; mouseHeld = false; setPTT(false); setRadio(false); showEmoteBar(false); showPause(); });
+// Opening any window frees the mouse: held keys are let go, but a TOGGLED push-to-talk stays on.
+controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; mouseHeld = false; if (!S.pttToggle) setPTT(false); setRadio(false); showEmoteBar(false); showPause(); });
 document.addEventListener('pointerlockerror', showPause);
 
 const mics = async () => (await navigator.mediaDevices?.enumerateDevices?.() || []).filter(d => d.kind === 'audioinput');
@@ -670,6 +688,51 @@ G.openKeySettings = async () => UI.settingsPanel(S, apply, back, await mics(), '
 // right mouse can be bound to an action: no browser menu while playing
 addEventListener('contextmenu', e => { if (controls.isLocked || G.mode === 'play') e.preventDefault(); });
 UI.$('p-resume').onclick = () => controls.lock();
+UI.$('p-pause').onclick = async () => { await act('setPause', !G.paused); showPause(); };
+UI.$('m-saves').onclick = savesPanel;
+
+// ---------- saves: export to a file, import a file, delete ----------
+function savesPanel() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { d = null; }
+  const info = d ? `<b>Day ${d.day}</b> · ${UI.money(d.money)} cash · loan ${UI.money(d.debt)}${d.story?.ch1 ? ' · 🏆 Chapter 1 complete' : ''}` : '<span class="dim">No save yet.</span>';
+  UI.openPanel(`<h2>💾 Saves</h2>
+    <p>Your shop: ${info}</p>
+    <div class="row"><button id="sv-exp" ${d ? '' : 'disabled'}>⬇ Export to a file</button><button id="sv-imp">⬆ Import a file</button>
+      <button id="sv-del" class="danger" ${d ? '' : 'disabled'}>🗑 Delete the save</button></div>
+    <p class="dim small">Export makes a backup file you can keep, or move to another computer. Importing replaces the current save.
+      Settings and key binds are kept separately and aren't touched.</p>
+    <input type="file" id="sv-file" accept=".json,application/json" class="hidden">
+    <div class="row"><button id="sv-x" class="ghost">Back</button></div>`, { esc: back, cls: 'wide' });
+  UI.$('sv-x').onclick = back;
+  UI.$('sv-exp').onclick = () => {
+    const blob = new Blob([localStorage.getItem(SAVE_KEY)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `chuckys-house-day-${d.day}.json`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    UI.toast('Save exported.');
+  };
+  UI.$('sv-imp').onclick = () => UI.$('sv-file').click();
+  UI.$('sv-file').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    let n = null;
+    try { n = JSON.parse(await f.text()); } catch { n = null; }
+    if (n?.v !== 6 || typeof n.day !== 'number' || !Array.isArray(n.shelves)) return UI.toast('That isn\'t a Chucky\'s House save file.', 'bad');
+    if (d && !await UI.confirmBox(`<h3>Replace your save?</h3><p>Your Day ${d.day} shop will be replaced with the Day ${n.day} one from the file.</p>`, 'Replace')) return;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(n));
+    G.save = () => {};
+    location.reload();
+  };
+  UI.$('sv-del').onclick = async () => {
+    if (!await UI.confirmBox('<h3>Delete your save?</h3><p>This can\'t be undone. Export it first if you want a backup.</p>', 'Delete it')) return;
+    localStorage.removeItem(SAVE_KEY);
+    G.save = () => {};
+    location.reload();
+  };
+}
 UI.$('p-settings').onclick = async () => UI.settingsPanel(S, apply, back, await mics());
 UI.$('p-controls').onclick = () => UI.controlsPanel(back);
 UI.$('p-quit').onclick = () => { G.save(); leaveNet(); location.reload(); };
@@ -685,8 +748,8 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.8';
-initMusic().then(() => { if (G.mode === 'menu') setMood('menu'); });
+UI.$('ver').textContent = 'Prototype v0.8.1';
+initMusic().then(() => { if (G.mode === 'menu' && !G.cine) setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
   menu.classList.add('hidden');
@@ -734,21 +797,24 @@ renderer.setAnimationLoop(now => {
     return;
   }
   const my = me();
-  const live = controls.isLocked || G.uiOpen || online() || G.chatting;
+  // the world always runs, unless the host (or the solo player) pressed "Pause the game"
+  const live = !G.paused;
+  UI.$('paused-banner').classList.toggle('hidden', !G.paused || G.mode !== 'play');
+  if (G.paused) UI.$('paused-by').textContent = online() && G.pausedBy ? `by ${G.pausedBy}` : '';
   if (G.mode === 'menu') {
     menuT += dt * 0.08;
     camera.position.set(Math.sin(menuT) * 3, 2.2, 1.6 + Math.cos(menuT) * 1.8);
     camera.lookAt(0, 1.1, -2.5);
     updateCity(dt, 0.85);
   } else if (G.mode === 'play' && !G.ended && G.world === 'exp') {
-    if (controls.isLocked && !EXP.isOver()) {
+    if (controls.isLocked && !EXP.isOver() && live) {
       movePlayer(dt);
       ray.setFromCamera(CENTER, camera);
       EXP.updateTarget(ray);
     }
-    if (live || EXP.isDead()) EXP.update(dt);
+    if (live) EXP.update(dt);
   } else if (G.mode === 'play' && !G.ended) {
-    if (controls.isLocked) {
+    if (controls.isLocked && live) {
       movePlayer(dt);
       if (G.carry) updateCarry();
       updateTarget();
@@ -792,7 +858,8 @@ renderer.setAnimationLoop(now => {
     updateVoice(camera);
     const ind = UI.$('mic-ind');
     ind.className = VOICE.status !== 'on' ? 'off' : (my?.talking ? 'talk' : '') + (VOICE.radioKey ? ' radio' : '');
-    ind.textContent = VOICE.status !== 'on' ? '🔇' : VOICE.radioKey ? '📻' : S.micMode === 'ptt' && !VOICE.ptt ? '🎙️ V' : '🎙️';
+    ind.textContent = VOICE.status !== 'on' ? '🔇' : VOICE.radioKey ? '📻'
+      : S.micMode === 'ptt' ? (VOICE.ptt ? (S.pttToggle ? '🎙️ ON' : '🎙️') : '🔇 ' + keyName('ptt')) : '🎙️';
     ind.classList.toggle('hidden', !online());
   }
   renderer.render(sc, camera);

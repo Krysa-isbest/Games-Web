@@ -22,7 +22,8 @@ import * as UI from './ui.js';
 
 const ECON = ['money', 'day', 'time', 'phase', 'debt', 'paidWeek', 'strikes', 'xp', 'trust', 'backstock', 'market', 'marketPrev', 'deals', 'auction', 'night',
   'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'pending',
-  'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio'];
+  'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio',
+  'paused', 'pausedBy'];
 const COLORS = [0xd04a2a, 0x2a7ad0, 0x2ab04a, 0xd0a020];
 const avatars = new Map();
 let sendT = 0, snapT = 0, lastDay = 0;

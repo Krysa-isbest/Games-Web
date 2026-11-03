@@ -64,13 +64,15 @@
       <button id="m-coop">👥 Co-op<small>Up to 4 players · room code or Tailscale direct code</small></button>
       <button id="m-settings">⚙ Settings<small>Graphics, audio, voice</small></button>
       <button id="m-controls">🎮 Controls</button>
+      <button id="m-saves">💾 Saves<small>Export, import or delete your save</small></button>
     </div>
     <div class="mic-box"><span id="mic-line"></span> <button id="mic-retry" class="ghost hidden">Ask again</button></div>
   </div>
   <div class="menu-right">
     <div class="news card">
-      <h3>What's new · v0.7</h3>
+      <h3>What's new · v0.8</h3>
       <ul>
+        <li>🎵 Music, ⌨️ rebindable keys, 💡 tips for new things, 💾 save export / import.</li>
         <li>🏦 A playable intro: Uncle Chuck vanished, and his shop (and debt) is yours.</li>
         <li>🧽 Cleaning matters: mop spills, sweep glass, wet-floor signs. Clean shops sell for more.</li>
         <li>👥 Jobs with perks and a team report card every evening.</li>
@@ -86,13 +88,17 @@
 
 <div id="pause" class="screen hidden">
   <div class="menu-box center">
-    <h2>Paused</h2>
-    <button id="p-resume">Resume</button>
+    <h2>Menu</h2>
+    <p class="dim center small" id="p-note">The game keeps running.</p>
+    <button id="p-resume">▶ Back to the game</button>
+    <button id="p-pause">⏸ Pause the game</button>
     <button id="p-settings">Settings</button>
     <button id="p-controls">Controls</button>
     <button id="p-quit">Save &amp; quit to menu</button>
   </div>
 </div>
+
+<div id="paused-banner" class="hidden">⏸ GAME PAUSED<small id="paused-by"></small></div>
 
 <div id="cutscene" class="screen hidden">
   <div id="cut-text"></div>
