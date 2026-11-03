@@ -1,6 +1,6 @@
 // Music. The owner's tracks go in music/ and are listed in music/list.json:
 //   { "menu": ["menu.mp3"], "shop": [...], "evening": [...], "auction": [...], "night": [...], "chase": [...],
-//     "down": [...], "prison": [...], "intro": [...] }
+//     "down": [...], "prison": [...], "intro": [...], "krysy": [...] (the Krysy o'clock radio station) }
 // Empty lists fall back to a synthesized track (see STYLES) where there is one. Shop music plays from the radio on the counter (positional).
 // The ending track is synthesized live (an original slow build that explodes), so it needs no file.
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { VOICE } from './voice.js';
 export const STATIONS = [
   { name: 'Chill FM', mood: 'shop' },
   { name: 'Night Jazz', mood: 'evening' },
-  { name: 'Hype Radio', mood: 'auction' },
+  { name: 'Krysy o\'clock', mood: 'krysy' }, // the owner's own songs (list.json "krysy")
   { name: 'Off', mood: null },
 ];
 const M = { list: {}, bus: null, direct: null, radioIn: null, panner: null, decks: [], cur: -1, mood: undefined, chase: null, chaseGain: null, duck: 1, ready: false };
@@ -131,7 +131,7 @@ trustMods.push(() => radioOn() || G.decor.includes('jukebox') ? 1.1 : 1);
 
 // ---------- synthesized tracks for the moments without a file ----------
 // The owner's tracks win whenever list.json has one for that moment.
-const SYNTH = { evening: 'jazz', auction: 'hype', night: 'ambient', down: 'heart', prison: 'blues' };
+const SYNTH = { evening: 'jazz', auction: 'hype', krysy: 'hype', night: 'ambient', down: 'heart', prison: 'blues' };
 export const hasMusic = mood => hasTracks(mood) || !!SYNTH[mood];
 const hz = n => 440 * Math.pow(2, (n - 69) / 12);
 function noiseBuffer(c) {
@@ -151,7 +151,7 @@ const STYLES = {
     if (i % 4 === 0 || i % 4 === 3) x.noise(t, 0.06, 0.03, 9000, 2);
     if (i % 4 === 0 && Math.random() < 0.35) x.tone('triangle', hz(CH[Math.random() * 4 | 0] + 24), t + (Math.random() < 0.5 ? B / 3 : 0), B * 0.8, 0.03);
   } },
-  // Hype Radio / the auction: four-on-the-floor, offbeat hats, a pumping bass, chord stabs (Am F C G)
+  // the auction (and Krysy o'clock until its own songs are in): four-on-the-floor, offbeat hats, a pumping bass, chord stabs (Am F C G)
   hype: { bpm: 126, play(s, t, x) {
     const bar = Math.floor(s / 16) % 4, i = s % 16, B = x.beat, R = [45, 41, 48, 43][bar];
     if (i % 4 === 0) x.tone('sine', 110, t, 0.25, 0.4, { to: 40 });
