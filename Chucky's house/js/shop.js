@@ -7,7 +7,7 @@ import { addJob, perk, trashCap } from './jobs.js';
 import { SHELF_TYPES, makeShelf, placeShelf, setSlotItem, shelfBySid } from './shelves.js';
 import { removeTrash, trashById } from './trash.js';
 import { updateBin, updateSign, updateWorld } from './world.js';
-import { updateCoop } from './chickens.js';
+import { updateCoop, FEEDS } from './chickens.js';
 import { pay, dueRemaining, marketPrice, BIG_BUY, bidStep, value } from './economy.js';
 import { estimate } from './customers.js';
 import { NET, tell, broadcast, online } from './net.js';
@@ -24,6 +24,7 @@ export const CATALOG = {
     { id: 'screwdriver', kind: 'tool', icon: '🪛', name: 'Screwdriver Set', cost: 380, desc: 'Take apart arcade cabinets and AC units (X). Motorbikes need the wrench too.' },
     { id: 'wrench', kind: 'tool', icon: '🔧', name: 'Wrench Set', cost: 650, desc: 'Unbolt generators and engines. With the screwdriver: motorbikes.' },
     { id: 'crowbar', kind: 'tool', icon: '🪝', name: 'Crowbar', cost: 500, desc: 'Pry open locked crates and car trunks: better loot inside.' },
+    { id: 'gasmask', kind: 'tool', icon: '😷', name: 'Gas Masks (whole team)', cost: 1600, desc: 'Unlocks the Abandoned Power Plant at night. The air in there kills without one. Tough enemies: bring a friend.' },
     { id: 'bandage', kind: 'gear', icon: '🩹', name: 'Bandage', cost: 120, n: 1, desc: 'Heals 50 HP, or gets a downed teammate back up.' },
     { id: 'trap', kind: 'gear', icon: '🪤', name: 'Bear Trap', cost: 90, n: 1, desc: 'Holds an enemy in place for a few seconds.' },
     { id: 'mine', kind: 'gear', icon: '💣', name: 'Landmine', cost: 180, n: 1, desc: 'Blows up anything close. Including you.' },
@@ -51,8 +52,10 @@ export const CATALOG = {
     { id: 'bag2', kind: 'up', icon: '🎒', name: 'Hiking Backpack', cost: 1600, desc: '8 slots.', req: () => G.up.bag >= 6, owned: () => G.up.bag >= 8, apply: () => { G.up.bag = 8; } },
     { id: 'permit', kind: 'up', icon: '📜', name: 'Gun Permit', cost: 1500, desc: 'Lets you buy and sell weapons (customers, shelves and the Weapons app).', owned: () => G.up.permit, apply: () => { G.up.permit = true; } },
     { id: 'workshop', kind: 'up', icon: '🛠️', name: 'Workshop (back room)', cost: 2500, desc: 'Rent the room behind the shop. Repair broken items at the bench.', owned: () => G.up.workshop, apply: () => { G.up.workshop = true; updateWorld(); } },
-    { id: 'coop', kind: 'up', icon: '🐔', name: 'Chicken Coop + 3 Hens', cost: 900, desc: 'In the yard. Hens lay eggs; your first egg opens the food stand window.', owned: () => G.up.coop, apply: () => { G.up.coop = true; G.up.chickens = 3; updateCoop(); } },
+    { id: 'coop', kind: 'up', icon: '🐔', name: 'Chicken Coop + 3 Hens', cost: 900, desc: 'In the yard. Hens lay eggs; your first egg opens the food stand window. Comes with 2 sacks of feed.', owned: () => G.up.coop, apply: () => { G.up.coop = true; G.up.chickens = 3; G.gear.feedCheap = (G.gear.feedCheap || 0) + 2; updateCoop(); } },
     { id: 'chicken', kind: 'up', icon: '🐓', name: 'One More Hen', cost: 150, desc: 'More eggs. Up to 8 hens.', req: () => G.up.coop, owned: () => G.up.chickens >= 8, apply: () => { G.up.chickens++; updateCoop(); } },
+    ...Object.entries(FEEDS).map(([id, f]) => ({ id, kind: 'gear', icon: f.icon, name: `Feed: ${f.name}`, cost: f.cost, n: 1, req: () => G.up.coop,
+      desc: `${f.desc} One sack feeds 4 hens for a day. Fill the trough in the yard every morning.` })),
     { id: 'register2', kind: 'up', icon: '🧾', name: 'Second Register', cost: 1800, desc: 'A second till on the counter with its own queue: two cashiers in rush hour.', owned: () => G.up.register2, apply: () => { G.up.register2 = true; updateWorld(); } },
     { id: 'truckBed', kind: 'up', icon: '🛻', name: 'Truck: Longer Bed', cost: 1400, desc: 'A longer truck bed: more room for loot and big objects.', owned: () => G.up.truckBed, apply: () => { G.up.truckBed = true; } },
     { id: 'truckQuiet', kind: 'up', icon: '🤫', name: 'Truck: Quiet Engine', cost: 900, desc: 'Without it, the idling engine draws enemies while someone sits in the cab.', owned: () => G.up.truckQuiet, apply: () => { G.up.truckQuiet = true; } },
@@ -76,7 +79,7 @@ function doBuy(pid, cat, id, pos) {
   G.money -= it.cost; G.stats.spent += it.cost;
   let sid = null;
   if (it.kind === 'tool') G.tools[it.id] = 1;
-  else if (it.kind === 'gear') G.gear[it.gear || it.id] += it.n || 1;
+  else if (it.kind === 'gear') G.gear[it.gear || it.id] = (G.gear[it.gear || it.id] || 0) + (it.n || 1);
   else if (it.kind === 'weapon') { G.weapons[it.id] = 1; for (const [k, n] of Object.entries(it.give || {})) G.gear[k] += n; }
   else if (it.kind === 'up') it.apply();
   else if (it.kind === 'decor') { G.decor.push(it.id); updateDecor(); }

@@ -14,7 +14,29 @@ const BASE = {
   rat: { name: 'Rat', hp: 12, run: 4.4, walk: 1.4, dmg: 4, vision: 6, hear: 5, reach: 0.75, cd: 0.9 },
   dog: { name: 'Junkyard dog', hp: 30, run: 5.6, walk: 1.6, dmg: 9, vision: 11, hear: 14, reach: 1.1, cd: 1.0 },
   guard: { name: 'Junkyard owner', hp: 85, run: 2.6, walk: 1.3, dmg: 42, vision: 20, hear: 16, reach: 18, cd: 1.7 },
+  // power plant: tough on purpose (it's meant for two or more players)
+  ghoul: { name: 'Irradiated worker', hp: 110, run: 3.7, walk: 1.2, dmg: 20, vision: 10, hear: 12, reach: 1.35, cd: 1.1 },
+  hound: { name: 'Glowing hound', hp: 55, run: 6.0, walk: 1.8, dmg: 13, vision: 12, hear: 16, reach: 1.15, cd: 0.9 },
 };
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x60ff80 });
+export const DOGS = new Set(['dog', 'hound']); // four-legged, sniff out hiding players, bark
+// A worker in a torn hazmat suit with a cracked mask and glowing eyes.
+function makeGhoul(seed) {
+  const m = makePerson({ ragged: true, seed }), head = m.userData.head, body = m.userData.body;
+  part(head, new THREE.BoxGeometry(0.2, 0.14, 0.08), 0x2a2e2a, 0, -0.04, 0.1, { roughness: 0.5 });
+  part(head, new THREE.CylinderGeometry(0.045, 0.05, 0.08, 8), 0x3a3e3a, 0, -0.08, 0.17).rotation.x = Math.PI / 2;
+  for (const x of [-0.045, 0.045]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), glowMat); e.position.set(x, 0.03, 0.105); head.add(e); }
+  part(body, new THREE.CylinderGeometry(0.24, 0.28, 0.66, 10), 0xc8b040, 0, 1.0, 0, { roughness: 0.8 }).scale.z = 0.72; // suit
+  for (let k = 0; k < 3; k++) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.02), glowMat); s.position.set(-0.12 + k * 0.12, 0.9 + k * 0.12, 0.2); body.add(s); }
+  return m;
+}
+function makeHound(seed) {
+  const d = makeDog(seed + 1);
+  d.scale.setScalar(1.15);
+  for (const x of [-0.05, 0.05]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), glowMat); e.position.set(x, 0.04, 0.11); d.userData.head.add(e); }
+  for (let k = 0; k < 4; k++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), glowMat); s.position.set((k % 2 - 0.5) * 0.2, 0.62, -0.25 + k * 0.15); d.userData.body.add(s); }
+  return d;
+}
 // Stuns are shorter the more skulls tonight has.
 export const stunMult = s => 1 / (0.7 + s * 0.3);
 // How far enemies hear a voice. vl = mic loudness 0..1 (0 when the player switched voice noise off).
@@ -37,6 +59,8 @@ export function makeEnemy(E, kind, x, z, seed, extra = {}) {
     const fl = new THREE.SpotLight(0xfff0d0, 22, 22, 0.35, 0.5, 1.2); fl.position.set(-0.2, 1.4, 0.3);
     fl.target.position.set(-0.2, 0.6, 6); mesh.add(fl, fl.target); mesh.userData.flash = fl;
   } else if (kind === 'dog') mesh = makeDog(seed);
+  else if (kind === 'ghoul') mesh = makeGhoul(seed);
+  else if (kind === 'hound') mesh = makeHound(seed);
   else mesh = makeRat();
   mesh.position.set(x, 0, z);
   mesh.rotation.y = (seed % 628) / 100;
@@ -68,6 +92,13 @@ export function spawnEnemies(E, r) {
       const [x, z] = sp.far[(f++ * 7) % sp.far.length];
       for (let k = 0; k < 3; k++) makeEnemy(E, 'rat', x + (r() - 0.5) * 1.2, z + (r() - 0.5) * 1.2, seed());
     }
+  } else if (E.locId === 'plant') {
+    // ghouls wander the rooms, a couple guard the reactor; hounds roam in a pack
+    const nG = Math.round((day ? 3 : 4) + s * 1.2);
+    for (let k = 0; k < 2; k++) makeEnemy(E, 'ghoul', sp.reactor[0] + k * 1.5, sp.reactor[1] + (r() - 0.5), seed(), { idle: true });
+    for (let k = 0; k < nG; k++) { const [x, z] = sp.rooms[k % sp.rooms.length]; makeEnemy(E, 'ghoul', x + (r() - 0.5) * 2, z + (r() - 0.5) * 2, seed()); }
+    const [hx, hz] = sp.rooms[(nG + 3) % sp.rooms.length];
+    for (let k = 0; k < clamp(Math.round(s - 1), 1, 3); k++) makeEnemy(E, 'hound', hx + (r() - 0.5) * 1.5, hz + (r() - 0.5) * 1.5, k);
   } else {
     makeEnemy(E, 'guard', sp.guard[0], sp.guard[1], seed(), { patrol: sp.patrol });
     const dogs = clamp(Math.round(1 + s), 2, 4);
@@ -120,14 +151,14 @@ export function updateEnemiesHost(E, dt, players, cb) {
       const visR = en.vision * (p.light ? 1.35 : 1) * (p.crouch ? 0.7 : 1) * (E.ev.id === 'fog' ? 0.6 : E.ev.id === 'day' ? 1.4 : 1);
       const sees = !p.hidden && d < visR && los(m.position, p.pos);
       // voice: talking carries a few metres, shouting much further, whispering is safe; muffled in a hiding spot
-      const vr = voiceRange(p.vl, p.hidden) * (en.kind === 'dog' ? 1.3 : 1);
+      const vr = voiceRange(p.vl, p.hidden) * (DOGS.has(en.kind) ? 1.3 : 1);
       const voice = vr > 0 && d < vr;
       const hears = !p.hidden && (d < en.hear * (p.run ? 1 : p.crouch ? 0.2 : 0.4) * (p.quiet ? 0.75 : 1) || voice);
       if (p.hidden && voice) { // something in there is talking: come and look, and find them if they keep at it
         if (d < 1.8) { cb.found(p.pid); en.seenAt = performance.now(); }
         else if (en.state !== 'chase' && en.state !== 'aim') { en.state = 'search'; en.last = p.pos.clone(); en.path = []; en.repath = 0; }
       }
-      const sniff = p.hidden && en.kind === 'dog' && d < 2.6;
+      const sniff = p.hidden && DOGS.has(en.kind) && d < 2.6;
       // it saw you a moment before you got in: it knows where you are
       const sawHide = p.hidden && en.target === p.pid && performance.now() - (en.seenAt || 0) < 1500 + (en.state === 'chase' ? 2500 : 0) && d < 8;
       if (sniff) { en.sniff += dt; if (en.sniff > 3) { en.sniff = 0; cb.found(p.pid); sfx.bark(0.7); } }
@@ -137,9 +168,9 @@ export function updateEnemiesHost(E, dt, players, cb) {
     if (best) {
       if (en.state !== 'chase' && en.state !== 'aim') {
         en.state = 'chase';
-        if (en.kind === 'dog') { cb.fx('bark', { x: m.position.x, z: m.position.z }); for (const o of E.enemies) if (o.kind === 'guard' && !o.dead && o.state !== 'chase') { o.state = 'search'; o.last = best.pos.clone(); o.path = []; } }
+        if (DOGS.has(en.kind)) { cb.fx('bark', { x: m.position.x, z: m.position.z }); for (const o of E.enemies) if (o.kind === 'guard' && !o.dead && o.state !== 'chase') { o.state = 'search'; o.last = best.pos.clone(); o.path = []; } }
         else if (en.kind === 'guard') cb.fx('hey', { x: m.position.x, z: m.position.z });
-        else if (en.kind === 'homeless') cb.fx('grunt', { x: m.position.x, z: m.position.z });
+        else if (en.kind === 'homeless' || en.kind === 'ghoul') cb.fx('grunt', { x: m.position.x, z: m.position.z });
       }
       en.target = best.pid; en.last = best.pos.clone(); en.lost = 0; en.idle = 0;
       if (seen && !best.hidden) en.seenAt = performance.now();
@@ -149,7 +180,7 @@ export function updateEnemiesHost(E, dt, players, cb) {
     const tp = players.find(p => p.pid === en.target);
     if (en.state === 'chase' || en.state === 'aim') {
       speed = en.run;
-      if (en.lost > (en.kind === 'dog' ? 10 : 7) || !tp || tp.down) { en.state = en.kind === 'guard' ? 'patrol' : 'wander'; en.path = []; en.target = null; }
+      if (en.lost > (DOGS.has(en.kind) ? 10 : 7) || !tp || tp.down) { en.state = en.kind === 'guard' ? 'patrol' : 'wander'; en.path = []; en.target = null; }
       else if (en.kind === 'guard') {
         const d = Math.hypot(tp.pos.x - m.position.x, tp.pos.z - m.position.z);
         const canShoot = seen && d < en.reach;
@@ -175,7 +206,7 @@ export function updateEnemiesHost(E, dt, players, cb) {
         const d = Math.hypot(tp.pos.x - m.position.x, tp.pos.z - m.position.z);
         if (d < en.reach && seen) {
           m.rotation.y = Math.atan2(tp.pos.x - m.position.x, tp.pos.z - m.position.z);
-          if (en.cd <= 0) { en.cd = en.cdMax; en.atk = 0.4; cb.hurt(tp.pid, Math.round(en.dmg)); if (en.kind === 'dog') sfx.bark(0.6); }
+          if (en.cd <= 0) { en.cd = en.cdMax; en.atk = 0.4; cb.hurt(tp.pid, Math.round(en.dmg)); if (DOGS.has(en.kind)) sfx.bark(0.6); }
         } else if (seen) goal = tp.pos;
         else {
           if ((en.repath -= dt) <= 0) { en.repath = 0.6; en.path = bfs(tileOf(m.position), tileOf(en.last)); }
@@ -203,7 +234,7 @@ export function updateEnemiesHost(E, dt, players, cb) {
       }
       goal = nextWaypoint(en);
     }
-    if (goal) moving = step(en, goal, speed, dt);
+    if (goal) moving = step(en, goal, speed * (E.melt != null ? 1.25 : 1), dt); // the meltdown alarm drives them into a frenzy
     en.st = en.state === 'aim' || en.atk > 0 ? 5 : moving ? (speed > en.walk * 1.2 ? 2 : 1) : 0;
     animate(en, dt);
   }
@@ -211,8 +242,8 @@ export function updateEnemiesHost(E, dt, players, cb) {
 
 function fall(en, dt) {
   en.fall = Math.min(1, (en.fall || 0) + dt * 3);
-  en.mesh.rotation.x = -en.fall * Math.PI / 2 * (en.kind === 'dog' || en.kind === 'rat' ? 0 : 1);
-  if (en.kind === 'dog' || en.kind === 'rat') en.mesh.rotation.z = en.fall * Math.PI / 2;
+  en.mesh.rotation.x = -en.fall * Math.PI / 2 * (DOGS.has(en.kind) || en.kind === 'rat' ? 0 : 1);
+  if (DOGS.has(en.kind) || en.kind === 'rat') en.mesh.rotation.z = en.fall * Math.PI / 2;
   if (en.mesh.userData.flash) en.mesh.userData.flash.intensity = 0;
 }
 
@@ -221,8 +252,8 @@ export function animate(en, dt) {
   const m = en.mesh, st = en.st;
   if (st === 4) return fall(en, dt);
   const speed = st === 2 ? en.run : en.walk;
-  en.t += dt * (st === 1 || st === 2 ? speed * (en.kind === 'rat' ? 6 : en.kind === 'dog' ? 3.5 : 3) : 0);
-  if (en.kind === 'dog' || en.kind === 'rat') {
+  en.t += dt * (st === 1 || st === 2 ? speed * (en.kind === 'rat' ? 6 : DOGS.has(en.kind) ? 3.5 : 3) : 0);
+  if (DOGS.has(en.kind) || en.kind === 'rat') {
     animateQuad(m, en.t, st === 1 || st === 2, st === 2 ? 1.3 : 0.8);
     if (m.userData.jaw) m.userData.jaw.rotation.x = st === 5 ? 0.5 : 0;
   } else {

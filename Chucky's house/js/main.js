@@ -13,9 +13,10 @@ import * as EXP from './expedition.js';
 import { rollMarket, endDay, DAY_LEN, START_DEBT, marketPrice, auctionTick, isAuctionDay } from './economy.js';
 import { PhysWorld, throwFrom } from './physics.js';
 import { pendingTick } from './shop.js';
-import { updateCoop, updateChickens, eggSave, eggLoad } from './chickens.js';
+import { updateCoop, updateChickens, eggSave, eggLoad, troughHint, troughPanel } from './chickens.js';
+import { updateBeats } from './beats.js';
 import { repairGame } from './minigames.js';
-import { act, send, broadcast, on, isGuest, isHost, online, leaveNet } from './net.js';
+import { act, send, broadcast, on, isGuest, isHost, online, leaveNet, tell } from './net.js';
 import { VOICE, initMic, updateVoice, setPTT, setRadio, updateMicTrack, closeVoice } from './voice.js';
 import { openCoop, netTick, updateAvatars, approveKey, openChat, shopSnap } from './coop.js';
 import { buildCleaning, updateMess, scrubTick, toolMesh, closetPanel, messSave, messLoad, spawnSpill, SPILLS } from './mess.js';
@@ -72,7 +73,7 @@ addEventListener('resize', () => {
 
 // ---------- save / load ----------
 const FIELDS = ['money', 'day', 'time', 'phase', 'debt', 'paidWeek', 'strikes', 'xp', 'trust', 'backstock', 'market', 'marketPrev', 'deals', 'auction', 'night',
-  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'index',
+  'gear', 'tools', 'weapons', 'up', 'eggs', 'eggQ', 'fed', 'doorOpen', 'binCount', 'stats', 'index',
   'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio'];
 const MERGE = ['gear', 'tools', 'weapons', 'up', 'stats', 'life', 'story'];
 let playerStart = [-4.5, 3.6];
@@ -265,7 +266,8 @@ function hintFor(t) {
       return `Trash bin (${G.binCount}/${G.up.binCap})`;
     case 'dumpster': return h?.kind === 'bag' ? `${E} Throw bag in dumpster` : 'Dumpster';
     case 'storage': return h?.kind === 'item' ? `${E} Put it in the stock crates` : `${E} Stock crates (${G.backstock.length} items)`;
-    case 'egg': return `${E} Collect egg 🥚`;
+    case 'egg': { const q = t.ref.userData.q || 1; return `${E} Collect ${q >= 2 ? 'golden-yolk egg ✨' : q >= 1.4 ? 'brown egg' : q < 0.8 ? 'small egg' : 'egg'} 🥚`; }
+    case 'trough': return troughHint(E);
     case 'chicken': return '🐔';
     case 'hatch': return G.standWaiting ? `${E} Sell eggs (${G.eggs} in the basket)` : `Egg stand · ${G.eggs} eggs <span class="dim">(customers ring the bell)</span>`;
     case 'bench': return G.up.workshop ? `${E} Repair a broken item` : '';
@@ -324,6 +326,7 @@ async function interact() {
       return UI.stockPanel('📦 Stock crates: take an item', inst => { act('takeFromStock', inst.uid); G.relock(); });
     case 'egg': return act('collectEgg', t.ref.userData.eid);
     case 'chicken': return sfx.cluck();
+    case 'trough': return troughPanel();
     case 'hatch': return act('serveStand');
     case 'bench':
       if (!G.up.workshop) return;
@@ -406,6 +409,8 @@ function openStore() {
 // Somebody picked a location: everybody sees a 3 s "into the truck" countdown, then the whole team goes.
 ACTIONS.startNight = (pid, loc) => {
   if (G.phase !== 'evening' || G.world === 'exp' || G.leaving) return false;
+  const need = EXP.LOCATIONS[loc]?.needs;
+  if (!EXP.LOCATIONS[loc] || (need && !G.tools[need])) { tell(pid, 'You need gas masks to go there (computer → Tools & Gear).', 'bad'); return false; }
   G.leaving = true;
   const ev = Math.random() < 0.4 ? 'night' : pick(['day', 'angry', 'fog', 'blackout', 'night']);
   const params = { loc, seed: Math.random() * 2 ** 31 | 0, skulls: G.night?.[loc] ?? 1, ev };
@@ -482,12 +487,15 @@ G.endExpedition = r => {
   if (!isGuest()) { G.phase = 'prep'; updateSign(); G.save(); }
   const list = ids => ids.map(id => itemById(id).icon + ' ' + itemById(id).name).join(', ');
   const mine = r.kept[G.me] || [], lost = r.lost[G.me] || [];
-  const title = { drive: '🏠 Back home safe', time: '🛻 The truck left', wiped: '💀 Everybody went down' }[r.reason];
+  const title = { drive: '🏠 Back home safe', time: '🛻 The truck left', wiped: '💀 Everybody went down', melt: r.escaped ? '☢️ Out just in time' : '☢️ The plant blew up' }[r.reason];
   const hosp = Object.entries(r.hospital || {});
   UI.openPanel(`<h2>${title}</h2>
     <p class="dim">${r.loc} · ${UI.skulls(r.skulls)} · ${r.ev}</p>
     ${r.reason === 'time' && lost.length ? '<p>You weren\'t in the truck when it left. You walked home all night, and somebody robbed your bag.</p>' : ''}
     ${r.reason === 'wiped' ? '<p>Nobody was left standing. Somebody towed the truck home. Whatever was in your bags is gone.</p>' : ''}
+    ${r.reason === 'melt' ? (r.escaped ? `<p>The truck was rolling when the reactor went up. ${lost.length || !r.kept[G.me] ? 'Not everyone made it into the truck: they\'re in the hospital, and their bags are gone.' : 'You can still see the glow in the mirror.'}</p>`
+      : '<p>The reactor exploded with nobody in the truck. You woke up in the hospital. The blast threw the truck into a ditch: it still runs, but everything in it is gone.</p>') : ''}
+    ${r.rodCash ? `<p class="up">☢️ A buyer who asks no questions paid <b>${UI.money(r.rodCash)}</b> for the fuel rod.</p>` : ''}
     <p>🛻 The truck brought home <b>${r.cargo.length}</b> item(s)${r.cargo.length ? ': ' + list(r.cargo) : '.'}</p>
     ${mine.length ? `<p>🎒 Your bag: ${list(mine)}</p>` : ''}
     ${lost.length ? `<p class="down">Lost: ${list(lost)}</p>` : ''}
@@ -661,11 +669,30 @@ G.onStoryIntro = () => {
   UI.closePanel(false); menu.classList.add('hidden');
   playIntro(() => { if (G.pendingStart) { G.pendingStart = false; enterPlay(); } else UI.toast('Waiting for the host…'); });
 };
-// Host: start the game for the co-op (the host's save, or a new game with the intro).
+// Host: pick the chapter, then start the game for the co-op (the host's save, or a new game with the intro).
 G.hostStartGame = () => {
   if (G.mode === 'play') return;
-  if (!G.hasSave) { G.hasSave = true; menu.classList.add('hidden'); startIntro(() => { G.save(); enterPlay(); }); } else enterPlay();
+  chapterPicker(() => {
+    if (G.mode === 'play') return;
+    if (!G.hasSave) { G.hasSave = true; menu.classList.add('hidden'); startIntro(() => { G.save(); enterPlay(); }); } else enterPlay();
+  }, () => { UI.closePanel(false); UI.$('m-coop').click(); }, true);
 };
+
+// ---------- chapter select (new games and hosting). Chapter 2 is coming soon. ----------
+const CHAPTERS = [
+  { n: 1, name: 'The Debt', icon: '🏦', desc: 'Uncle Chuck vanished and left you his pawn shop, and his $8,000 loan. Pay it off.' },
+  { n: 2, name: 'The Rival', icon: '🔥', desc: 'A shiny new pawn store opens across the street. Someone wants your shop gone.', soon: true },
+];
+function chapterPicker(onCh1, onBack, hosting = false) {
+  const ch1 = G.hasSave ? `Continue · Day ${G.day}` : 'New game';
+  UI.openPanel(`<h2>📖 Choose a chapter</h2>${hosting ? '<p class="dim">Everyone in the lobby plays the chapter you pick.</p>' : ''}
+    <div class="chapters">${CHAPTERS.map(c => `<button class="chapter${c.soon ? ' soon' : ''}" data-ch="${c.n}" ${c.soon ? 'disabled' : ''}>
+      <span class="ch-icon">${c.icon}</span><small>CHAPTER ${c.n}</small><b>${c.name}</b><span class="dim">${c.desc}</span>
+      <em>${c.soon ? '🔒 Coming soon' : c.n === 1 && hosting ? ch1 : 'Play ▶'}</em>${c.n === 1 && G.story.ch1 ? '<i class="ok">🏆 Completed</i>' : ''}</button>`).join('')}</div>
+    <div class="row"><button id="ch-back" class="ghost">Back</button></div>`, { cls: 'wide', esc: onBack });
+  UI.$('ch-back').onclick = onBack;
+  document.querySelector('[data-ch="1"]').onclick = () => { UI.closePanel(false); onCh1(); };
+}
 // Party: wipe the save and reload into a new game (the intro plays, then the game starts).
 G.newGameReload = () => {
   localStorage.removeItem(SAVE_KEY);
@@ -701,6 +728,8 @@ function clickToPlay() {
   UI.$('click-in').classList.remove('hidden');
 }
 UI.$('click-in').onclick = () => controls.lock();
+// after a story cutscene: back into the game (or "Click to continue" if the browser wants a click first)
+G.afterCine = () => { G.relock(); setTimeout(clickToPlay, 400); };
 // Opening any window frees the mouse: held keys are let go, but a TOGGLED push-to-talk stays on.
 controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; mouseHeld = false; if (!S.pttToggle) setPTT(false); setRadio(false); showEmoteBar(false); showPause(); });
 document.addEventListener('pointerlockerror', clickToPlay);
@@ -708,10 +737,10 @@ document.addEventListener('pointerlockerror', clickToPlay);
 const mics = async () => (await navigator.mediaDevices?.enumerateDevices?.() || []).filter(d => d.kind === 'audioinput');
 const back = () => { UI.closePanel(false); };
 UI.$('m-continue').onclick = enterPlay;
-UI.$('m-new').onclick = async () => {
+UI.$('m-new').onclick = () => chapterPicker(async () => {
   if (G.hasSave && !await UI.confirmBox('<h3>Start a new game?</h3><p>Your current save will be deleted.</p>', 'New game')) return;
   G.newGameReload();
-};
+}, back);
 UI.$('m-coop').onclick = () => openCoop(G.hostStartGame, () => { UI.closePanel(false); if (!online()) { leaveNet(); closeVoice(); } });
 UI.$('m-settings').onclick = async () => UI.settingsPanel(S, apply, back, await mics());
 UI.$('m-controls').onclick = () => UI.controlsPanel(back);
@@ -779,7 +808,7 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.8.3';
+UI.$('ver').textContent = 'Prototype v0.9.0';
 initMusic().then(() => { if (G.mode === 'menu' && !G.cine) setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
@@ -862,6 +891,7 @@ renderer.setAnimationLoop(now => {
       updateChickens(dt, !isGuest());
       updateMess(dt, !isGuest());
       updateTutorial(dt, !isGuest());
+      updateBeats(dt, !isGuest());
       if ((hudT -= dt) <= 0) { UI.hud(); hudT = 0.25; }
     }
     // the shop's look follows the story / today's event

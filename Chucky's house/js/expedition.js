@@ -3,8 +3,8 @@
 import * as THREE from 'three';
 import { G, ACTIONS, pick, rand, rng, clamp, me } from './state.js';
 import { itemById, makeItemMesh, makeInst, part, hitMat, canvasTex } from './data.js';
-import { MAP, free, los, buildAlley, buildJunkyard, LOOT_TABLES } from './maps.js';
-import { spawnEnemies, updateEnemiesHost, noise, stunMult, enemySnap, mirrorEnemies, lerpEnemies, voiceRange } from './enemies.js';
+import { MAP, free, los, buildAlley, buildJunkyard, buildPlant, LOOT_TABLES } from './maps.js';
+import { spawnEnemies, updateEnemiesHost, noise, stunMult, enemySnap, mirrorEnemies, lerpEnemies, voiceRange, DOGS } from './enemies.js';
 import { PhysWorld, throwFrom } from './physics.js';
 import { dismantle } from './minigames.js';
 import { SKULLS, value } from './economy.js';
@@ -23,7 +23,10 @@ export const LOCATIONS = {
     desc: 'Dark alleys behind the city. The people living here do NOT like visitors, and the rats come in packs.', loot: 'Household stuff, electronics, the odd ring' },
   junkyard: { name: 'Junkyard', icon: '🚗', time: 420, enemy: 'One old man with a shotgun, 2–4 dogs',
     desc: 'A huge fenced yard of crushed cars. The owner patrols with a flashlight; his dogs hear everything. Hide in wrecks and porta-potties.', loot: 'Car parts, scrap, motorbikes, the owner\'s treasures' },
+  plant: { name: 'Abandoned Power Plant', icon: '☢️', time: 420, enemy: 'Irradiated workers, glowing hounds (tough: bring a friend)', needs: 'gasmask',
+    desc: 'The old nuclear plant outside town, closed since the accident. Nobody goes in without a gas mask. Take the fuel rod from the reactor and the core melts down: 45 seconds to get out.', loot: 'Copper, electronics, rare finds, the fuel rod' },
 };
+export const MELT_TIME = 45;
 export const EVENTS = [
   { id: 'night', name: 'Quiet Night', desc: 'Just a normal, dark night. Stay sharp.' },
   { id: 'day', name: 'Daytime', desc: 'The sun is up. Fewer enemies, but they see further.' },
@@ -171,7 +174,7 @@ export function start(params, camera) {
   const moon = new THREE.DirectionalLight(day ? 0xfff2dd : 0x8090c0, day ? 1.6 : 0.2);
   moon.position.set(10, 30, 5); scene.add(moon);
 
-  (params.loc === 'junkyard' ? buildJunkyard : buildAlley)(E, r);
+  ({ junkyard: buildJunkyard, plant: buildPlant }[params.loc] || buildAlley)(E, r);
   E.truck = buildTruck(E.truckAt);
   E.wallBoxes = [];
   for (let i = 0; i < MAP.N; i++) for (let j = 0; j < MAP.N; j++) if (!MAP.grid[i][j]) {
@@ -209,6 +212,12 @@ export function start(params, camera) {
 // ---------- night objectives (optional, big reward, carry the story) ----------
 // Alley: one of Chuck's ledger pages lies somewhere far from the truck. Junkyard: crack Rusty's safe.
 function setupObjective(r2) {
+  if (E.locId === 'plant') {
+    E.objective = 'Take the ☢️ fuel rod from the reactor. It starts a meltdown: 45 s to get everyone into the truck!';
+    addLoot(901, 'fuelrod', 'rare', E.rodAt.x, E.rodAt.z);
+    E.loot.find(l => l.lid === 901).g.position.y = 0.5; // on the cart
+    return;
+  }
   if (G.story.pages.length >= 6) { E.objective = null; return; }
   if (E.locId === 'alley') {
     E.objective = 'Find Chuck\'s ledger page (📜) and bring it home.';
@@ -429,11 +438,13 @@ export function updateTarget(ray) {
   const u = hitObj.object.userData, cap = bagCap(G.me), full = n => bagSize(E.bag) + n > cap;
   if (u.safe) { E.target = { safe: u.safe }; const s = u.safe; tip('safe');
     return UI.hint(s.cracking ? `Cracking the safe… ${Math.round(s.progress * 100)} % <span class="dim">(stay close · ${kb('interact')} stop)</span>` : `${kb('interact')} Crack Rusty's safe <span class="dim">(${G.tools.crowbar ? '~6' : '~12'} s, loud)</span>`); }
+  if (u.loot?.id === 'fuelrod' && E.melt == null) { E.target = { loot: u.loot }; tip('rod');
+    return UI.hint(full(2) ? `<span class="down">Bag full (${bagSize(E.bag)}/${cap})</span> ☢️ Fuel rod (2 slots)` : `${kb('interact')} Take the ☢️ <b>fuel rod</b> <span class="down">(starts the meltdown: ${MELT_TIME} s to escape!)</span>`); }
   if (u.loot) { E.target = { loot: u.loot }; const d = itemById(u.loot.id), sz = d.size || 1;
     return UI.hint(full(sz) ? `<span class="down">Bag full (${bagSize(E.bag)}/${cap})</span> ${d.icon} ${d.name}` : `${kb('interact')} Pick up ${d.icon} ${d.name} <span class="r-${u.loot.rarity}">${u.loot.rarity}</span>${sz > 1 ? ` <small class="dim">(${sz} slots)</small>` : ''}`); }
   if (u.body) { E.target = { body: u.body }; const d = itemById(u.body.inst.id); return UI.hint(`${kb('interact')} Pick up ${d.icon} ${d.name}`); }
   if (u.crate) { E.target = { crate: u.crate }; return UI.hint(G.tools.crowbar ? `${kb('interact')} Pry open the locked crate (loud)` : '<span class="dim">Locked crate. Needs a 🪝 crowbar.</span>'); }
-  if (u.hide) { E.target = { hide: u.hide }; tip('hide'); return UI.hint(`${kb('interact')} Hide ${u.hide.kind === 'wreck' ? 'in the wreck' : u.hide.kind === 'potty' ? 'in the porta-potty' : 'in the dumpster'}`); }
+  if (u.hide) { E.target = { hide: u.hide }; tip('hide'); return UI.hint(`${kb('interact')} Hide ${{ wreck: 'in the wreck', potty: 'in the porta-potty', locker: 'in the locker' }[u.hide.kind] || 'in the dumpster'}`); }
   if (u.big) {
     tip('big');
     E.target = { big: u.big }; const d = itemById(u.big.id), tools = d.big.tools.map(t => t === 'wrench' ? '🔧' : '🪛').join('');
@@ -442,6 +453,7 @@ export function updateTarget(ray) {
   UI.hint('');
 }
 const teamAlive = () => Object.values(G.players).some(p => p.id !== G.me && p.world === 'exp' && !p.down);
+const alivePlayers = () => Object.values(G.players).filter(p => p.world === 'exp' && !p.down);
 function waitingText() {
   const team = Object.values(G.players).filter(p => p.world === 'exp' && !p.down);
   const inCab = team.filter(p => p.cab).length;
@@ -579,14 +591,23 @@ ACTIONS.xPick = (pid, lid) => {
   if (!l) return false;
   const sz = itemById(l.id).size || 1;
   if (bagSize(bag) + sz > bagCap(pid)) return false;
-  const story = ['ledger', 'cashbundle'].includes(l.id);
+  const story = ['ledger', 'cashbundle', 'fuelrod'].includes(l.id);
   bag.push(makeInst(l.id, story ? { q: 1 } : { q: clamp(rand(0.55, 1.15) + E.skulls * 0.04, 0.3, 1.3), broken: Math.random() < 0.15 }));
   removeLoot(l); sfx.pick();
   addJob(pid, 'scav', 4, 'loot');
   tell(pid, `Picked up ${itemById(l.id).name}`);
   sendBag(pid);
+  if (l.id === 'fuelrod' && E.melt == null) startMeltdown(pid);
   return true;
 };
+// The fuel rod left the reactor: 45 s until the plant goes up. The truck no longer has a time limit, only the meltdown.
+function startMeltdown(pid) {
+  E.melt = MELT_TIME; E.time = Math.max(E.time, MELT_TIME + 5);
+  const text = `☢️ MELTDOWN! ${G.players[pid]?.name || 'Someone'} took the fuel rod. Everyone in the truck: ${MELT_TIME} seconds!`;
+  broadcast({ t: 'say', text }); UI.toast(text, 'bad');
+  for (const en of E.enemies) if (!en.dead) { en.state = 'search'; en.last = ppos(pid); en.path = []; en.repath = 0; }
+  meltFx();
+}
 ACTIONS.xGrabBody = (pid, uid) => {
   const b = E?.phys.find(uid), bag = bagOf(pid);
   if (!b) return false;
@@ -628,6 +649,7 @@ function kill(en) {
   sfx.thud();
   const p = en.mesh.position;
   if (en.kind === 'homeless' && Math.random() < 0.35) { const { id, rarity } = rollLoot(Math.random, 0.2); hostLoot(id, rarity, p.x + 0.4, p.z + 0.4); }
+  if (en.kind === 'ghoul' && Math.random() < 0.5) { const { id, rarity } = rollLoot(Math.random, 0.4); hostLoot(id, rarity, p.x + 0.4, p.z + 0.4); }
   if (en.kind === 'guard' && Math.random() < 0.6) hostLoot('shotgun_i', 'rare', p.x + 0.5, p.z);
 }
 ACTIONS.xTrap = (pid, kind, x, z) => {
@@ -735,6 +757,32 @@ function playFx(kind, d) {
   if (kind === 'bark') sfx.bark(v);
   if (kind === 'hey') { sfx.hey(); if (dist < 30) UI.toast('"HEY! Get off my property!"', 'bad'); }
   if (kind === 'grunt') sfx.grunt(v);
+  if (kind === 'meltboom') {
+    for (let k = 0; k < 3; k++) setTimeout(() => { if (E) { sfx.boom(); E.shake = 1.2; } }, k * 220);
+    const f = UI.$('melt-flash'); if (f) { f.classList.remove('hidden'); f.style.transition = 'opacity .3s'; requestAnimationFrame(() => { f.style.opacity = 1; }); }
+    if (E.reactor?.light) E.reactor.light.intensity = 300;
+  }
+}
+// Local meltdown effects (everyone): the banner, the white flash element for the explosion.
+function meltFx() {
+  if (E.meltLocal) return;
+  E.meltLocal = true;
+  sfx.bad();
+  for (const [id, cls] of [['melt-banner', 'melt-banner'], ['melt-flash', 'melt-flash hidden']]) {
+    if (UI.$(id)) continue;
+    const el = document.createElement('div'); el.id = id; el.className = cls; document.body.appendChild(el);
+  }
+  UI.$('melt-banner').classList.remove('hidden');
+}
+function meltTick(dt, now) {
+  if (E.melt == null) return;
+  const on = Math.sin(now * 0.009) > 0;
+  for (const l of E.alarms || []) l.intensity = on ? 45 : 2;
+  if (E.reactor) { E.reactor.glow.material.color.setHex(on ? 0xffffff : 0xff4020); if (E.reactor.light && E.meltBoom == null) E.reactor.light.intensity = on ? 60 : 25; }
+  if ((E.alarmT = (E.alarmT ?? 0) - dt) <= 0) { E.alarmT = 1.1; sfx.alarm?.(); }
+  if (E.melt < 10 && E.meltBoom == null) E.shake = Math.max(E.shake, 0.05);
+  const b = UI.$('melt-banner');
+  if (b) b.innerHTML = `☢️ MELTDOWN <b>${Math.max(0, Math.ceil(E.melt))}</b> <small>${E.inCab ? 'You\'re in the truck. Waiting for the others…' : 'GET TO THE TRUCK!'}</small>`;
 }
 function tracerWorld(a, b) {
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xffd080, transparent: true }));
@@ -822,17 +870,27 @@ function updateHost(dt) {
   }
   // blinding headlights: dogs in front of the truck back off
   if (G.up.truckLights) for (const en of E.enemies) {
-    if (en.dead || en.kind !== 'dog') continue;
+    if (en.dead || !DOGS.has(en.kind)) continue;
     const dx = en.mesh.position.x - E.truck.front.x, dz = en.mesh.position.z - E.truck.front.z, d = Math.hypot(dx, dz);
     if (d < 10 && (dx * E.truck.dir.x + dz * E.truck.dir.z) / d > 0.75) { en.stun = Math.max(en.stun, 0.8); en.state = 'wander'; en.path = []; }
   }
+  // meltdown: the countdown, then one huge explosion
+  if (E.melt != null && E.meltBoom == null) {
+    E.melt -= dt;
+    if ((E.meltNoiseT = (E.meltNoiseT ?? 0) - dt) <= 0) { // the alarm keeps everything hunting
+      E.meltNoiseT = 4;
+      for (const p of alivePlayers()) noise(E, p.x, p.z, 14);
+    }
+    if (E.melt <= 0) { E.melt = 0; E.meltBoom = 1.6; aiCb.fx('meltboom', { x: E.reactor.x, z: E.reactor.z }); }
+  }
+  if (E.meltBoom != null && (E.meltBoom -= dt) <= 0) return endHost('melt');
   E.time -= dt;
-  if (E.time <= 60 && !E.warned) { E.warned = true; broadcast({ t: 'say', text: 'The truck leaves in 1 minute! Get back!' }); UI.toast('The truck leaves in 1 minute! Get back!', 'bad'); }
+  if (E.time <= 60 && !E.warned && E.melt == null) { E.warned = true; broadcast({ t: 'say', text: 'The truck leaves in 1 minute! Get back!' }); UI.toast('The truck leaves in 1 minute! Get back!', 'bad'); }
   const team = Object.values(G.players).filter(p => p.world === 'exp');
   const alive = team.filter(p => !p.down);
   if (E.time <= 0) return endHost('time');
   if (!alive.length) return endHost('wiped');
-  if (alive.every(p => E.cab.has(p.id))) {
+  if (alive.every(p => E.cab.has(p.id)) && E.meltBoom == null) {
     if ((E.leaveT += dt) > (team.length > 1 ? 3 : 0.3)) return endHost('drive');
   } else E.leaveT = 0;
   if ((E.snapT -= dt) <= 0 && NET.role === 'host') {
@@ -840,7 +898,7 @@ function updateHost(dt) {
     broadcast({ t: 'xs', en: enemySnap(E), lo: E.loot.map(l => [l.lid, l.id, l.rarity, +l.x.toFixed(2), +l.z.toFixed(2)]),
       bi: E.bigs.map(b => [b.bid, +b.g.position.x.toFixed(2), +b.g.position.y.toFixed(2), +b.g.position.z.toFixed(2), +b.g.rotation.y.toFixed(2), b.carriers, b.loaded ? 1 : 0, b.gone ? 1 : 0]),
       bo: E.phys.snapshot(), tr: E.traps.map(t => [t.id, t.kind, t.x, t.z, t.armed ? 1 : 0]), cr: E.crates.filter(c => c.open).map(c => c.id),
-      time: +E.time.toFixed(1), cab: [...E.cab], cargo: E.cargoCount, gear: G.gear, sf: E.safe?.open ? 1 : 0 });
+      time: +E.time.toFixed(1), cab: [...E.cab], cargo: E.cargoCount, gear: G.gear, sf: E.safe?.open ? 1 : 0, mt: E.melt != null ? +E.melt.toFixed(1) : -1 });
   }
 }
 
@@ -852,19 +910,24 @@ function endHost(reason) {
   for (const p of team) {
     const bag = bagOf(p.id);
     if (reason !== 'wiped' && (E.cab.has(p.id) || reason === 'drive') && !p.down) kept[p.id] = bag.map(i => i.id); else lost[p.id] = bag.map(i => i.id);
+    // the meltdown: whoever wasn't in the truck didn't make it
+    if (reason === 'melt' && !kept[p.id]) E.hosp[p.id] = 'dead';
   }
-  const cargoInsts = cargo(); // the truck always gets home (towed, if nobody drives it)
+  // the truck always gets home (towed, if nobody drives it). Except when the plant blows up with nobody in it.
+  const escaped = reason !== 'melt' || Object.keys(kept).length > 0;
+  const cargoInsts = escaped ? cargo() : [];
   const home = [...cargoInsts];
   for (const p of team) if (kept[p.id]) home.push(...bagOf(p.id));
-  // cash bundles turn into money, ledger pages into story; everything else goes to the stock crates
-  let cash = 0;
+  // cash bundles turn into money, ledger pages into story, the fuel rod goes to a buyer; everything else goes to the stock crates
+  let cash = 0, rodCash = 0;
   const pages = [];
   for (const i of home) {
     if (i.id === 'cashbundle') cash += value(i);
+    else if (i.id === 'fuelrod') rodCash += value(i);
     else if (i.id === 'ledger') { const t = addPage(); if (t) pages.push(t); }
     else G.backstock.push(i);
   }
-  G.money += cash;
+  G.money += cash + rodCash;
   G.xp += home.length * 10;
   G.life.nights++;
   // the hospital bill for everyone who went down (or died) tonight
@@ -872,7 +935,7 @@ function endHost(reason) {
   let bill = 0;
   for (const [pid, how] of Object.entries(E.hosp)) { const n = G.players[pid]?.name || 'Someone'; hospital[n] = HOSPITAL[how]; bill += HOSPITAL[how]; }
   G.money -= bill; G.stats.spent += bill;
-  const res = { reason, cargo: cargoInsts.map(i => i.id), kept, lost, loc: E.loc.name, ev: E.ev.name, skulls: E.skulls, cash, pages, hospital, bill };
+  const res = { reason, cargo: cargoInsts.map(i => i.id), kept, lost, loc: E.loc.name, ev: E.ev.name, skulls: E.skulls, cash, rodCash, pages, hospital, bill, escaped };
   broadcast({ t: 'xend', res });
   finishLocal(res);
 }
@@ -884,6 +947,7 @@ function finishLocal(res) {
   UI.$('hurt').style.opacity = 0;
   UI.$('bleed').classList.add('hidden');
   UI.$('hide-vig').classList.add('hidden');
+  for (const id of ['melt-banner', 'melt-flash']) { const el = UI.$(id); if (el) { el.classList.add('hidden'); el.style.opacity = ''; } }
   E.phys.clear();
   E = null;
   G.endExpedition(res);
@@ -915,6 +979,7 @@ on('xs', m => {
   E.time = m.time; E.cargoCount = m.cargo;
   Object.assign(G.gear, m.gear);
   if (m.sf && E.safe && !E.safe.open) { E.safe.open = true; E.safe.door.rotation.y = -1.6; E.safe.door.position.x -= 0.3; }
+  if (m.mt >= 0) { if (E.melt == null) meltFx(); E.melt = m.mt; }
 });
 on('xhurt', m => { if (E) hurtLocal(m.n); });
 on('xbag', m => { if (E) { E.bag = m.bag; hud(); } });
@@ -950,6 +1015,8 @@ export function update(dt) {
   for (const l of E.loot) l.glint.material.opacity = 0.5 + Math.sin(now * 0.004 + l.seed) * 0.4;
   const blink = (now / 400 | 0) % 2 === 0;
   for (const t of E.traps) if (t.g.userData.led) t.g.userData.led.visible = t.armed && blink;
+  if (E.leds) for (let k = 0; k < E.leds.length; k++) E.leds[k].visible = E.melt != null ? blink : ((now / 700 + k * 1.7) | 0) % 3 !== 0;
+  meltTick(dt, now);
 
   if (E.lightOn) {
     E.charge -= dt;
@@ -1020,7 +1087,9 @@ export function hud() {
   if (!E) return;
   const T = E.loc.time, m = 22 * 60 + (T - E.time) / T * 360, h = Math.floor(m / 60) % 24, left = Math.max(0, Math.ceil(E.time));
   UI.$('exp-loc').innerHTML = `${E.loc.icon} ${E.loc.name} ${UI.skulls(E.skulls)}<br><span class="dim">${E.ev.name}</span>`;
-  UI.$('exp-time').innerHTML = `${(h + 11) % 12 + 1}:${String(Math.floor(m % 60)).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} · <span class="${left <= 60 ? 'warn' : ''}">🛻 leaves in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`;
+  UI.$('exp-time').innerHTML = `${(h + 11) % 12 + 1}:${String(Math.floor(m % 60)).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} · ` + (E.melt != null
+    ? `<span class="warn">☢️ MELTDOWN in ${Math.max(0, Math.ceil(E.melt))} s</span>`
+    : `<span class="${left <= 60 ? 'warn' : ''}">🛻 leaves in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`);
   UI.$('exp-hp').style.width = Math.max(0, E.hp) + '%';
   UI.$('exp-hp-num').textContent = E.dead ? 'DEAD' : E.down ? 'DOWN' : `${Math.ceil(E.hp)} HP`;
   UI.$('exp-bag').innerHTML = `🎒 ${bagSize(E.bag)}/${bagCap(G.me)} ${E.bag.map(i => itemById(i.id).icon).join('')} · 🛻 bed: ${E.cargoCount ?? 0}${E.crouch ? ' · <b>crouching</b>' : ''}`
@@ -1043,13 +1112,14 @@ export function hud() {
 
 // ---------- night choice ----------
 export function nightPanel(go, sleep) {
-  const own = [...Object.entries(G.tools).filter(([, v]) => v).map(([k]) => ({ flashlight: '🔦', radio: '📻', screwdriver: '🪛', wrench: '🔧', crowbar: '🪝', magnifier: '' }[k])),
+  const own = [...Object.entries(G.tools).filter(([, v]) => v).map(([k]) => ({ flashlight: '🔦', radio: '📻', screwdriver: '🪛', wrench: '🔧', crowbar: '🪝', magnifier: '', gasmask: '😷' }[k])),
     ...Object.entries(G.weapons).filter(([, v]) => v).map(([k]) => WEAPONS[k]?.icon)].join(' ') || 'nothing yet';
   UI.openPanel(`<h2>🌃 Tonight</h2>
     <p class="dim">Go scavenging, or sleep. Difficulty is rolled every day: check the skulls. Your gear: ${own} · 🩹×${G.gear.bandage} 🔋×${G.gear.battery}</p>
-    <div class="list">${Object.entries(LOCATIONS).map(([k, l]) => `<div class="pc-row loc-row"><span class="huge">${l.icon}</span><span class="grow"><b>${l.name}</b> ${UI.skulls(G.night?.[k] ?? SKULLS[k][0])}<br>
+    <div class="list">${Object.entries(LOCATIONS).map(([k, l]) => { const locked = l.needs && !G.tools[l.needs];
+      return `<div class="pc-row loc-row${locked ? ' locked' : ''}"><span class="huge">${l.icon}</span><span class="grow"><b>${l.name}</b> ${UI.skulls(G.night?.[k] ?? SKULLS[k][0])}<br>
       <small class="dim">${l.desc}</small><br><small>Enemies: ${l.enemy} · Loot: ${l.loot} · ${Math.round(l.time / 60)} min</small></span>
-      <button data-go="${k}">Go ▶</button></div>`).join('')}</div>
+      ${locked ? '<button disabled title="Computer → Tools & Gear">🔒 Needs 😷 gas masks</button>' : `<button data-go="${k}">Go ▶</button>`}</div>`; }).join('')}</div>
     <p class="dim">Dump your bag into the 🛻 truck bed to keep loot safe. Knocked down = you drop your bag and have 30 s for a teammate's bandage, then you're out for the night.
       Every trip to the hospital costs money in the morning. When time runs out the truck leaves, with or without you.</p>
     <div class="row"><button id="n-sleep" class="ghost">💤 Sleep (skip the night)</button><button id="n-back" class="ghost">Not yet</button></div>`, { cls: 'wide' });

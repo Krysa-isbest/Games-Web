@@ -52,6 +52,7 @@ const ZONES = {
   yard: { len: 0.4, decay: 4, wet: 0.1 },
   alley: { len: 0.5, decay: 3, wet: 0.3, slap: 0.09 },
   junkyard: { len: 1.4, decay: 2.2, wet: 0.12 },
+  plant: { len: 2.4, decay: 2.6, wet: 0.32, slap: 0.12 }, // big concrete halls
   tiny: { len: 0.14, decay: 6, wet: 0.45 },
   cab: { len: 0.1, decay: 7, wet: 0.2 },
 };
@@ -72,7 +73,7 @@ function zoneFor(my) {
   if (my.hidden !== false && my.hidden != null) return 'tiny';
   if (my.cab) return 'cab';
   if (G.world === 'shop') return my.z < -5 ? 'yard' : 'shop';
-  return G.expLoc === 'junkyard' ? 'junkyard' : 'alley';
+  return G.expLoc === 'junkyard' || G.expLoc === 'plant' ? G.expLoc : 'alley';
 }
 const loopNoise = (ctx, dest) => { const s = ctx.createBufferSource(); s.buffer = VOICE.noise; s.loop = true; s.connect(dest); s.start(); return s; };
 

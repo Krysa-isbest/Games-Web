@@ -409,6 +409,13 @@ export const ITEMS = [
     for (let k = 0; k < 3; k++) part(g, B(0.16, 0.035, 0.07), 0x5a8a4a, (k - 1) * 0.02, 0.018 + k * 0.035, (k % 2) * 0.01).rotation.y = k * 0.2;
     part(g, B(0.04, 0.11, 0.072), 0xd8c070, 0, 0.055, 0);
   } },
+  // the power plant's fuel rod: a buyer who asks no questions pays cash for it in the morning
+  { id: 'fuelrod', name: 'Fuel Rod', icon: '☢️', cat: 'cash', range: [1800, 2600], size: 2, build(g) {
+    const rod = new THREE.Group(); rod.rotation.z = Math.PI / 2; rod.position.y = 0.09; g.add(rod);
+    part(rod, C(0.07, 0.07, 0.9, 12), 0x8a9096, 0, 0, 0, STEEL);
+    for (const y of [-0.38, 0, 0.38]) part(rod, C(0.08, 0.08, 0.05, 12), 0x3a3e44, 0, y, 0, STEEL);
+    for (const y of [-0.2, 0.2]) part(rod, C(0.072, 0.072, 0.12, 12), 0x40ff80, 0, y, 0, { emissive: 0x20c050, emissiveIntensity: 1.4 });
+  } },
 ];
 
 export const itemById = id => ITEMS.find(i => i.id === id);

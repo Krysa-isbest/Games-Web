@@ -139,6 +139,31 @@ select { width: auto; }
 .pc-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: #ffffff08; border-radius: 6px; }
 .pc-row .grow { flex: 1; }
 .loc-row { padding: 10px; }
+.loc-row.locked { opacity: 0.6; }
+/* chapter select */
+.chapters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.chapter { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 16px; min-height: 190px; white-space: normal; }
+.chapter .ch-icon { font-size: 40px; }
+.chapter small { letter-spacing: 3px; opacity: .8; }
+.chapter b { font-size: 22px; }
+.chapter em { margin-top: auto; font-style: normal; font-weight: bold; }
+.chapter i { position: absolute; top: 12px; right: 12px; font-style: normal; font-size: 12px; }
+.chapter.soon { filter: grayscale(0.8); opacity: .65; cursor: not-allowed; }
+@media (max-width: 600px) { .chapters { grid-template-columns: 1fr; } }
+/* story moments: answering machine subtitles, the morning paper, flashback look */
+#phone-sub { position: fixed; left: 50%; bottom: 150px; transform: translate(-50%, 20px); z-index: 8; pointer-events: none; max-width: min(640px, 90vw);
+  padding: 10px 18px; border-radius: 10px; background: #000c; border-left: 4px solid #d02020; color: #f4efe0; font-size: 16px; opacity: 0; transition: opacity .4s, transform .4s; }
+#phone-sub.show { opacity: 1; transform: translate(-50%, 0); }
+#phone-sub small { display: block; color: #e08080; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; }
+.letter.news h3 { font-family: Georgia, serif; font-size: 22px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid currentColor; padding-bottom: 4px; }
+body.flashback canvas { filter: sepia(0.85) contrast(1.15) brightness(0.9); }
+/* power plant meltdown */
+.melt-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: none; padding: 8px 22px; border-radius: 10px;
+  background: #600c; border: 2px solid #ff4020; color: #fff; font: bold 22px "Segoe UI", sans-serif; letter-spacing: 2px; text-align: center; animation: meltPulse .6s infinite alternate; }
+.melt-banner b { font-size: 34px; color: #ffd040; margin: 0 8px; }
+.melt-banner small { display: block; font-size: 13px; letter-spacing: 1px; font-weight: normal; }
+@keyframes meltPulse { from { box-shadow: 0 0 10px #f00; } to { box-shadow: 0 0 40px #f40; } }
+.melt-flash { position: fixed; inset: 0; z-index: 30; pointer-events: none; background: #fff; opacity: 0; transition: opacity 1.4s; }
 .price { color: #8f8; font-weight: bold; min-width: 70px; text-align: right; }
 .price small { font-weight: normal; }
 .modal { position: fixed; inset: 0; background: #0008; z-index: 60; display: flex; align-items: center; justify-content: center; }
@@ -150,7 +175,8 @@ select { width: auto; }
   box-shadow: 0 0 0 2px #333, 0 30px 80px #000; }
 .os { display: flex; flex-direction: column; height: 100%; background: radial-gradient(circle at 70% 20%, #2a4a7a, #0b1424 70%), #0b1424; }
 .os-desk { flex: 1; display: flex; gap: 14px; padding: 14px; min-height: 0; }
-.os-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; width: 190px; }
+.os-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; width: 200px; flex-shrink: 0; min-height: 0; max-height: 100%; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: #ffffff40 transparent; }
+.os-icons::-webkit-scrollbar { width: 6px; } .os-icons::-webkit-scrollbar-thumb { background: #ffffff40; border-radius: 3px; }
 .os-icon { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; padding: 10px 4px; background: #ffffff0c; box-shadow: none; border: 1px solid #ffffff14; border-radius: 10px; }
 .os-icon span { font-size: 28px; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: linear-gradient(var(--c), #0005); box-shadow: 0 3px 8px #0008; }
 .os-icon.on { background: #ffffff22; border-color: #fff6; }

@@ -21,7 +21,7 @@ import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
 const ECON = ['money', 'day', 'time', 'phase', 'debt', 'paidWeek', 'strikes', 'xp', 'trust', 'backstock', 'market', 'marketPrev', 'deals', 'auction', 'night',
-  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'pending',
+  'gear', 'tools', 'weapons', 'up', 'eggs', 'eggQ', 'fed', 'doorOpen', 'binCount', 'stats', 'pending',
   'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio',
   'paused', 'pausedBy'];
 const COLORS = [0xd04a2a, 0x2a7ad0, 0x2ab04a, 0xd0a020];
@@ -83,7 +83,7 @@ export function openCoop(onStart, back) {
       <p class="dim small">${micLine()} · Your name: <b>${S.name}</b> (change it in Settings → Game)</p>
       <div id="co-body"></div>
       <div id="co-players">${online ? playersList() : ''}</div>
-      <div class="row">${isHost() ? `<button id="co-start">${G.hasSave ? 'Continue the game ▶' : 'Start a new game ▶'}</button>` : ''}<button id="co-back" class="ghost">Back</button></div>`, { cls: 'wide', esc: back });
+      <div class="row">${isHost() ? `<button id="co-start">Choose a chapter ▶</button>` : ''}<button id="co-back" class="ghost">Back</button></div>`, { cls: 'wide', esc: back });
     document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; render(); });
     UI.$('co-back').onclick = back;
     if (UI.$('co-start')) UI.$('co-start').onclick = () => { UI.closePanel(false); onStart(); };

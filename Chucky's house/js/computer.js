@@ -3,6 +3,8 @@ import { G, level } from './state.js';
 import { ITEMS, itemById, CATS } from './data.js';
 import { marketPrice, trend, dueRemaining, weekEnd, INTEREST, INSTALLMENT, BIG_BUY, isAuctionDay, nextAuction, dayName, bidStep, value } from './economy.js';
 import { CATALOG, catItem, ownedText } from './shop.js';
+import { fedToday } from './chickens.js';
+import { storyView, bindStory } from './beats.js';
 import { NOT_FOR_SALE } from './data.js';
 import { SETS, have, setReady, setPay, canDeliver, orderPay } from './orders.js';
 import { JOBS, levelOf, nextAt } from './jobs.js';
@@ -28,6 +30,7 @@ const APPS = {
   stats: { icon: '📊', name: 'Stats', color: '#4a4a5a' },
   team: { icon: '👥', name: 'Jobs', color: '#5a4a7a' },
   journal: { icon: '📓', name: 'Journal', color: '#6a4a2a' },
+  story: { icon: '🎬', name: 'Story', color: '#7a2a4a' },
   guide: { icon: '❓', name: 'Guide', color: '#2a5a6a' },
 };
 let app = 'market', query = '', cat = 'all', timer = 0;
@@ -96,6 +99,8 @@ const VIEWS = {
       }).join('')}</div></div>`).join('') : '<p class="dim">Nobody has worked yet. Get to it!</p>'}`;
   },
 
+  story: () => storyView(),
+
   guide: () => {
     const groups = {};
     for (const [id, t] of Object.entries(TIPS)) (groups[t.group] ??= []).push([id, t]);
@@ -147,9 +152,10 @@ const VIEWS = {
     <div><small>Trust</small><b>+${Math.round(G.trust * 100)}%</b><small class="dim">customers pay more</small></div>
     <div><small>Today's sales</small><b>${UI.money(G.stats.sales)}</b><small class="dim">${G.stats.sold} items</small></div>
     <div><small>Stock</small><b>${G.backstock.length}</b><small class="dim">items in crates</small></div>
-    <div><small>Hens</small><b>${G.up.chickens}</b><small class="dim">${G.eggs} eggs</small></div>
+    <div><small>Hens</small><b>${G.up.chickens}</b><small class="dim">${G.eggs} eggs · ${!G.up.coop ? 'no coop' : fedToday() ? 'fed ' + fedToday().icon : '<span class="down">hungry!</span>'}</small></div>
     <div><small>Tonight</small><b>${G.night ? UI.skulls(G.night.alley) : '-'}</b><small class="dim">Back Alley</small></div>
     <div><small>Tonight</small><b>${G.night ? UI.skulls(G.night.junkyard) : '-'}</b><small class="dim">Junkyard</small></div>
+    ${G.tools.gasmask ? `<div><small>Tonight</small><b>${G.night?.plant != null ? UI.skulls(G.night.plant) : '-'}</b><small class="dim">Power Plant</small></div>` : ''}
     <div><small>Cleanliness</small><b>${Math.round(G.clean)}%</b><small class="dim">clean shops sell for more</small></div>
     </div>
     <h3>📈 Sales per day</h3><canvas id="g-sales" width="640" height="140" class="graph"></canvas>
@@ -215,6 +221,7 @@ const BIND = {
   orders: body => body.querySelectorAll('[data-order]').forEach(b => b.onclick = async () => { await act('deliverOrder', b.dataset.order); render(); }),
   collector: body => body.querySelectorAll('[data-set]').forEach(b => b.onclick = async () => { await act('sellSet', b.dataset.set); render(); }),
   stats: () => drawGraphs(),
+  story: body => bindStory(body),
   auction() {
     if (UI.$('au-go')) UI.$('au-go').onclick = async () => { await act('auctionStart'); render(); };
     if (UI.$('au-bid')) UI.$('au-bid').onclick = async () => { await act('auctionBid'); render(); };

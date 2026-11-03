@@ -159,6 +159,14 @@ function hideSpot(scene, E, x, z, ry, kind) {
     for (const sx of [-1.3, 1.3]) part(g, new THREE.CylinderGeometry(0.33, 0.33, 1.75, 10), 0x151515, sx, 0.3, 0).rotation.x = Math.PI / 2;
     const hx = Math.abs(Math.cos(ry)) * 1.9 + Math.abs(Math.sin(ry)) * 0.85, hz = Math.abs(Math.sin(ry)) * 1.9 + Math.abs(Math.cos(ry)) * 0.85;
     addBox(x, z, hx, hz, 1.5);
+  } else if (kind === 'locker') { // staff locker in the power plant
+    part(g, box(0.9, 2.0, 0.6), 0x4a5a52, 0, 1.0, 0, { metalness: 0.5, roughness: 0.6 });
+    for (const sx of [-0.22, 0.22]) {
+      part(g, box(0.42, 1.9, 0.02), 0x56685e, sx, 1.0, 0.31, { metalness: 0.5 });
+      for (let k = 0; k < 4; k++) part(g, box(0.25, 0.025, 0.01), 0x1a1a1a, sx, 1.65 + k * 0.06, 0.325);
+    }
+    part(g, box(0.04, 0.14, 0.03), 0xa0a4a8, 0.06, 1.0, 0.33, { metalness: 0.8 });
+    addBox(x, z, Math.abs(Math.sin(ry)) > 0.5 ? 0.3 : 0.45, Math.abs(Math.sin(ry)) > 0.5 ? 0.45 : 0.3, 2);
   } else { // dumpster you can climb into
     part(g, box(1.8, 1.05, 0.95), 0x2a4a3a, 0, 0.6, 0, { metalness: 0.3 });
     part(g, box(1.85, 0.08, 1), 0x1a3a2a, 0, 1.4, -0.3).rotation.x = -0.9;
@@ -368,6 +376,157 @@ export function buildJunkyard(E, r) {
   E.truckAt = { x: 2 * T, z: 1 * T, ry: Math.PI / 2 };
 }
 
+// ---------- Abandoned Power Plant: concrete halls in a 4×4 grid of rooms, the reactor hall at the far end ----------
+let PLANT_MATS;
+function plantMats() {
+  return PLANT_MATS ??= {
+    wall: new THREE.MeshStandardMaterial({ roughness: 0.95, map: canvasTex(64, 128, (g, w, h) => {
+      g.fillStyle = '#5a5c58'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 300; i++) { g.fillStyle = Math.random() < 0.5 ? '#4e504c' : '#666862'; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      g.fillStyle = '#0003'; for (let y = 0; y < h; y += 32) g.fillRect(0, y, w, 1); for (let x = 0; x < w; x += 32) g.fillRect(x, 0, 1, h);
+      for (let k = 0; k < 3; k++) { const x = Math.random() * w, gr = g.createLinearGradient(0, h * 0.3, 0, h); gr.addColorStop(0, '#2a2a1a00'); gr.addColorStop(1, '#2a2a1a99'); g.fillStyle = gr; g.fillRect(x, h * 0.3, 6 + Math.random() * 8, h * 0.7); }
+      g.fillStyle = '#1a1a1a'; g.fillRect(0, h - 10, w, 10);
+      g.fillStyle = '#d8b020'; for (let x = -16; x < w; x += 16) { g.beginPath(); g.moveTo(x, h - 10); g.lineTo(x + 8, h - 10); g.lineTo(x + 16, h); g.lineTo(x + 8, h); g.fill(); }
+    }) }),
+    tower: new THREE.MeshStandardMaterial({ color: 0x8a8a84, roughness: 1, side: THREE.DoubleSide }),
+    goo: new THREE.MeshStandardMaterial({ color: 0x40ff60, emissive: 0x20c040, emissiveIntensity: 0.9, roughness: 0.2, transparent: true, opacity: 0.8 }),
+    sign: new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, (g, w) => {
+      g.fillStyle = '#e8c020'; g.fillRect(0, 0, w, w); g.fillStyle = '#111'; g.beginPath(); g.arc(32, 32, 6, 0, 7); g.fill();
+      for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3 - Math.PI / 2; g.beginPath(); g.moveTo(32, 32); g.arc(32, 32, 24, a - 0.5, a + 0.5); g.fill(); }
+      g.fillStyle = '#e8c020'; g.beginPath(); g.arc(32, 32, 9, 0, 7); g.fill(); g.fillStyle = '#111'; g.beginPath(); g.arc(32, 32, 5, 0, 7); g.fill();
+    }), roughness: 0.6 }),
+  };
+}
+function radBarrel(scene, x, z) {
+  part(scene, new THREE.CylinderGeometry(0.3, 0.3, 0.9, 10), 0xc8a020, x, 0.45, z, { metalness: 0.4, roughness: 0.6 });
+  for (const y of [0.15, 0.75]) part(scene, new THREE.CylinderGeometry(0.31, 0.31, 0.04, 10), 0x6a5a10, x, y, z);
+  const s = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), plantMats().sign); s.position.set(x, 0.5, z + 0.305); scene.add(s);
+  addBox(x, z, 0.32, 0.32, 0.9);
+}
+function controlPanel(scene, E, x, z, ry) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry;
+  part(g, box(1.6, 1.0, 0.6), 0x4a5a5a, 0, 0.5, 0, { metalness: 0.4 });
+  part(g, box(1.6, 0.7, 0.15), 0x3a4848, 0, 1.3, -0.22, { metalness: 0.4 }).rotation.x = -0.3;
+  const leds = [];
+  for (let k = 0; k < 6; k++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), new THREE.MeshBasicMaterial({ color: [0xff3020, 0x30ff60, 0xffb020][k % 3] }));
+    m.position.set(-0.6 + k * 0.24, 1.35, -0.13); m.rotation.x = -0.3; g.add(m); leds.push(m);
+  }
+  for (let k = 0; k < 3; k++) part(g, new THREE.CylinderGeometry(0.06, 0.06, 0.04, 10), 0x1a1a1a, -0.4 + k * 0.4, 1.02, 0.1);
+  scene.add(g); E.leds.push(...leds);
+  const hx = Math.abs(Math.sin(ry)) > 0.5 ? 0.35 : 0.8, hz = Math.abs(Math.sin(ry)) > 0.5 ? 0.8 : 0.35;
+  addBox(x, z, hx, hz, 1.4);
+}
+function coolingTower(scene, x, z, s) {
+  const pts = [];
+  for (let k = 0; k <= 12; k++) { const y = k / 12; pts.push(new THREE.Vector2((1 - 0.42 * Math.sin(Math.PI * y * 0.9)) * 14 * s, y * 46 * s)); }
+  const m = new THREE.Mesh(new THREE.LatheGeometry(pts, 24), plantMats().tower); m.position.set(x, 0, z); scene.add(m);
+}
+
+export function buildPlant(E, r) {
+  Object.assign(MAP, { N: 21, T: 3.2, boxes: [], lightsLeft: S.lights });
+  const { N, T } = MAP, scene = E.scene, M = plantMats(), RN = 4;
+  E.leds = []; E.alarms = [];
+  const g = Array.from({ length: N }, () => Array(N).fill(0));
+  const R0 = k => 1 + k * 5; // first tile of room k
+  for (let a = 0; a < RN; a++) for (let b = 0; b < RN; b++) for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) g[R0(a) + i][R0(b) + j] = 1;
+  // doors: a random spanning tree over the rooms, plus a few extra loops
+  const door = (a, b, c, d) => {
+    if (a !== c) { const i = R0(Math.min(a, c)) + 4, j = R0(b) + (r() * 4 | 0); g[i][j] = 1; if (r() < 0.4 && j + 1 <= R0(b) + 3) g[i][j + 1] = 1; }
+    else { const j = R0(Math.min(b, d)) + 4, i = R0(a) + (r() * 4 | 0); g[i][j] = 1; if (r() < 0.4 && i + 1 <= R0(a) + 3) g[i + 1][j] = 1; }
+  };
+  const seenR = new Set(['0,0']), st = [[0, 0]];
+  while (st.length) {
+    const [a, b] = st[st.length - 1];
+    const nb = DIRS.map(([x, y]) => [a + x, b + y]).filter(([x, y]) => x >= 0 && y >= 0 && x < RN && y < RN && !seenR.has(`${x},${y}`));
+    if (!nb.length) { st.pop(); continue; }
+    const [c, d] = nb[r() * nb.length | 0];
+    door(a, b, c, d); seenR.add(`${c},${d}`); st.push([c, d]);
+  }
+  for (let k = 0; k < 4; k++) { const a = r() * (RN - 1) | 0, b = r() * RN | 0; r() < 0.5 ? door(a, b, a + 1, b) : door(b, a, b, a + 1); }
+  // the reactor hall: the two bottom-right rooms become one big hall
+  for (let j = R0(3); j < R0(3) + 4; j++) g[R0(2) + 4][j] = 1;
+  MAP.grid = g;
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(N * T + 80, N * T + 80), groundMat('#3a3c3a', ['#323432', '#444644', '#2a2c2a', '#3a4a3a'], (N * T + 80) / 3));
+  ground.rotation.x = -Math.PI / 2; ground.position.set((N - 1) * T / 2, 0, (N - 1) * T / 2); ground.receiveShadow = true;
+  scene.add(ground);
+  const openTiles = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (open(i, j)) { openTiles.push([i, j]); continue; }
+    let edge = false;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (open(i + a, j + b)) edge = true;
+    if (!edge) continue;
+    const h = 6.5 + ((i * 7 + j * 3) % 3) * 0.5, m = new THREE.Mesh(unitBox, M.wall);
+    m.scale.set(T, h, T); m.position.set(i * T, h / 2, j * T); scene.add(m);
+  }
+  // the outside: cooling towers and the far city
+  coolingTower(scene, -38, 28, 1); coolingTower(scene, 30, -36, 0.85); coolingTower(scene, 95, 40, 1.1);
+  for (let k = 0; k < 10; k++) {
+    const h = 10 + r() * 25, w = 8 + r() * 12, a = r() * Math.PI * 2, d = N * T * 0.9 + 40 + r() * 30;
+    const m = new THREE.Mesh(unitBox, buildingMats()[k % 5]); m.scale.set(w, h, w);
+    m.position.set((N - 1) * T / 2 + Math.cos(a) * d, h / 2, (N - 1) * T / 2 + Math.sin(a) * d); scene.add(m);
+  }
+  // the reactor: a big round vessel with a glowing core and the fuel rod on a cart next to it
+  const rx = (R0(2) + 4) * T, rz = (R0(3) + 1.5) * T;
+  const core = new THREE.Group(); core.position.set(rx, 0, rz); scene.add(core);
+  part(core, new THREE.CylinderGeometry(2.4, 2.6, 1.2, 20), 0x5a5e62, 0, 0.6, 0, { metalness: 0.5 });
+  part(core, new THREE.CylinderGeometry(1.8, 1.8, 3.6, 20, 1, true), 0x6a6e72, 0, 3, 0, { metalness: 0.6, side: THREE.DoubleSide });
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.2, 20), new THREE.MeshBasicMaterial({ color: 0x40d0ff }));
+  glow.position.y = 1.25; core.add(glow);
+  for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; part(core, box(0.25, 5, 0.25), 0x3a3e42, Math.cos(a) * 2.2, 2.5, Math.sin(a) * 2.2, { metalness: 0.6 }); }
+  addBox(rx, rz, 2.5, 2.5, 4);
+  const coreLight = light(scene, 0x40d0ff, 30, 16, rx, 2.5, rz);
+  E.reactor = { x: rx, z: rz, glow, light: coreLight };
+  E.rodAt = { x: rx, z: rz + 3.4 };
+  part(scene, box(1.2, 0.5, 0.6), 0x3a3e44, E.rodAt.x, 0.25, E.rodAt.z, { metalness: 0.6 }); // the cart
+  addBox(E.rodAt.x, E.rodAt.z, 0.6, 0.3, 0.5);
+  // alarm lights (off until the meltdown) in the yard, the middle and the reactor hall
+  for (const [i, j] of [[2.5, 2.5], [R0(1) + 1.5, R0(2) + 1.5], [R0(3) + 1.5, R0(3) + 2]]) {
+    part(scene, box(0.3, 0.2, 0.3), 0x8a1010, i * T, 5.5, j * T, { emissive: 0x200000 });
+    const l = light(scene, 0xff2010, 0, 26, i * T, 5.2, j * T); if (l) E.alarms.push(l);
+  }
+  const dist = ([i, j]) => Math.abs(i - 2) + Math.abs(j - 2);
+  const shuffle = a => a.map(v => [r(), v]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const used = new Set();
+  for (const t of openTiles) if (Math.hypot(t[0] * T - rx, t[1] * T - rz) < 4.5 || Math.hypot(t[0] * T - E.rodAt.x, t[1] * T - E.rodAt.z) < 1.8) used.add(t.join());
+  const spots = shuffle(openTiles.filter(t => dist(t) > 4));
+  let si = 0;
+  const take = () => { while (si < spots.length && used.has(spots[si].join())) si++; const t = spots[si++] || [10, 10]; used.add(t.join()); return t; };
+  const wallSide = ([i, j]) => DIRS.filter(([a, b]) => !open(i + a, j + b));
+  // lockers against walls (hiding spots), locked crates, big objects
+  for (let k = 0; k < 8; k++) {
+    const t = take(), w = wallSide(t), [a, b] = w.length ? w[r() * w.length | 0] : [1, 0];
+    hideSpot(scene, E, t[0] * T + a * 1.2, t[1] * T + b * 1.2, Math.atan2(-a, -b), 'locker');
+  }
+  hideSpot(scene, E, 4 * T - 0.4, 3.2 * T, Math.PI / 2, 'dumpster');
+  for (let k = 0; k < 3; k++) { const [i, j] = take(); lockedCrate(scene, E, i * T, j * T, k); }
+  E.bigSpots = [];
+  for (const id of ['generator', 'generator', 'acunit']) { const [i, j] = take(); E.bigSpots.push({ id, x: i * T, z: j * T, ry: r() * 6.28 }); }
+  // props: control panels, radioactive barrels, glowing puddles, pipes, fallen beams, emergency lamps
+  let lampsPlaced = 0;
+  for (const t of shuffle(openTiles)) {
+    const [i, j] = t, rr = r();
+    if (dist(t) <= 4 || used.has(t.join())) continue;
+    const w = wallSide(t);
+    if (!w.length) { if (rr < 0.06) { const p = new THREE.Mesh(new THREE.CircleGeometry(0.6 + r() * 0.5, 14), M.goo); p.rotation.x = -Math.PI / 2; p.position.set(i * T + (r() - 0.5), 0.02, j * T + (r() - 0.5)); scene.add(p); } continue; }
+    const [a, b] = w[r() * w.length | 0], x = i * T + a * 1.05, z = j * T + b * 1.05;
+    if (rr < 0.1) { controlPanel(scene, E, i * T + a * 1.15, j * T + b * 1.15, Math.atan2(-a, -b)); used.add(t.join()); }
+    else if (rr < 0.22) { radBarrel(scene, x, z); if (r() < 0.5) radBarrel(scene, x + (b ? 0.7 : 0), z + (a ? 0.7 : 0)); }
+    else if (rr < 0.32) part(scene, new THREE.CylinderGeometry(0.22, 0.22, T, 10), [0x8a3a2a, 0x3a5a8a, 0x8a8a8a][r() * 3 | 0], i * T + a * 1.4, 3.6 + r() * 1.5, j * T + b * 1.4, { metalness: 0.5 }).rotation[a ? 'x' : 'z'] = Math.PI / 2;
+    else if (rr < 0.36) { const beam = part(scene, box(0.3, 0.4, 4), 0x5a4a3a, i * T, 1.2, j * T, { metalness: 0.4 }); beam.rotation.set(0.5, r() * 3, 0); addBox(i * T, j * T, 0.5, 0.5, 1); }
+    else if (rr < 0.46 && lampsPlaced < 5 && E.ev.id !== 'blackout') { lampsPlaced++; lamp(scene, E, i * T + a * 1.55, j * T + b * 1.55, a, b, r); }
+  }
+  // loot: more and better further in
+  const lootTiles = shuffle(openTiles.filter(t => dist(t) > 4 && !used.has(t.join())));
+  E.lootSpots = lootTiles.slice(0, 18 + Math.round(E.skulls * 3)).map(([i, j]) => ({ x: i * T + (r() - 0.5) * 1.4, z: j * T + (r() - 0.5) * 1.4, boost: dist([i, j]) > 22 ? 0.35 : dist([i, j]) > 14 ? 0.15 : 0 }));
+  const roomCenters = [];
+  for (let a = 0; a < RN; a++) for (let b = 0; b < RN; b++) if (a + b > 1) roomCenters.push([(R0(a) + 1.5) * T, (R0(b) + 1.5) * T]);
+  E.enemySpots = { rooms: shuffle(roomCenters), reactor: [rx - 3.5, rz + 2] };
+  E.spawn = { x: 2 * T, z: 2.6 * T, ry: -3 * Math.PI / 4 };
+  E.truckAt = { x: 2 * T, z: 1 * T, ry: Math.PI / 2 };
+}
+
 export const LOOT_TABLES = {
   alley: {
     common: ['teddy', 'gnome', 'vinyl', 'toaster', 'lamp', 'radio', 'kettle', 'iron', 'comic', 'coin', 'harmonica', 'cartridge', 'globe', 'hammer', 'fan'],
@@ -378,5 +537,10 @@ export const LOOT_TABLES = {
     common: ['scrap', 'hubcap', 'plugs', 'copper', 'hammer', 'wrenchset', 'headlight', 'iron', 'fan', 'crt', 'scrap'],
     uncommon: ['carbattery', 'alternator', 'exhaust', 'wheel', 'radiator', 'tank', 'seat', 'drill', 'toolbox', 'mask', 'chainsaw', 'vhs'],
     rare: ['engine', 'gramophone', 'worldglobe', 'pocketwatch', 'chain', 'sword', 'revolver_i', 'shotgun_i', 'typewriter', 'painting'],
+  },
+  plant: {
+    common: ['copper', 'copper', 'scrap', 'plugs', 'crt', 'fan', 'radio', 'hammer', 'wrenchset', 'headphones', 'toolbox'],
+    uncommon: ['drill', 'camera', 'walkman', 'phone', 'carbattery', 'alternator', 'clock', 'mask', 'chainsaw', 'typewriter'],
+    rare: ['laptop', 'console', 'pocketwatch', 'worldglobe', 'engine', 'revolver_i', 'gramophone', 'shotgun_i'],
   },
 };

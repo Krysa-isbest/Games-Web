@@ -12,7 +12,7 @@ export const dayName = (d = G.day) => WEEKDAYS[(d - 1) % 7];
 export const isAuctionDay = (d = G.day) => d % 7 === 6; // every Saturday
 export const nextAuction = () => { let d = G.day; while (!isAuctionDay(d)) d++; return d; };
 
-export const SKULLS = { alley: [0.5, 2], junkyard: [1, 3] };
+export const SKULLS = { alley: [0.5, 2], junkyard: [1, 3], plant: [2.5, 4] };
 
 const mid = id => { const r = itemById(id).range; return (r[0] + r[1]) / 2; };
 export const marketPrice = id => G.market[id] ?? Math.round(mid(id));

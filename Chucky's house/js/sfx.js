@@ -37,6 +37,10 @@ function noise(dur, vol = 0.2, freq = 1200, q = 0.7, delay = 0, v = 1) {
 
 export const sfx = {
   click: () => tone(900, 0.04, 'square', 0.03),
+  alarm: () => { tone(660, 0.5, 'sawtooth', 0.05, 0, 990); tone(990, 0.5, 'sawtooth', 0.05, 0.5, 660); }, // meltdown siren
+  ring: () => { for (let k = 0; k < 2; k++) for (let i = 0; i < 8; i++) tone(i % 2 ? 480 : 440, 0.05, 'square', 0.03, k * 0.6 + i * 0.05); }, // old phone
+  machine: () => { tone(1000, 0.35, 'sine', 0.05); }, // answering machine beep
+  screech: () => { noise(0.9, 0.25, 2200, 3); tone(1800, 0.8, 'sawtooth', 0.02, 0, 1400); },
   pick: () => tone(520, 0.09, 'triangle', 0.12, 0, 320),
   cash: () => { tone(1500, 0.07, 'square', 0.05); tone(2100, 0.4, 'triangle', 0.1, 0.07); },
   bell: () => { tone(1320, 0.7, 'sine', 0.07); tone(1980, 0.6, 'sine', 0.04, 0.09); },

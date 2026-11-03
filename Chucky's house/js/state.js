@@ -8,13 +8,13 @@ export const G = {
   debt: 0, paidWeek: 0, strikes: 0, xp: 0, trust: 0,
   backstock: [], floor: [], market: {}, marketPrev: {}, deals: [], auction: null, night: null,
   // consumables (shared by the whole team)
-  gear: { battery: 0, trap: 0, mine: 0, bandage: 0, pepper: 0, taser: 0, ammo9: 0, shells: 0 },
+  gear: { battery: 0, trap: 0, mine: 0, bandage: 0, pepper: 0, taser: 0, ammo9: 0, shells: 0, feedCheap: 0, feedGood: 0, feedPrime: 0 },
   // things you own once
-  tools: { flashlight: 0, radio: 0, screwdriver: 0, wrench: 0, crowbar: 0, magnifier: 0 },
+  tools: { flashlight: 0, radio: 0, screwdriver: 0, wrench: 0, crowbar: 0, magnifier: 0, gasmask: 0 },
   weapons: { bat: 0, baton: 0, pepper: 0, taser: 0, revolver: 0, shotgun: 0 },
   up: { workshop: false, coop: false, chickens: 0, stand: false, permit: false, binCap: 5, bag: 4,
     register2: false, truckBed: false, truckQuiet: false, truckLights: false, truckWinch: false },
-  eggs: 0, doorOpen: true, index: {},
+  eggs: 0, eggQ: 1, fed: { day: 0, type: null }, doorOpen: true, index: {},
   binCount: 0, stats: { sales: 0, sold: 0, spent: 0, eggs: 0 },
   // v0.7: cleaning, jobs, story, events, orders, regulars, decorations, music radio
   clean: 100,                 // cleanliness 0..100 (host computes)
@@ -24,7 +24,7 @@ export const G = {
   history: [],                // [{ day, sales, spent, trust, clean }] for the graphs
   orders: [], regulars: {}, decor: [],
   shopEvent: null, weekEvent: null,
-  story: { pages: [], letters: [], read: [], ch1: false },
+  story: { pages: [], letters: [], read: [], ch1: false, beats: [], beatDay: 0 },
   intro: 'done',              // new game: 'bank' -> 'dark' (breaker) -> 'note' (read Chuck's note) -> 'done'
   tut: 99,                    // Day 1 tutorial step (99 = finished)
   tutFlags: {},

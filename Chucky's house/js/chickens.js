@@ -1,22 +1,36 @@
 // Chicken coop behind the shop (bought on the computer). Chickens lay eggs now and then; the first egg you
 // pick up unlocks the food stand window, where people from the street buy eggs.
+// Feeding: one sack of feed per 4 hens, every day, at the trough. Hungry hens lay rarely and small eggs;
+// better feed = more eggs and eggs that sell for more.
 import * as THREE from 'three';
 import { G, ACTIONS, rand, newUid } from './state.js';
 import { part, hitMat } from './data.js';
 import { makeChicken, animateQuad } from './creatures.js';
 import { makePerson, animatePerson } from './people.js';
 import { marketPrice } from './economy.js';
-import { STATIC, updateWorld } from './world.js';
+import { STATIC, updateWorld, interactive } from './world.js';
 import { spawnSpill, penMess } from './mess.js';
 import { addJob } from './jobs.js';
-import { tell } from './net.js';
+import { tell, act } from './net.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
 const PEN = { x0: -2.6, x1: 1.3, z0: -12.4, z1: -9.3 };
 const HATCH_OUT = new THREE.Vector3(5.7, 0, 6.0);
-let coop = null, fenceBoxes = [];
+let coop = null, fenceBoxes = [], troughFill = null;
 const stand = [];
+
+// q = egg value multiplier, lay = laying speed multiplier
+export const FEEDS = {
+  feedCheap: { icon: '🌾', name: 'Cheap Scratch', cost: 25, q: 1, lay: 1, color: 0xc8b070, desc: 'Basic grain. Normal eggs.' },
+  feedGood: { icon: '🌽', name: 'Layer Pellets', cost: 60, q: 1.5, lay: 1.15, color: 0xd89a40, desc: 'More eggs, brown eggs worth 1.5× as much.' },
+  feedPrime: { icon: '🥇', name: 'Organic Premium Mix', cost: 140, q: 2.3, lay: 1.3, color: 0x8a6a2a, desc: 'The most eggs, golden-yolk eggs worth 2.3× as much.' },
+};
+const HUNGRY = { q: 0.6, lay: 0.35 };
+export const sacksNeeded = () => Math.max(1, Math.ceil((G.up.chickens || 0) / 4));
+export const fedToday = () => G.fed?.day === G.day && FEEDS[G.fed.type];
+const feedNow = () => fedToday() || HUNGRY;
+const eggColor = q => q >= 2 ? 0xe0b060 : q >= 1.4 ? 0xc89060 : q < 0.8 ? 0xe8e0d0 : 0xf4ead8;
 
 function buildCoop() {
   coop = new THREE.Group();
@@ -51,7 +65,26 @@ function buildCoop() {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })() }));
   sign.position.set(0.6, 1.1, -11.38); coop.add(sign);
+  // feed trough just inside the gate
+  const trough = new THREE.Group(); trough.position.set(-1.9, 0, -9.75); coop.add(trough);
+  part(trough, new THREE.BoxGeometry(0.8, 0.06, 0.3), 0x6a4020, 0, 0.12, 0);
+  for (const s of [-1, 1]) {
+    part(trough, new THREE.BoxGeometry(0.8, 0.14, 0.04), 0x7a4a24, 0, 0.19, s * 0.15);
+    part(trough, new THREE.BoxGeometry(0.04, 0.14, 0.3), 0x7a4a24, s * 0.38, 0.19, 0);
+    part(trough, new THREE.BoxGeometry(0.06, 0.12, 0.06), 0x4a2a12, s * 0.32, 0.06, 0);
+  }
+  troughFill = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.24), new THREE.MeshStandardMaterial({ color: 0xc8b070, roughness: 1, flatShading: true }));
+  troughFill.position.y = 0.2; trough.add(troughFill);
+  const hb = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.45), hitMat); hb.position.y = 0.25; trough.add(hb);
+  interactive(trough, 'trough');
   G.scene.add(coop);
+}
+
+function updateTrough() {
+  if (!troughFill) return;
+  const f = fedToday();
+  troughFill.visible = !!f;
+  if (f) troughFill.material.color.setHex(f.color);
 }
 
 function syncChickenCount(n) {
@@ -71,11 +104,12 @@ export function updateCoop() {
   if (coop) syncChickenCount(G.up.chickens);
 }
 
-function spawnEgg(x, z, eid = newUid()) {
+function spawnEgg(x, z, eid = newUid(), q = 1) {
   const g = new THREE.Group(); g.position.set(x, 0, z);
-  part(g, new THREE.SphereGeometry(0.035, 8, 6), 0xf4ead8, 0, 0.04, 0).scale.y = 1.3;
+  const shell = part(g, new THREE.SphereGeometry(0.035, 8, 6), eggColor(q), 0, 0.04, 0, q >= 2 ? { metalness: 0.3, roughness: 0.4 } : undefined);
+  shell.scale.set(q < 0.8 ? 0.8 : 1, q < 0.8 ? 1.05 : 1.3, q < 0.8 ? 0.8 : 1);
   const hb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 4), hitMat); hb.position.y = 0.1; g.add(hb);
-  g.userData.eid = eid;
+  g.userData.eid = eid; g.userData.q = q;
   g.traverse(o => { o.userData.kind = 'egg'; o.userData.ref = g; });
   G.scene.add(g);
   G.eggMeshes.push(g);
@@ -85,14 +119,21 @@ function removeEgg(g) { G.scene.remove(g); G.eggMeshes.splice(G.eggMeshes.indexO
 
 // ---------- host simulation ----------
 export function updateChickens(dt, host) {
-  const daytime = G.phase !== 'evening';
+  const daytime = G.phase !== 'evening', feed = feedNow();
+  updateTrough();
+  if (host && G.chickens.length && !fedToday() && G.phase === 'open' && !G.alerted.has('hungry' + G.day)) {
+    G.alerted.add('hungry' + G.day);
+    G.alertFn?.('🐔 The hens are hungry! Fill the trough in the yard (feed: computer → Upgrades).');
+  }
   for (const c of G.chickens) {
     const m = c.mesh;
     if (host) {
-      if (daytime && (c.lay -= dt) <= 0) {
+      if (daytime && (c.lay -= dt * feed.lay) <= 0) {
         c.lay = rand(50, 110) * (1 + penMess() * 0.25); // a messy pen = fewer eggs
-        if (G.eggMeshes.length < 12) { spawnEgg(m.position.x + rand(-0.15, 0.15), m.position.z + rand(-0.15, 0.15)); sfx.cluck(0.5); }
+        if (G.eggMeshes.length < 12) { spawnEgg(m.position.x + rand(-0.15, 0.15), m.position.z + rand(-0.15, 0.15), newUid(), feed.q); sfx.cluck(0.5); }
       }
+      // hungry hens hang around the trough
+      if (!fedToday() && !c.goal && c.wait <= 0 && Math.random() < 0.5) c.goal = new THREE.Vector3(-1.9 + rand(-0.4, 0.4), 0, -9.75 - rand(0.25, 0.6));
       if (daytime && Math.random() < dt / 150 && penMess() < 6) spawnSpill('poop', m.position.x, m.position.z);
       if (!c.goal && (c.wait -= dt) <= 0) c.goal = new THREE.Vector3(rand(PEN.x0 + 0.3, PEN.x1 - 0.3), 0, rand(PEN.z0 + 0.3, PEN.z1 - 0.3));
       c.moving = false;
@@ -160,21 +201,54 @@ ACTIONS.collectEgg = (pid, eid) => {
   const g = G.eggMeshes.find(e => e.userData.eid === eid);
   if (!g) return false;
   removeEgg(g);
+  const q = g.userData.q || 1;
+  G.eggQ = ((G.eggQ || 1) * G.eggs + q) / (G.eggs + 1); // average egg quality in the basket
   G.eggs++;
   addJob(pid, 'stocker', 2, 'eggs');
   sfx.egg();
+  const kind = q >= 2 ? 'Golden-yolk egg' : q >= 1.4 ? 'Brown egg' : q < 0.8 ? 'Small egg (hungry hen)' : 'Egg';
   if (!G.up.stand) { G.up.stand = true; tell(pid, '🥚 First egg! The food stand window is now open: sell eggs to people on the street.'); }
-  else tell(pid, `Egg collected (${G.eggs} in the basket).`);
+  else tell(pid, `${kind} collected (${G.eggs} in the basket).`);
   updateWorld();
   return true;
 };
+ACTIONS.feedHens = (pid, type) => {
+  const f = FEEDS[type], n = sacksNeeded();
+  if (!f) return false;
+  if (fedToday()) { tell(pid, 'The hens already ate today.'); return false; }
+  if ((G.gear[type] || 0) < n) { tell(pid, `You need ${n} sack${n > 1 ? 's' : ''} of ${f.name} (you have ${G.gear[type] || 0}).`, 'bad'); return false; }
+  G.gear[type] -= n;
+  G.fed = { day: G.day, type };
+  addJob(pid, 'stocker', 2, 'eggs');
+  sfx.cluck(0.8); sfx.thud(0.4);
+  tell(pid, `${f.icon} Hens fed with ${f.name}. ${f.q > 1 ? 'Better eggs today!' : ''}`);
+  updateTrough();
+  return true;
+};
+
+export function troughHint(E) {
+  const f = fedToday();
+  if (f) return `${f.icon} Hens fed today: <b>${f.name}</b>`;
+  return `${E} <b class="down">Feed the hens</b> <span class="dim">(${sacksNeeded()} sack${sacksNeeded() > 1 ? 's' : ''} a day · hungry hens lay small eggs)</span>`;
+}
+export function troughPanel() {
+  if (fedToday()) return UI.toast('The hens already ate today. Come back tomorrow morning.');
+  const n = sacksNeeded();
+  UI.openPanel(`<h2>🐔 Feed the hens</h2><p class="dim">${G.up.chickens} hens eat ${n} sack${n > 1 ? 's' : ''} a day. Feed them every morning: hungry hens lay rarely and only small eggs. Buy feed on the computer (Upgrades).</p>
+    <div class="list">${Object.entries(FEEDS).map(([k, f]) => `<div class="pc-row"><span class="big">${f.icon}</span><span class="grow"><b>${f.name}</b><br><small class="dim">${f.desc}</small></span>
+      <span class="dim">Have ${G.gear[k] || 0}</span><button data-feed="${k}" ${(G.gear[k] || 0) >= n ? '' : 'disabled'}>Feed</button></div>`).join('')}</div>
+    <div class="row"><button id="fd-x" class="ghost">Close</button></div>`);
+  document.querySelectorAll('[data-feed]').forEach(b => b.onclick = async () => { UI.closePanel(); await act('feedHens', b.dataset.feed); });
+  UI.$('fd-x').onclick = () => UI.closePanel();
+}
 ACTIONS.serveStand = pid => {
   const s = stand.find(x => x.state === 'wait');
   if (!s) return tell(pid, 'Nobody is waiting at the window.');
   if (!G.eggs) { leaveStand(s); return tell(pid, '"No eggs? Pity."', 'bad'); }
   const n = Math.min(G.eggs, 1 + (Math.random() * 6 | 0));
-  const price = Math.max(1, Math.round(marketPrice('egg') * (1 + G.trust * 0.5)));
+  const price = Math.max(1, Math.round(marketPrice('egg') * (1 + G.trust * 0.5) * (G.eggQ || 1)));
   G.eggs -= n;
+  if (!G.eggs) G.eggQ = 1;
   G.money += n * price; G.stats.eggs += n * price; G.life.eggs += n;
   addJob(pid, 'stocker', 3, 'eggs');
   sfx.cash();
@@ -187,7 +261,7 @@ ACTIONS.serveStand = pid => {
 // ---------- co-op snapshot ----------
 export const coopSnap = () => ({
   ch: G.chickens.map(c => [+c.mesh.position.x.toFixed(2), +c.mesh.position.z.toFixed(2), +c.mesh.rotation.y.toFixed(2), c.moving ? 1 : 0]),
-  eg: G.eggMeshes.map(e => [e.userData.eid, +e.position.x.toFixed(2), +e.position.z.toFixed(2)]),
+  eg: G.eggMeshes.map(e => [e.userData.eid, +e.position.x.toFixed(2), +e.position.z.toFixed(2), e.userData.q || 1]),
   st: stand.map(s => [s.id, s.seed, +s.mesh.position.x.toFixed(2), +s.mesh.position.z.toFixed(2), +s.mesh.rotation.y.toFixed(2), s.path.length ? 1 : 0, s.state === 'wait' ? 1 : 0]),
 });
 export function mirrorCoop(d) {
@@ -195,7 +269,7 @@ export function mirrorCoop(d) {
   d.ch.forEach((t, i) => { if (G.chickens[i]) G.chickens[i].tgt = t; });
   const seen = new Set(d.eg.map(e => e[0]));
   for (const g of [...G.eggMeshes]) if (!seen.has(g.userData.eid)) removeEgg(g);
-  for (const [eid, x, z] of d.eg) if (!G.eggMeshes.some(g => g.userData.eid === eid)) spawnEgg(x, z, eid);
+  for (const [eid, x, z, q] of d.eg) if (!G.eggMeshes.some(g => g.userData.eid === eid)) spawnEgg(x, z, eid, q);
   const ids = new Set(d.st.map(s => s[0]));
   for (const s of [...stand]) if (!ids.has(s.id)) { G.scene.remove(s.mesh); stand.splice(stand.indexOf(s), 1); }
   for (const [id, seed, x, z, ry, w, waiting] of d.st) {
@@ -206,5 +280,5 @@ export function mirrorCoop(d) {
 }
 
 // Saved eggs on the ground.
-export const eggSave = () => G.eggMeshes.map(e => [+e.position.x.toFixed(2), +e.position.z.toFixed(2)]);
-export function eggLoad(list = []) { for (const [x, z] of list) spawnEgg(x, z); }
+export const eggSave = () => G.eggMeshes.map(e => [+e.position.x.toFixed(2), +e.position.z.toFixed(2), e.userData.q || 1]);
+export function eggLoad(list = []) { for (const [x, z, q] of list) spawnEgg(x, z, undefined, q || 1); }
