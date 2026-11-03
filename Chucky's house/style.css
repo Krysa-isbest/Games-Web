@@ -140,6 +140,16 @@ select { width: auto; }
 .pc-row .grow { flex: 1; }
 .loc-row { padding: 10px; }
 .loc-row.locked { opacity: 0.6; }
+/* night backpack (Tab) */
+.bag-panel { background: #14110ef2; }
+.bag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+.bag-item { display: flex; flex-direction: column; gap: 3px; padding: 8px; border: 1px solid #ffffff22; border-radius: 8px; background: #ffffff0a; min-height: 120px; }
+.bag-item.wide { grid-column: span 2; }
+.bag-item.empty { border-style: dashed; background: none; }
+.bag-item .big { font-size: 28px; }
+.bag-item .row { margin-top: auto; flex-wrap: wrap; gap: 4px; }
+.bag-item .row button { padding: 4px 8px; font-size: 12px; }
+@media (max-width: 600px) { .bag-grid { grid-template-columns: repeat(2, 1fr); } }
 /* chapter select */
 .chapters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
 .chapter { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 16px; min-height: 190px; white-space: normal; }
