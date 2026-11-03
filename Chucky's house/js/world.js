@@ -19,9 +19,29 @@ const B3 = (x0, z0, x1, z1, h = 1.5, y0 = 0) => new THREE.Box3(V(x0, y0, z0), V(
 export const physStatics = () => [...WALL_BOXES, ...STATIC, ...(G.up.workshop ? [] : [wsBlock]),
   ...G.shelves.filter(s => s !== G.carry).map(s => s.userData.box)];
 
-function interactive(obj, kind) {
+export function interactive(obj, kind) {
   obj.traverse(o => o.userData.kind = kind);
   G.interactables.push(obj);
+}
+
+// The shop's own lights (not the street): dark intro, power cut flicker, the win cutscene's "Day 1" shot.
+export const SHOP_LIGHTS = [];
+let reg2, powerLevel = 1;
+// level 0..1; n = only the first n lights (the breaker turns them on one by one)
+export function setShopPower(level, n = 99) {
+  powerLevel = level;
+  SHOP_LIGHTS.forEach((s, i) => {
+    const on = i < n ? level : 0;
+    s.light.intensity = s.base * on;
+    if (s.mesh) s.mesh.material.emissiveIntensity = on;
+  });
+}
+// Power cut: the lights flicker now and then.
+export function flickerLights(dt) {
+  if (Math.random() < dt * 0.6) {
+    SHOP_LIGHTS.forEach(s => { s.light.intensity = s.base * powerLevel * (Math.random() < 0.5 ? 0.2 : 1); });
+    setTimeout(() => setShopPower(powerLevel), 90);
+  }
 }
 
 function plane(scene, w, h, matl, x, y, z, rx = -Math.PI / 2, ry = 0) {
@@ -294,6 +314,25 @@ export function buildWorld(scene) {
   G.openSign.position.set(2.85, 2.2, RZ - 0.1);
   interactive(G.openSign, 'opensign'); scene.add(G.openSign);
 
+  // ---------- second register (bought) ----------
+  reg2 = new THREE.Group(); reg2.position.set(-3.35, 1.01, 2.05);
+  part(reg2, box(0.45, 0.12, 0.4), 0x2b2d33, 0, 0.06, 0);
+  part(reg2, box(0.28, 0.1, 0.2), 0x3a3d45, 0.04, 0.16, 0.08).rotation.x = -0.25;
+  const s2 = part(reg2, box(0.2, 0.12, 0.03), 0x1a1c20, -0.13, 0.42, 0.0);
+  part(reg2, box(0.16, 0.08, 0.005), 0x55dd88, -0.13, 0.42, 0.017, { emissive: 0x2a8a4a });
+  part(reg2, new THREE.CylinderGeometry(0.02, 0.02, 0.2, 6), 0x222222, -0.13, 0.27, -0.02);
+  void s2;
+  scene.add(reg2);
+
+  // ---------- order board (right wall) ----------
+  const board = new THREE.Group(); board.position.set(6.87, 1.7, 0.1); board.rotation.y = -Math.PI / 2;
+  part(board, box(1.3, 0.9, 0.04), 0x8a6a3a, 0, 0, 0);
+  part(board, box(1.2, 0.8, 0.02), 0xb08a5a, 0, 0, 0.02);
+  for (let k = 0; k < 3; k++) part(board, box(0.3, 0.38, 0.005), 0xf4efe0, -0.4 + k * 0.4, (k % 2) * 0.05, 0.035).rotation.z = (k - 1) * 0.08;
+  const bt = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.18), sign('ORDERS', 1.2, 0.18, '#3a2a1a', '#f0c060', 'bold 26px Impact'));
+  bt.position.set(0, 0.55, 0.02); board.add(bt);
+  interactive(board, 'board'); scene.add(board);
+
   // ---------- lights ----------
   scene.add(new THREE.HemisphereLight(0xffe8c8, 0x2a1d12, 0.35));
   const sun = new THREE.SpotLight(0xffeedd, 18, 16, 1.15, 0.6, 1);
@@ -301,9 +340,12 @@ export function buildWorld(scene) {
   sun.castShadow = true; sun.shadow.bias = -0.0005;
   scene.add(sun, sun.target);
   G.sun = sun;
+  SHOP_LIGHTS.push({ light: sun, base: 18 });
   for (const x of [-4, 0, 4]) {
     const l = new THREE.PointLight(0xffd9a0, 6, 9); l.position.set(x, h - 0.3, 0); scene.add(l);
-    part(scene, new THREE.CylinderGeometry(0.25, 0.3, 0.12, 12), 0xfff1c8, x, h - 0.08, 0, { emissive: 0xffe0a0 });
+    const fx = part(scene, new THREE.CylinderGeometry(0.25, 0.3, 0.12, 12), 0xfff1c8, x, h - 0.08, 0, { emissive: 0xffe0a0 });
+    fx.material = fx.material.clone();
+    SHOP_LIGHTS.push({ light: l, base: 6, mesh: fx });
   }
   const yard = new THREE.PointLight(0xaac4ff, 6, 11); yard.position.set(-2.8, 2.7, -6); scene.add(yard);
   part(scene, box(0.3, 0.12, 0.2), 0xddeeff, -2.8, 2.85, -5.2, { emissive: 0xaac4ff });
@@ -336,6 +378,7 @@ export function updateWorld() {
   wsDoor.children[1].visible = !G.up.workshop;
   hatchOpen.visible = G.up.stand;
   hatchBoards.visible = !G.up.stand;
+  reg2.visible = !!G.up.register2;
   const n = Math.min(G.eggs, 12);
   if (n !== eggsShown) {
     eggsShown = n;

@@ -7,11 +7,12 @@ import * as UI from './ui.js';
 
 const BILLS = [100, 50, 20, 10, 5, 1];
 
-export function checkout(price, inst) {
+// opts.cash = power cut (card terminal down) · opts.auto = cashier perk: auto-scan, terminal pre-filled
+export function checkout(price, inst, opts = {}) {
   const def = itemById(inst.id);
   const t0 = performance.now();
   let mistakes = 0, lost = 0;
-  const card = Math.random() < 0.55;
+  const card = !opts.cash && Math.random() < 0.55;
   return new Promise(resolve => {
     const finish = () => {
       const fast = (performance.now() - t0) / 1000 < (card ? 9 : 12);
@@ -26,7 +27,10 @@ export function checkout(price, inst) {
         <div class="belt"><div class="belt-item"><span class="huge">${def.icon}</span><span>${def.name}</span>
         <button class="barcode" id="t-scan" title="Scan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><small>${inst.uid.slice(0, 8)}</small></button></div></div></div>
       <p class="dim">Click the barcode (or press ${UI.kbd('Space')}) to scan it.</p>`, { esc: false, cls: 'till-panel' });
+    let scanned = false;
     const scan = () => {
+      if (scanned) return;
+      scanned = true;
       removeEventListener('keydown', key);
       sfx.beep();
       UI.$('t-scr').innerHTML = `${def.name.toUpperCase()} ........ ${UI.money(price)}<br><b>TOTAL ${UI.money(price)}</b>`;
@@ -35,10 +39,11 @@ export function checkout(price, inst) {
     const key = e => { if (e.code === 'Space') { e.preventDefault(); scan(); } };
     addEventListener('keydown', key);
     UI.$('t-scan').onclick = scan;
+    if (opts.auto) setTimeout(scan, 300);
 
     // step 2a: card terminal
     const cardStep = () => {
-      let typed = '';
+      let typed = opts.auto ? String(price) : '';
       UI.openPanel(`<h2>💳 Card payment</h2>
         <p>"${pick(['Card, please.', 'I\'ll pay by card.', 'Tap or chip?', 'Card is fine, right?'])}" Type the total: <b>${UI.money(price)}</b></p>
         <div class="terminal"><div class="term-screen" id="t-disp">$0</div>
@@ -57,6 +62,7 @@ export function checkout(price, inst) {
         disp();
       };
       document.querySelectorAll('[data-k]').forEach(b => b.onclick = () => press(b.dataset.k));
+      if (typed) disp();
       const kk = e => {
         if (/^Digit\d$|^Numpad\d$/.test(e.code)) press(e.code.slice(-1));
         else if (e.code === 'Backspace') press('C');

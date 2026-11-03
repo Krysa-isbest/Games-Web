@@ -3,6 +3,11 @@ import { G, level } from './state.js';
 import { ITEMS, itemById, CATS } from './data.js';
 import { marketPrice, trend, dueRemaining, weekEnd, INTEREST, INSTALLMENT, BIG_BUY, isAuctionDay, nextAuction, dayName, bidStep, value } from './economy.js';
 import { CATALOG, catItem, ownedText } from './shop.js';
+import { NOT_FOR_SALE } from './data.js';
+import { SETS, have, setReady, setPay, canDeliver, orderPay } from './orders.js';
+import { JOBS, levelOf, nextAt } from './jobs.js';
+import { LETTERS, PAGES, CHUCK_NOTE } from './story.js';
+import { SHOP_EVENTS } from './events.js';
 import { act, online } from './net.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
@@ -11,12 +16,17 @@ const APPS = {
   market: { icon: '📈', name: 'Market', color: '#3a8a5a' },
   stock: { icon: '📦', name: 'My Stock', color: '#8a6a2a' },
   supplier: { icon: '🚚', name: 'Supplier', color: '#2a6a9a' },
+  orders: { icon: '📋', name: 'Orders', color: '#3a7a7a' },
+  collector: { icon: '🏺', name: 'Collector', color: '#7a5a3a' },
   tools: { icon: '🧰', name: 'Tools & Gear', color: '#9a5a2a' },
   weapons: { icon: '🔫', name: 'Weapons', color: '#6a2a2a' },
   upgrades: { icon: '🏗️', name: 'Upgrades', color: '#5a3a8a' },
+  decor: { icon: '🪴', name: 'Decor', color: '#3a6a3a' },
   auction: { icon: '🔨', name: 'Auction', color: '#a08020' },
   bank: { icon: '🏦', name: 'Bank', color: '#2a4a7a' },
   stats: { icon: '📊', name: 'Stats', color: '#4a4a5a' },
+  team: { icon: '👥', name: 'Jobs', color: '#5a4a7a' },
+  journal: { icon: '📓', name: 'Journal', color: '#6a4a2a' },
 };
 let app = 'market', query = '', cat = 'all', timer = 0;
 
@@ -38,7 +48,7 @@ const VIEWS = {
   market: () => `<div class="os-tools"><input id="pc-q" class="search" placeholder="🔍 Search an item…" value="${query}">
     <select id="pc-cat"><option value="all">All categories</option>${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${cat === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <p class="dim small">Today's prices (${dayName()}, Day ${G.day}). Prices change every morning inside each item's range. Real worth also depends on condition.</p>
-    <div class="list">${ITEMS.filter(i => (cat === 'all' || i.cat === cat) && i.name.toLowerCase().includes(query.toLowerCase())).map(i =>
+    <div class="list">${ITEMS.filter(i => !NOT_FOR_SALE.includes(i.cat) && (cat === 'all' || i.cat === cat) && i.name.toLowerCase().includes(query.toLowerCase())).map(i =>
       row(i.icon, `${i.name}${i.weapon ? ' <small class="down">permit</small>' : ''}<br><small class="dim">${CATS[i.cat]} · range ${UI.money(i.range[0])}–${UI.money(i.range[1])}</small>`,
         `<span class="price">${UI.money(marketPrice(i.id))} ${pct(trend(i.id))}</span>`)).join('') || '<p class="dim">No results.</p>'}</div>`,
 
@@ -60,6 +70,39 @@ const VIEWS = {
   weapons: () => `<p class="${G.up.permit ? 'ok' : 'down'}">${G.up.permit ? '📜 Gun permit: valid.' : '📜 No gun permit: guns are locked (buy the permit in Upgrades).'}</p>
     <p class="dim small">Batons, pepper spray and tasers <b>stun</b>. Bats and guns <b>kill</b>. Stuns get shorter on high-skull nights.</p>${shopList(CATALOG.weapons)}`,
   upgrades: () => shopList(CATALOG.upgrades),
+  decor: () => `<p class="dim">Decorations make trust grow much faster and bring a few more people in. Each has its own spot in the shop.</p>${shopList(CATALOG.decor)}`,
+
+  orders: () => `<p class="dim">Customers ask for specific items. Deliver from your stock crates before the deadline for a big bonus. Missing one costs a little trust.</p>
+    <div class="list">${G.orders.map(o => { const d = itemById(o.id), ok = canDeliver(o);
+      const inst = ok ? G.backstock.filter(i => i.id === o.id).sort((a, b) => b.q - a.q)[0] : null;
+      return row(d.icon, `<b>${d.name}</b> for ${o.who}<br><small class="dim">by the end of Day ${o.due}${o.due === G.day ? ' <b class="down">(today!)</b>' : ''} · ×${o.mult} worth + ${UI.money(o.bonus)}</small>`,
+        ok ? `<span class="price">${UI.money(orderPay(o, inst))}</span>` : '<span class="dim">not in stock</span>', `<button data-order="${o.oid}" ${ok ? '' : 'disabled'}>Deliver</button>`);
+    }).join('') || '<p class="dim">No orders right now. New ones come in the mornings.</p>'}</div>`,
+
+  collector: () => `<p class="dim">The collector pays much more for complete sets. Broken or fake pieces don't count.</p>
+    <div class="list">${SETS.map(s => { const ready = setReady(s);
+      const need = Object.entries(s.need).map(([id, n]) => `${itemById(id).icon} ${Math.min(have(id), n)}/${n}`).join(' · ');
+      return row(s.icon, `<b>${s.name}</b> <small class="dim">×${s.mult}</small><br><small>${need}</small>`, ready ? `<span class="price">${UI.money(setPay(s))}</span>` : '', `<button data-set="${s.id}" ${ready ? '' : 'disabled'}>Sell set</button>`);
+    }).join('')}</div>`,
+
+  team: () => {
+    const names = Object.keys(G.jobs);
+    return `<p class="dim">Everyone earns XP in the jobs they actually do. Levels give small perks. Money stays shared.</p>
+      ${names.length ? names.map(n => `<div class="job-card"><b>${n}</b><div class="job-grid">${Object.entries(JOBS).map(([k, J]) => {
+        const xp = G.jobs[n][k] || 0, lv = levelOf(xp), nx = nextAt(xp);
+        return `<div><span>${J.icon} ${J.name} <b>Lv ${lv}</b></span>${UI.meter(nx ? xp / nx : 1)}<small class="dim">${J.perks.slice(1, lv).filter(Boolean).join(' · ') || 'no perks yet'}${nx ? ` · next at ${nx} XP` : ' · max'}</small></div>`;
+      }).join('')}</div></div>`).join('') : '<p class="dim">Nobody has worked yet. Get to it!</p>'}`;
+  },
+
+  journal: () => {
+    const letters = G.story.letters.map(id => LETTERS.find(l => l.id === id)).filter(Boolean).reverse();
+    const ev = G.weekEvent && G.weekEvent.day >= G.day ? SHOP_EVENTS[G.weekEvent.id] : null;
+    return `${ev ? `<div class="okbox">📅 This week: <b>${ev.icon} ${ev.name}</b> on Day ${G.weekEvent.day}. ${ev.desc}</div>` : ''}
+      <h3>📜 Chuck's ledger (${G.story.pages.length}/${PAGES.length} pages)</h3>
+      ${G.story.pages.length ? G.story.pages.map(n => `<p class="ledger">${PAGES[n]}</p>`).join('') : '<p class="dim">No pages yet. Chuck hid them around the city: look for them at night.</p>'}
+      <h3>✉️ Letters</h3>${letters.map(l => `<details class="letter"><summary><b>${l.title}</b> <small class="dim">${l.from} · Day ${l.day}</small></summary><p>${l.body}</p></details>`).join('') || '<p class="dim">No letters yet.</p>'}
+      <details class="letter"><summary><b>Chuck's note</b></summary>${CHUCK_NOTE}</details>`;
+  },
 
   auction: () => {
     const A = G.auction;
@@ -97,8 +140,38 @@ const VIEWS = {
     <div><small>Hens</small><b>${G.up.chickens}</b><small class="dim">${G.eggs} eggs</small></div>
     <div><small>Tonight</small><b>${G.night ? UI.skulls(G.night.alley) : '-'}</b><small class="dim">Back Alley</small></div>
     <div><small>Tonight</small><b>${G.night ? UI.skulls(G.night.junkyard) : '-'}</b><small class="dim">Junkyard</small></div>
-    </div><p class="dim small">Trust grows slowly with every fair sale. Angry customers lower it.</p>`,
+    <div><small>Cleanliness</small><b>${Math.round(G.clean)}%</b><small class="dim">clean shops sell for more</small></div>
+    </div>
+    <h3>📈 Sales per day</h3><canvas id="g-sales" width="640" height="140" class="graph"></canvas>
+    <h3>🤝 Trust</h3><canvas id="g-trust" width="640" height="100" class="graph"></canvas>
+    <p class="dim small">Trust grows with fair sales, a clean shop, decorations and music. Angry customers lower it.</p>`,
 };
+
+// Little line / bar charts for the Stats app.
+function drawGraphs() {
+  const H = G.history.slice(-21);
+  const chart = (id, vals, color, bars, fmt) => {
+    const c = UI.$(id); if (!c) return;
+    const g = c.getContext('2d'), w = c.width, h = c.height, max = Math.max(1, ...vals);
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = '#ffffff22'; g.beginPath(); for (let k = 0; k <= 4; k++) { g.moveTo(30, 8 + k * (h - 24) / 4); g.lineTo(w, 8 + k * (h - 24) / 4); } g.stroke();
+    g.fillStyle = '#9ab'; g.font = '10px monospace'; g.fillText(fmt(max), 0, 12); g.fillText(fmt(0), 0, h - 14);
+    if (!vals.length) { g.fillText('No data yet: finish a day first.', 40, h / 2); return; }
+    const step = (w - 40) / Math.max(1, vals.length);
+    vals.forEach((v, i) => {
+      const x = 36 + i * step, y = 8 + (1 - v / max) * (h - 24);
+      if (bars) { g.fillStyle = color; g.fillRect(x, y, step * 0.7, h - 16 - y); }
+      g.fillStyle = '#9ab'; if (vals.length < 15 || i % 2 === 0) g.fillText(H[i].day, x, h - 2);
+    });
+    if (!bars) {
+      g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+      vals.forEach((v, i) => { const x = 36 + i * step + step * 0.35, y = 8 + (1 - v / max) * (h - 24); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+      g.stroke();
+    }
+  };
+  chart('g-sales', H.map(d => d.sales), '#5fd37a', true, v => '$' + Math.round(v));
+  chart('g-trust', H.map(d => d.trust * 100), '#6cf', false, v => Math.round(v) + '%');
+}
 
 async function buy(catName, id) {
   const it = catItem(catName, id);
@@ -128,6 +201,10 @@ const BIND = {
   tools: body => body.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy('tools', b.dataset.buy)),
   weapons: body => body.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy('weapons', b.dataset.buy)),
   upgrades: body => body.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy('upgrades', b.dataset.buy)),
+  decor: body => body.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy('decor', b.dataset.buy)),
+  orders: body => body.querySelectorAll('[data-order]').forEach(b => b.onclick = async () => { await act('deliverOrder', b.dataset.order); render(); }),
+  collector: body => body.querySelectorAll('[data-set]').forEach(b => b.onclick = async () => { await act('sellSet', b.dataset.set); render(); }),
+  stats: () => drawGraphs(),
   auction() {
     if (UI.$('au-go')) UI.$('au-go').onclick = async () => { await act('auctionStart'); render(); };
     if (UI.$('au-bid')) UI.$('au-bid').onclick = async () => { await act('auctionBid'); render(); };

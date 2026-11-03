@@ -70,5 +70,17 @@ export const sfx = {
   engine: () => { tone(55, 1.2, 'sawtooth', 0.12, 0, 80); noise(1.2, 0.15, 200, 0.5); },
   drag: () => noise(0.4, 0.2, 250, 0.6),
   hey: () => { tone(260, 0.35, 'sawtooth', 0.09, 0, 180); },
+  mop: () => noise(0.25, 0.12, 900 + Math.random() * 400, 0.8),
+  glass: (v = 1) => { noise(0.35, 0.4, 5000, 1.5, 0, v); for (let i = 0; i < 4; i++) tone(rnd(2500, 4500), 0.12, 'triangle', 0.05, i * 0.03, undefined, v); },
+  slip: () => { tone(900, 0.3, 'sine', 0.06, 0, 200); tone(120, 0.25, 'sine', 0.25, 0.28, 50); },
+  breaker: () => { noise(0.08, 0.6, 600, 2); tone(70, 0.3, 'square', 0.15, 0, 40); },
+  hum: () => tone(60, 0.6, 'sawtooth', 0.04, 0, 62),
+  page: () => noise(0.3, 0.15, 3500, 0.6),
+  splash: () => noise(0.4, 0.2, 1400, 0.5),
+  ping: () => { tone(1300, 0.08, 'sine', 0.07); tone(1950, 0.15, 'sine', 0.06, 0.08); },
+  heart: (v = 1) => { tone(60, 0.12, 'sine', 0.35, 0, 40, v); tone(55, 0.14, 'sine', 0.28, 0.2, 38, v); },
+  alert: () => { tone(880, 0.1, 'square', 0.04); tone(660, 0.14, 'square', 0.04, 0.12); },
+  spin: () => { for (let i = 0; i < 14; i++) tone(1400, 0.03, 'square', 0.03, i * (0.05 + i * 0.012)); },
+  sign: () => { noise(0.5, 0.15, 2500, 0.8); noise(0.3, 0.1, 3200, 0.8, 0.45); },
 };
 function rnd(a, b) { return a + Math.random() * (b - a); }

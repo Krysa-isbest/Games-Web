@@ -68,7 +68,12 @@ export class PhysWorld {
     const hh = this.half(b), gy = this.ground(b.p.x, b.p.z);
     if (b.p.y - hh.y < gy) {
       b.p.y = gy + hh.y;
-      if (b.v.y < -1.2) { if (b.v.y < -2.5) sfx.tap(Math.min(1, -b.v.y / 8)); b.v.y = -b.v.y * 0.28; } else b.v.y = 0;
+      if (b.v.y < -1.2) {
+        const hit = Math.hypot(b.v.x, b.v.y, b.v.z);
+        if (b.inst.id === 'duck') sfx.squeak(Math.min(1, hit / 5)); else if (b.v.y < -2.5) sfx.tap(Math.min(1, -b.v.y / 8));
+        this.onImpact?.(b, hit);
+        b.v.y = -b.v.y * (b.inst.id === 'duck' ? 0.55 : 0.28);
+      } else b.v.y = 0;
       grounded = true;
     }
     const me = this.box(b);

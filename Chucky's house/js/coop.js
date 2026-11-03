@@ -11,11 +11,17 @@ import { updateWorld, updateBin, updateSign } from './world.js';
 import { NET, on, send, broadcast, act, hostPeerJS, joinPeerJS, directHostCode, directHostAccept, directJoin, isGuest, isHost } from './net.js';
 import { VOICE, syncVoicePeers, speaking } from './voice.js';
 import { S, saveSettings } from './settings.js';
+import { messSnap, mirrorMess } from './mess.js';
+import { updateDecor } from './decor.js';
+import { applyIntroWorld } from './story.js';
+import { setRain } from './city.js';
+import { animateEmote } from './fun.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
 const ECON = ['money', 'day', 'time', 'phase', 'debt', 'paidWeek', 'strikes', 'xp', 'trust', 'backstock', 'market', 'marketPrev', 'deals', 'auction', 'night',
-  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'pending'];
+  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'pending',
+  'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio'];
 const COLORS = [0xd04a2a, 0x2a7ad0, 0x2ab04a, 0xd0a020];
 const avatars = new Map();
 let sendT = 0, snapT = 0, lastDay = 0;
@@ -147,12 +153,17 @@ export function shopSnap() {
     trash: G.trash.map(t => [t.userData.tid, +t.position.x.toFixed(2), +t.position.z.toFixed(2), t.userData.trashKind]),
     cust: customerSnap(),
     coop: coopSnap(),
+    mess: messSnap(),
     hold: Object.fromEntries(Object.values(G.players).map(p => [p.id, p.holding])),
   };
 }
+let lastIntro = null, lastEvent;
 export function applySnap(ss) {
   Object.assign(G, ss.econ);
   if (lastDay !== G.day) { lastDay = G.day; refreshTags(); }
+  if (lastIntro !== G.intro || lastEvent !== G.shopEvent) { lastIntro = G.intro; lastEvent = G.shopEvent; applyIntroWorld(); setRain(G.shopEvent === 'rain' && G.phase !== 'evening'); }
+  if (ss.mess) mirrorMess(ss.mess);
+  updateDecor();
   const sids = new Set(ss.shelves.map(s => s.sid));
   for (const s of [...G.shelves]) if (!sids.has(s.userData.sid)) removeShelf(s);
   for (const d of ss.shelves) {
@@ -186,6 +197,8 @@ on('p', (m, from) => {
 
 // ---------- events relayed to everybody ----------
 on('say', m => UI.toast(m.text));
+on('alert', m => { UI.toast(m.text, 'alert'); sfx.alert(); });
+on('bonk', () => { sfx.squeak(); G.onBonk?.(); });
 on('chat', m => chatLine(m.name, m.text));
 on('summary', m => G.onSummary?.(m.s));
 on('xstart', m => G.startExpedition?.(m.params));
@@ -226,6 +239,8 @@ export function chatLine(name, text) {
   while (UI.$('chat-log').children.length > 8) UI.$('chat-log').firstChild.remove();
   setTimeout(() => el.classList.add('old'), 9000);
 }
+// Other modules post to the chat with this (send = also to the team).
+G.chatLine = (name, text, send) => { chatLine(name, text); if (send) broadcast({ t: 'chat', name, text }); };
 export function openChat(relock) {
   const inp = UI.$('chat-in');
   inp.classList.remove('hidden'); inp.value = '';
@@ -283,7 +298,8 @@ export function updateAvatars(dt, scene) {
       if (hid && hid !== 'trash') { a.held = makeItemMesh(itemById(hid)); a.held.position.set(0, 1.0, 0.35); m.add(a.held); }
     }
     if (a.held) poseArms(m, -1.0, -0.4);
-    a.tag.material.color.set(p.talking || speaking(p.id) ? 0x7dff8a : p.radio ? 0x7fd0ff : 0xffffff);
+    if (p.emote && !p.down && !moving) { a.et = (a.et || 0) + dt; animateEmote(m, p.emote, a.et); } else a.et = 0;
+    a.tag.material.color.set(p.dead ? 0x888888 : p.talking || speaking(p.id) ? 0x7dff8a : p.radio ? 0x7fd0ff : 0xffffff);
     if (myWorld === 'exp') {
       if (p.light && !a.spot) { a.spot = new THREE.SpotLight(0xfff2d8, 30, 22, 0.42, 0.45, 1.2); a.spot.position.set(0.2, 1.5, 0.3); a.spot.target.position.set(0.2, 1.0, 5); m.add(a.spot, a.spot.target); }
       if (a.spot) a.spot.intensity = p.light ? 30 : 0;
@@ -301,6 +317,7 @@ export function netTick(dt, camera) {
     const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
     my.x = camera.position.x; my.y = camera.position.y; my.z = camera.position.z; my.ry = Math.atan2(dir.x, dir.z); my.world = G.world;
     broadcast({ t: 'p', x: +my.x.toFixed(2), y: +my.y.toFixed(2), z: +my.z.toFixed(2), ry: +my.ry.toFixed(2), world: my.world, hp: my.hp, down: my.down,
+      dead: my.dead, bleed: +(my.bleed || 0).toFixed(1), emote: my.emote || null,
       hidden: my.hidden, run: my.run, crouch: my.crouch, light: my.light, cab: my.cab, talking: my.talking, radio: my.radio, name: S.name });
   }
   if (isHost() && G.world === 'shop' && G.mode === 'play' && (snapT -= dt) <= 0) {

@@ -24,6 +24,9 @@ export function clock() {
 
 function objective() {
   const h = me()?.holding;
+  if (G.tutText) return G.tutText;
+  if (h?.kind === 'tool') return h.tool === 'sign' ? 'Wet floor sign: G to put it down next to a wet floor.'
+    : `${h.tool === 'mop' ? 'Mop' : 'Broom'}: hold left mouse on a ${h.tool === 'mop' ? 'spill' : 'pile of broken glass'}. E at the cleaning corner to put it back.${h.tool === 'mop' && h.dirt ? ` (dirty ${h.dirt}, rinse at the sink)` : ''}`;
   if (h?.kind === 'bag') return 'Take the trash bag to the dumpster out back.';
   if (h?.kind === 'item') return `Holding ${itemById(h.inst.id).name}: E on an empty shelf slot or the stock crates, G / click to throw.`;
   if (G.binCount >= G.up.binCap) return 'The trash bin is full: take out the bag.';
@@ -33,6 +36,8 @@ function objective() {
   if (!G.doorOpen && G.phase === 'open') return 'The front door is CLOSED: no customers can come in.';
   if (G.customers.some(c => c.state === 'queue')) return 'A customer is waiting at the register!';
   if (G.standWaiting) return 'Someone is waiting at the egg stand window!';
+  if (G.customers.some(c => c.state === 'flee')) return 'SHOPLIFTER! Catch them before the door (E)!';
+  if (G.clean < 60) return 'The shop is dirty: customers pay less. Trash in the bin, mop the spills!';
   if (G.trash.length >= 3) return 'Customers hate trash: clean it up!';
   if (G.phase === 'closing') return 'Closing time: finish serving customers.';
   return 'Store is open until 6:00 PM.';
@@ -43,8 +48,13 @@ export function hud() {
   const [label, cls] = { prep: ['CLOSED', 'closed'], open: ['OPEN', 'open'], closing: ['CLOSING', 'closing'], evening: ['EVENING', 'closing'] }[G.phase];
   const d = G.phase === 'evening' ? G.day - 1 : G.day;
   $('clock').innerHTML = `${dayName(d)} · Day ${d} · ${clock()} <span class="chip ${cls}">${label}</span> <span class="chip lv">Lv ${level()}</span>`;
+  const cl = Math.round(G.clean);
+  const rush = G.phase === 'open' && ((G.time >= 180 && G.time < 240) || (G.time >= 420 && G.time < 480));
   $('subline').innerHTML = `<span title="Trust: customers pay up to this much more">🤝 Trust +${Math.round(G.trust * 100)}%</span>`
+    + ` · <span title="Cleanliness: a clean shop sells for more" class="${cl < 40 ? 'down' : cl >= 80 ? 'up' : ''}">🧽 ${cl}%</span>`
     + (G.up.stand ? ` · 🥚 ${G.eggs}` : '') + ` · 🚪 ${G.doorOpen ? 'open' : '<span class="down">closed</span>'}`
+    + (rush ? ' · <span class="warn-soft">⏰ RUSH HOUR</span>' : '')
+    + (G.shopEvent && G.phase !== 'evening' ? ` · <span class="warn-soft">${{ heatwave: '🥵 Heat wave', festival: '🎪 Festival', powercut: '🔌 Power cut', rain: '🌧️ Rain' }[G.shopEvent] || ''}</span>` : '')
     + (isAuctionDay() && G.auction && G.phase !== 'evening' ? ' · <span class="warn-soft">🔨 Auction today!</span>' : '');
   $('objective').textContent = objective();
   $('loan').textContent = `Loan ${money(G.debt)}`;
@@ -55,6 +65,7 @@ export function hud() {
   $('strikes').innerHTML = 'IRS strikes ' + [0, 1, 2].map(i => `<span class="strike ${i < G.strikes ? 'on' : ''}">⚠</span>`).join('');
   const h = me()?.holding;
   $('holding').innerHTML = !h ? '' : h.kind === 'bag' ? '🗑️ Carrying: trash bag' : h.kind === 'trash' ? `🗑️ Carrying: trash ×${h.n}`
+    : h.kind === 'tool' ? ({ mop: '🧽 Mop', broom: '🧹 Broom', sign: '⚠️ Wet floor sign' }[h.tool] + (h.dirt ? ` <span class="dim">(dirty ×${h.dirt})</span>` : ''))
     : `${itemById(h.inst.id).icon} Holding: ${itemById(h.inst.id).name}`;
 }
 
@@ -114,7 +125,7 @@ export function confirmBox(html, yes = 'Yes', no = 'Cancel') {
 export function estText(inst) {
   if (!inst.est) return '<span class="dim">Condition unknown. Inspect it with a magnifier 🔍</span>';
   const e = inst.est;
-  return `🔍 Estimated worth: <b>${money(e.lo)} – ${money(e.hi)}</b>${e.fake ? ' · <span class="down">looks FAKE</span>' : e.real ? ' · <span class="up">looks genuine</span>' : ''}${inst.broken ? ' · <span class="down">broken</span>' : ''}`;
+  return `🔍 Estimated worth: <b>${money(e.lo)} – ${money(e.hi)}</b>${e.fake ? ' · <span class="down">looks FAKE</span>' : e.real ? ' · <span class="up">looks genuine</span>' : ''}${inst.broken ? ' · <span class="down">broken</span>' : ''}${e.stolen ? ' · <span class="down">🚔 probably stolen</span>' : ''}`;
 }
 
 export function pricePanel(def, item, mkt, cb, inspect) {
@@ -190,8 +201,10 @@ export function summaryPanel(s, cb) {
     ${r('Loan interest', '+' + money(s.interest), 'down')}
     ${r('Loan balance', money(G.debt))}
     ${r('Trust', '+' + Math.round(s.trust * 100) + '%')}
+    ${r('Cleanliness at closing', Math.round(s.clean ?? 100) + '%', (s.clean ?? 100) >= 80 ? 'up' : (s.clean ?? 100) < 40 ? 'down' : '')}
     ${r('Cash', money(G.money))}
     ${week}
+    ${s.extraHTML || ''}
     <p class="dim">Prices changed overnight. Next payment: ${money(dueRemaining())} by the end of Day ${weekEnd()}.</p>
     <div class="row"><button id="sum-ok">Continue to the evening 🌙</button></div>`, { esc: false });
   $('sum-ok').onclick = cb;
@@ -225,7 +238,9 @@ export function settingsPanel(S, apply, onClose, mics = []) {
       <p class="dim small">City detail, shadows on lamps and dynamic lights apply to newly built scenes (next expedition / restart).</p>`,
     audio: () => `
       ${range('s-vol', 'Game volume', 0, 1, 0.05, S.volume, v => Math.round(v * 100) + '%')}
+      ${range('s-mvol', 'Music volume', 0, 1, 0.05, S.music, v => Math.round(v * 100) + '%')}
       ${range('s-vvol', 'Voice chat volume', 0, 2, 0.05, S.voiceVol, v => Math.round(v * 100) + '%')}
+      ${check('s-echo', 'Voice echo (rooms, alleys, hiding spots)', S.echo)}
       ${seg('micMode', 'Microphone', [['open', 'Open mic'], ['ptt', 'Push to talk (V)']])}
       <div class="set"><span>Mic device <small class="dim">(after restart)</small></span><select id="s-mic"><option value="">Default</option>${mics.map(m => `<option value="${m.deviceId}" ${S.micDevice === m.deviceId ? 'selected' : ''}>${m.label || 'Microphone'}</option>`).join('')}</select></div>
       <p class="dim small">Hold ${kbd('B')} to talk over the walkie-talkie (if your team owns one): everyone with a radio hears you, anywhere.</p>`,
@@ -244,14 +259,15 @@ export function settingsPanel(S, apply, onClose, mics = []) {
       if (setTab === 'graphics') S.preset = 'custom';
       apply(); render();
     });
-    const rng = { 's-res': 'res', 's-view': 'viewDist', 's-sdist': 'shadowDist', 's-lights': 'lights', 's-bri': 'brightness', 's-fov': 'fov', 's-vol': 'volume', 's-vvol': 'voiceVol', 's-sens': 'sens' };
+    const rng = { 's-res': 'res', 's-view': 'viewDist', 's-sdist': 'shadowDist', 's-lights': 'lights', 's-bri': 'brightness', 's-fov': 'fov', 's-vol': 'volume', 's-mvol': 'music', 's-vvol': 'voiceVol', 's-sens': 'sens' };
+    const pct = v => Math.round(v * 100) + '%';
     for (const [id, key] of Object.entries(rng)) if ($(id)) $(id).oninput = e => {
       S[key] = +e.target.value;
       if (['res', 'viewDist', 'shadowDist', 'lights'].includes(key)) S.preset = 'custom';
-      $(id + '-o').textContent = { res: v => Math.round(v * 100) + '%', viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: v => Math.round(v * 100) + '%', voiceVol: v => Math.round(v * 100) + '%' }[key]?.(S[key]) ?? S[key];
+      $(id + '-o').textContent = { res: pct, viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: pct, music: pct, voiceVol: pct }[key]?.(S[key]) ?? S[key];
       apply();
     };
-    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob' };
+    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo' };
     for (const [id, key] of Object.entries(chk)) if ($(id)) $(id).onchange = e => { S[key] = e.target.checked; apply(); };
     if ($('s-mic')) $('s-mic').onchange = e => { S.micDevice = e.target.value; apply(); };
     if ($('s-name')) $('s-name').oninput = e => { S.name = e.target.value.trim().slice(0, 16) || 'Player'; apply(); };
@@ -269,11 +285,15 @@ export function controlsPanel(onClose) {
     ${k(kbd('G') + ' / left click', 'Take item off a shelf / throw what you hold')}
     ${k(kbd('F'), 'Pick up / place furniture')}${k(kbd('R'), 'Rotate carried furniture')}
     ${k(kbd('O'), 'Open the store / head out at night')}
+    ${k('Hold left click', 'Mop / sweep a spill (with the mop or broom)')}${k(kbd('G'), 'Put the wet floor sign down')}
+    ${k(kbd('E') + ' on 🙋 / ❗', 'Help a customer / catch a shoplifter')}
     <h3>Expeditions</h3>
     ${k('Left click', 'Attack / use selected item')}${k(kbd('1') + '–' + kbd('9') + ' / wheel', 'Select weapon or item')}
-    ${k(kbd('F'), 'Flashlight')}${k(kbd('E'), 'Pick up · hide · dump bag in the truck · get in the cab · carry')}
+    ${k(kbd('F'), 'Flashlight')}${k(kbd('E'), 'Pick up · hide · dump bag in the truck · get in the cab · carry · crack the safe')}
     ${k(kbd('X'), 'Take apart (with tools)')}${k(kbd('G'), 'Drop the selected bag item')}${k(kbd('C'), 'Crouch (quieter)')}
-    <h3>Co-op</h3>
+    ${k(kbd('Space') + ' (down / dead)', 'Spectate the next player')}${k(kbd('R') + ' (dead)', 'Ghost roulette (free)')}
+    <h3>Everyone</h3>
+    ${k(kbd('Z'), 'Ping a spot for your team')}${k('Hold ' + kbd('H') + ' + ' + kbd('1') + '–' + kbd('4'), 'Emotes: wave, point, sit, dance')}
     ${k(kbd('V'), 'Push to talk (if enabled)')}${k(kbd('B'), 'Talk on the walkie-talkie')}${k(kbd('T'), 'Text chat')}
     ${k(kbd('Y') + ' / ' + kbd('N'), 'Approve / deny a teammate\'s big purchase')}${k(kbd('Esc'), 'Pause')}
     <div class="row"><button id="c-done">Back</button></div>`, { esc: onClose, cls: 'wide' });

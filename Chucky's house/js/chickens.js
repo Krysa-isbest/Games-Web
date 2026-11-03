@@ -7,6 +7,8 @@ import { makeChicken, animateQuad } from './creatures.js';
 import { makePerson, animatePerson } from './people.js';
 import { marketPrice } from './economy.js';
 import { STATIC, updateWorld } from './world.js';
+import { spawnSpill, penMess } from './mess.js';
+import { addJob } from './jobs.js';
 import { tell } from './net.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
@@ -88,9 +90,10 @@ export function updateChickens(dt, host) {
     const m = c.mesh;
     if (host) {
       if (daytime && (c.lay -= dt) <= 0) {
-        c.lay = rand(50, 110);
+        c.lay = rand(50, 110) * (1 + penMess() * 0.25); // a messy pen = fewer eggs
         if (G.eggMeshes.length < 12) { spawnEgg(m.position.x + rand(-0.15, 0.15), m.position.z + rand(-0.15, 0.15)); sfx.cluck(0.5); }
       }
+      if (daytime && Math.random() < dt / 150 && penMess() < 6) spawnSpill('poop', m.position.x, m.position.z);
       if (!c.goal && (c.wait -= dt) <= 0) c.goal = new THREE.Vector3(rand(PEN.x0 + 0.3, PEN.x1 - 0.3), 0, rand(PEN.z0 + 0.3, PEN.z1 - 0.3));
       c.moving = false;
       if (c.goal) {
@@ -132,7 +135,7 @@ function updateStand(dt, host) {
         const d = tgt.clone().sub(m.position); d.y = 0;
         if (d.length() > 0.05) { m.position.addScaledVector(d.normalize(), Math.min(d.length(), 1.4 * dt)); m.rotation.y = Math.atan2(d.x, d.z); walking = true; }
         else { s.path.shift(); if (!s.path.length && s.state === 'leave') { G.scene.remove(m); stand.splice(stand.indexOf(s), 1); continue; } }
-      } else if (s.state === 'come') { s.state = 'wait'; sfx.bell(); }
+      } else if (s.state === 'come') { s.state = 'wait'; sfx.bell(); G.alertFn?.('🥚 Someone rang the bell at the egg window!'); }
       if (s.state === 'wait') {
         m.rotation.y = Math.PI;
         if ((s.wait += dt) > 45) leaveStand(s);
@@ -158,6 +161,7 @@ ACTIONS.collectEgg = (pid, eid) => {
   if (!g) return false;
   removeEgg(g);
   G.eggs++;
+  addJob(pid, 'stocker', 2, 'eggs');
   sfx.egg();
   if (!G.up.stand) { G.up.stand = true; tell(pid, '🥚 First egg! The food stand window is now open: sell eggs to people on the street.'); }
   else tell(pid, `Egg collected (${G.eggs} in the basket).`);
@@ -171,7 +175,8 @@ ACTIONS.serveStand = pid => {
   const n = Math.min(G.eggs, 1 + (Math.random() * 6 | 0));
   const price = Math.max(1, Math.round(marketPrice('egg') * (1 + G.trust * 0.5)));
   G.eggs -= n;
-  G.money += n * price; G.stats.eggs += n * price;
+  G.money += n * price; G.stats.eggs += n * price; G.life.eggs += n;
+  addJob(pid, 'stocker', 3, 'eggs');
   sfx.cash();
   tell(pid, `Sold ${n} egg${n > 1 ? 's' : ''} for ${UI.money(n * price)}.`);
   leaveStand(s);

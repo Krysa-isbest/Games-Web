@@ -37,7 +37,17 @@
 <input id="chat-in" class="hidden" maxlength="140" placeholder="Say something… (Enter to send, Esc to cancel)">
 <div id="mic-ind" class="hidden"></div>
 <div id="fps" class="hidden"></div>
+<div id="bleed" class="hidden"><div class="ring"></div><b id="bleed-n">30</b><small>BLEEDING OUT</small></div>
+<div id="emote-bar" class="hidden"></div>
 <div id="panel" class="panel hidden"></div>
+
+<div id="story" class="hidden">
+  <div id="story-fade"></div>
+  <div id="story-big" class="hidden"></div>
+  <div id="story-credits" class="hidden"></div>
+  <div id="story-sub"></div>
+  <div id="story-act"></div>
+</div>
 
 <div id="menu" class="screen">
   <div class="menu-left">
@@ -47,6 +57,7 @@
       <p class="tag">Buy low. Sell high. Pay the bank.</p>
     </div>
     <div class="menu-box">
+      <div id="m-ch1" class="ch1-badge hidden">🏆 Chapter 1 complete ✓ <small>Chapter 2 is coming soon…</small></div>
       <button id="m-continue" class="hidden big-btn">▶ Continue<small id="m-info"></small></button>
       <button id="m-new">✦ New Game<small>Single player</small></button>
       <button id="m-coop">👥 Co-op<small>Up to 4 players · room code or Tailscale direct code</small></button>
@@ -57,16 +68,15 @@
   </div>
   <div class="menu-right">
     <div class="news card">
-      <h3>What's new · v0.6</h3>
+      <h3>What's new · v0.7</h3>
       <ul>
-        <li>🚗 New map: <b>Junkyard</b>. An old man with a shotgun, 2–4 dogs, hiding spots.</li>
-        <li>💀 Every night rolls a random <b>skull difficulty</b>.</li>
-        <li>🛻 Pickup truck: dump your bag in the bed to keep loot safe.</li>
-        <li>🏍️ Carry big stuff together, drag it alone, or take it apart with tools.</li>
-        <li>🔫 Weapons: batons and tasers stun, guns kill. Guns need a permit.</li>
-        <li>🐔 Chickens, eggs and an egg stand window. Workshop for repairs.</li>
-        <li>🔨 Saturday auctions · 🤝 Trust · 🧾 register checkout · 🔍 magnifier.</li>
-        <li>🎙️ Proximity voice chat with walkie-talkies.</li>
+        <li>🏦 A playable intro: Uncle Chuck vanished, and his shop (and debt) is yours.</li>
+        <li>🧽 Cleaning matters: mop spills, sweep glass, wet-floor signs. Clean shops sell for more.</li>
+        <li>👥 Jobs with perks and a team report card every evening.</li>
+        <li>🙋 Regulars, shoplifters, a detective, orders, collections, rush hours, shop events.</li>
+        <li>🩸 Bleeding out at night (30 s), ghost roulette for the dead, hospital bills.</li>
+        <li>⭐ Night objectives: Chuck's ledger pages and Rusty's safe. Truck upgrades.</li>
+        <li>📻 Music radio, voice echo, radio static, pings and emotes.</li>
       </ul>
     </div>
   </div>

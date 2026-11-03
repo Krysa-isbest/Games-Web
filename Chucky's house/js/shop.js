@@ -1,7 +1,9 @@
 // Shop actions (run on the host for whoever did them) + the computer's catalogue.
 import * as THREE from 'three';
 import { G, ACTIONS, ensurePlayer, newUid, clamp } from './state.js';
-import { itemById } from './data.js';
+import { itemById, makeInst } from './data.js';
+import { DECOR, updateDecor } from './decor.js';
+import { addJob, perk, trashCap } from './jobs.js';
 import { SHELF_TYPES, makeShelf, placeShelf, setSlotItem, shelfBySid } from './shelves.js';
 import { removeTrash, trashById } from './trash.js';
 import { updateBin, updateSign, updateWorld } from './world.js';
@@ -25,6 +27,7 @@ export const CATALOG = {
     { id: 'bandage', kind: 'gear', icon: '🩹', name: 'Bandage', cost: 120, n: 1, desc: 'Heals 50 HP, or gets a downed teammate back up.' },
     { id: 'trap', kind: 'gear', icon: '🪤', name: 'Bear Trap', cost: 90, n: 1, desc: 'Holds an enemy in place for a few seconds.' },
     { id: 'mine', kind: 'gear', icon: '💣', name: 'Landmine', cost: 180, n: 1, desc: 'Blows up anything close. Including you.' },
+    { id: 'duck', kind: 'stock', icon: '🦆', name: 'Rubber Duck', cost: 5, desc: 'Goes to the stock crates. Squeaks when it bounces. Throw it at a friend.' },
   ],
   weapons: [
     { id: 'bat', kind: 'weapon', icon: '🏏', name: 'Baseball Bat', cost: 300, desc: 'Melee, lethal. Hits 2.5× harder than fists.' },
@@ -50,10 +53,17 @@ export const CATALOG = {
     { id: 'workshop', kind: 'up', icon: '🛠️', name: 'Workshop (back room)', cost: 2500, desc: 'Rent the room behind the shop. Repair broken items at the bench.', owned: () => G.up.workshop, apply: () => { G.up.workshop = true; updateWorld(); } },
     { id: 'coop', kind: 'up', icon: '🐔', name: 'Chicken Coop + 3 Hens', cost: 900, desc: 'In the yard. Hens lay eggs; your first egg opens the food stand window.', owned: () => G.up.coop, apply: () => { G.up.coop = true; G.up.chickens = 3; updateCoop(); } },
     { id: 'chicken', kind: 'up', icon: '🐓', name: 'One More Hen', cost: 150, desc: 'More eggs. Up to 8 hens.', req: () => G.up.coop, owned: () => G.up.chickens >= 8, apply: () => { G.up.chickens++; updateCoop(); } },
+    { id: 'register2', kind: 'up', icon: '🧾', name: 'Second Register', cost: 1800, desc: 'A second till on the counter with its own queue: two cashiers in rush hour.', owned: () => G.up.register2, apply: () => { G.up.register2 = true; updateWorld(); } },
+    { id: 'truckBed', kind: 'up', icon: '🛻', name: 'Truck: Longer Bed', cost: 1400, desc: 'A longer truck bed: more room for loot and big objects.', owned: () => G.up.truckBed, apply: () => { G.up.truckBed = true; } },
+    { id: 'truckQuiet', kind: 'up', icon: '🤫', name: 'Truck: Quiet Engine', cost: 900, desc: 'Without it, the idling engine draws enemies while someone sits in the cab.', owned: () => G.up.truckQuiet, apply: () => { G.up.truckQuiet = true; } },
+    { id: 'truckLights', kind: 'up', icon: '💡', name: 'Truck: Blinding Headlights', cost: 1100, desc: 'Dogs in the headlights are blinded and back off.', owned: () => G.up.truckLights, apply: () => { G.up.truckLights = true; } },
+    { id: 'truckWinch', kind: 'up', icon: '🪝', name: 'Truck: Winch', cost: 1600, desc: 'Load big objects from up to 10 m away from the truck bed.', owned: () => G.up.truckWinch, apply: () => { G.up.truckWinch = true; } },
   ],
+  decor: DECOR.map(d => ({ id: d.id, kind: 'decor', icon: d.icon, name: d.name, cost: d.cost, desc: `${d.desc} Trust grows +${Math.round(d.trust * 100)} % faster.` })),
 };
 export const catItem = (cat, id) => CATALOG[cat].find(x => x.id === id);
-export const ownedText = it => it.kind === 'tool' ? G.tools[it.id] > 0 : it.kind === 'weapon' ? G.weapons[it.id] > 0 : it.kind === 'up' ? it.owned() : false;
+export const ownedText = it => it.kind === 'tool' ? G.tools[it.id] > 0 : it.kind === 'weapon' ? G.weapons[it.id] > 0 : it.kind === 'up' ? it.owned()
+  : it.kind === 'decor' ? G.decor.includes(it.id) : false;
 
 function doBuy(pid, cat, id, pos) {
   const it = catItem(cat, id);
@@ -69,6 +79,8 @@ function doBuy(pid, cat, id, pos) {
   else if (it.kind === 'gear') G.gear[it.gear || it.id] += it.n || 1;
   else if (it.kind === 'weapon') { G.weapons[it.id] = 1; for (const [k, n] of Object.entries(it.give || {})) G.gear[k] += n; }
   else if (it.kind === 'up') it.apply();
+  else if (it.kind === 'decor') { G.decor.push(it.id); updateDecor(); }
+  else if (it.kind === 'stock') G.backstock.push(makeInst(it.id, { q: 1 }));
   else if (it.kind === 'shelf') {
     const p = pos || { x: 0, z: 0 };
     sid = makeShelf(id, Math.round(p.x * 4) / 4, Math.round(p.z * 4) / 4, 0).userData.sid;
@@ -142,9 +154,16 @@ ACTIONS.putOnShelf = (pid, sid, i) => {
   if (def.weapon && !G.up.permit) { tell(pid, 'You need a gun permit to sell weapons.', 'bad'); return false; }
   if (def.big) { tell(pid, 'That is far too big for a shelf. Sell it from the stock crates via the computer (Market → sell to dealer).', 'bad'); return false; }
   h.inst.price ??= defaultPrice(h.inst);
+  shelved(pid, h.inst);
   setSlotItem(slot, h.inst); p.holding = null; sfx.pick();
   return true;
 };
+// Stocking a shelf: job XP; floor-staff perks give trust (lv 4) and a quick estimate (lv 5).
+function shelved(pid, inst) {
+  addJob(pid, 'stocker', 3, 'placed');
+  if (perk(pid, 'stocker') >= 4) G.trust = Math.min(1, G.trust + 0.001);
+  if (perk(pid, 'stocker') >= 5 && !inst.est) { const m = G.tools.magnifier; G.tools.magnifier = Math.max(1, m); estimate(inst); G.tools.magnifier = m; }
+}
 ACTIONS.placeFromStock = (pid, sid, i, uid) => {
   const slot = slotOf(sid, i), k = G.backstock.findIndex(b => b.uid === uid);
   if (!slot || slot.item || k < 0) return false;
@@ -153,6 +172,7 @@ ACTIONS.placeFromStock = (pid, sid, i, uid) => {
   if (def.big) { tell(pid, 'Too big for a shelf.', 'bad'); return false; }
   G.backstock.splice(k, 1);
   inst.price ??= defaultPrice(inst);
+  shelved(pid, inst);
   setSlotItem(slot, inst); sfx.pick();
   return true;
 };
@@ -187,6 +207,8 @@ ACTIONS.setPrice = (pid, sid, i, price) => {
   if (!slot?.item) return false;
   slot.item.price = clamp(Math.round(price), 1, 999999);
   setSlotItem(slot, slot.item);
+  G.tutFlags.price = true;
+  addJob(pid, 'stocker', 1, 'tagged');
   return true;
 };
 ACTIONS.toStock = (pid, sid, i) => {
@@ -212,9 +234,11 @@ ACTIONS.moveShelf = (pid, sid, x, z, r) => {
 // ---------- trash ----------
 ACTIONS.pickTrash = (pid, tid) => {
   const p = P(pid), h = p.holding, t = trashById(tid);
-  if (!t || (h && h.kind !== 'trash') || h?.n >= 4) return false;
+  if (!t || (h && h.kind !== 'trash') || h?.n >= trashCap(pid)) return false;
   removeTrash(t);
   p.holding = { kind: 'trash', n: (h?.n || 0) + 1 }; sfx.pick();
+  addJob(pid, 'cleaner', 2, 'trash');
+  G.life.cleaned++;
   return true;
 };
 ACTIONS.useBin = pid => {
@@ -225,6 +249,7 @@ ACTIONS.useBin = pid => {
     G.binCount += n; h.n -= n;
     if (!h.n) p.holding = null;
     sfx.thud();
+    G.tutFlags.bin = true;
     if (G.binCount >= G.up.binCap) tell(pid, 'The bin is full. Take the bag to the dumpster out back.');
   } else if (!h && G.binCount > 0) {
     G.binCount = 0; p.holding = { kind: 'bag' }; sfx.pick();
@@ -236,6 +261,7 @@ ACTIONS.dumpster = pid => {
   const p = P(pid);
   if (p.holding?.kind !== 'bag') return false;
   p.holding = null; sfx.thud(); tell(pid, 'Trash taken out. Nice!');
+  addJob(pid, 'cleaner', 5, 'bags');
   return true;
 };
 
@@ -248,6 +274,7 @@ ACTIONS.door = pid => {
 };
 ACTIONS.openStore = pid => {
   if (G.phase !== 'prep') return false;
+  if (G.intro !== 'done') { tell(pid, 'Get the lights on and read Chuck\'s note first.', 'bad'); return false; }
   G.phase = 'open'; G.spawnT = 3;
   updateSign(); sfx.bell();
   broadcast({ t: 'say', text: 'The store is OPEN!' }); NET.toast('The store is OPEN!');
@@ -266,6 +293,7 @@ ACTIONS.repair = (pid, uid, score) => {
   inst.est = null;
   const after = value(inst);
   tell(pid, `Repaired ${itemById(inst.id).name}: worth about ${UI.money(before)} → ${UI.money(after)}.`);
+  addJob(pid, 'stocker', 10, 'repaired');
   sfx.ratchet();
   return { before, after };
 };

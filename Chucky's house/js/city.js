@@ -127,6 +127,14 @@ export function buildCity(scene) {
     }),
   }));
   neon.position.set(0, 4.4, 5.32); scene.add(neon);
+  CITY.neon = neon;
+  // rain (rainy-day shop event): a curtain of drops outside the window
+  const n = 1200, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { pos[i * 3] = rand(-25, 25); pos[i * 3 + 1] = rand(0, 12); pos[i * 3 + 2] = rand(5.6, 24); }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  CITY.rain = new THREE.Points(rg, new THREE.PointsMaterial({ color: 0x9ab0c8, size: 0.05, transparent: true, opacity: 0.55 }));
+  CITY.rain.visible = false; CITY.rain.raycast = () => {};
+  scene.add(CITY.rain);
   add(scene, box(3.4, 0.12, 1.3), cmat(0x8a1a1a), 2.85, 2.75, 5.75).rotation.x = 0.25;
   void brick;
   let x = -7.2;
@@ -171,11 +179,20 @@ export function buildCity(scene) {
   CITY.sky = scene;
 }
 
+// The CHUCKY'S HOUSE neon over the door (off in the dark intro, flickers on in the win cutscene).
+export function setNeon(on) { if (CITY.neon) CITY.neon.material.color.setScalar(on ? 1 : 0.08); }
+export function setRain(on) { if (CITY.rain) CITY.rain.visible = on; }
+
 // day: 0 = night, 1 = full daylight
 export function updateCity(dt, day) {
   if (!CITY.scene) return;
   CITY.day += (day - CITY.day) * Math.min(1, dt * 0.5);
-  const d = CITY.day, night = d < 0.35;
+  const d = CITY.day * (CITY.rain?.visible ? 0.7 : 1), night = d < 0.35;
+  if (CITY.rain?.visible) {
+    const p = CITY.rain.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) { p.array[i * 3 + 1] -= dt * 12; if (p.array[i * 3 + 1] < 0) p.array[i * 3 + 1] = 12; }
+    p.needsUpdate = true;
+  }
   const sky = d < 0.5 ? NIGHT_SKY.clone().lerp(DUSK_SKY, d * 1.4) : DUSK_SKY.clone().lerp(DAY_SKY, (d - 0.5) * 2);
   CITY.scene.background = sky;
   CITY.scene.fog?.color.copy(sky);

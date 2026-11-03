@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { G, ACTIONS, pick, me, ensurePlayer } from './state.js';
-import { itemById, makeItemMesh, part } from './data.js';
+import { itemById, makeItemMesh, part, FRAGILE } from './data.js';
 import { S, saveSettings, applySettings } from './settings.js';
-import { buildWorld, walkable, STATIC, physStatics, updateBin, updateSign, updateWorld } from './world.js';
-import { updateCity } from './city.js';
+import { buildWorld, walkable, STATIC, physStatics, updateBin, updateSign, updateWorld, flickerLights } from './world.js';
+import { updateCity, setRain } from './city.js';
 import { SHELF_TYPES, makeShelf, placeShelf, setSlotItem, shelfBySid, refreshTags, setMarketFn } from './shelves.js';
 import { spawnTrash } from './trash.js';
 import { updateCustomers, serve, isFirstInQueue } from './customers.js';
@@ -15,22 +15,23 @@ import { PhysWorld, throwFrom } from './physics.js';
 import { pendingTick } from './shop.js';
 import { updateCoop, updateChickens, eggSave, eggLoad } from './chickens.js';
 import { repairGame } from './minigames.js';
-import { act, broadcast, isGuest, isHost, online, leaveNet } from './net.js';
+import { act, send, broadcast, isGuest, isHost, online, leaveNet } from './net.js';
 import { VOICE, initMic, updateVoice, setPTT, setRadio, updateMicTrack, closeVoice } from './voice.js';
 import { openCoop, netTick, updateAvatars, approveKey, openChat, shopSnap } from './coop.js';
+import { buildCleaning, updateMess, scrubTick, toolMesh, closetPanel, messSave, messLoad, spawnSpill, SPILLS } from './mess.js';
+import { updateDecor, animateDecor } from './decor.js';
+import { initMusic, setMood, setChase, stopChase, updateMusic, buildRadio, STATIONS } from './music.js';
+import { ping, updateFun, showEmoteBar, EMOTES, openRoulette } from './fun.js';
+import { boardPanel } from './orders.js';
+import { reportCard, myPerk } from './jobs.js';
+import { todayEvent, SHOP_EVENTS } from './events.js';
+import { alert } from './social.js';
+import { startIntro, playIntro, buildStory, applyIntroWorld, updateTutorial, readNote, mailPanel, updateMailbox, weekLine, playWin, unread } from './story.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
 const SAVE_KEY = 'chuckys_house_save_v6';
 const NEW_FLAG = 'chuckys_house_new';
-const INTRO = [
-  'Six months ago I had a business, a car, and a future.',
-  'Then it all went under. Bankrupt.',
-  'The bank gave me one last chance: an $8,000 loan… for a dusty old pawn shop on the wrong side of town.',
-  '$600 every week. Miss three payments and the IRS comes for everything. Including me.',
-  'Buy low. Sell high. Go out at night and bring back whatever you can carry.',
-  'CHUCKY\'S HOUSE: Day 1',
-];
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: S.aa, powerPreference: 'high-performance' });
@@ -50,6 +51,9 @@ const controls = new PointerLockControls(camera, document.body);
 
 ensurePlayer('p0', S.name);
 buildWorld(scene);
+buildCleaning(scene);
+buildRadio(scene);
+buildStory(scene);
 G.phys = new PhysWorld(scene, physStatics);
 setMarketFn(marketPrice);
 const apply = () => {
@@ -60,15 +64,15 @@ const apply = () => {
   if (me()) me().name = S.name;
 };
 addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+  for (const c of [camera, G.cine?.camera].filter(Boolean)) { c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix(); }
   renderer.setSize(innerWidth, innerHeight);
 });
 
 // ---------- save / load ----------
 const FIELDS = ['money', 'day', 'time', 'phase', 'debt', 'paidWeek', 'strikes', 'xp', 'trust', 'backstock', 'market', 'marketPrev', 'deals', 'auction', 'night',
-  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'index'];
-const MERGE = ['gear', 'tools', 'weapons', 'up', 'stats'];
+  'gear', 'tools', 'weapons', 'up', 'eggs', 'doorOpen', 'binCount', 'stats', 'index',
+  'clean', 'jobs', 'dayStats', 'life', 'history', 'orders', 'regulars', 'decor', 'shopEvent', 'weekEvent', 'story', 'intro', 'tut', 'tutFlags', 'radio'];
+const MERGE = ['gear', 'tools', 'weapons', 'up', 'stats', 'life', 'story'];
 let playerStart = [-4.5, 3.6];
 
 G.save = () => {
@@ -85,7 +89,8 @@ G.save = () => {
     shelves: G.shelves.map(s => ({ type: s.userData.type, sid: s.userData.sid, x: s.position.x, z: s.position.z, r: s.userData.r, slots: s.userData.slots.map(sl => sl.item ?? held.get(sl) ?? null) })),
     floor: G.phys.bodies.map(b => ({ inst: b.inst, p: b.p.toArray(), ry: b.ry })),
     eggsGround: eggSave(),
-    holdTrash: h && h.kind !== 'item' ? h : null,
+    mess: messSave(),
+    holdTrash: h && h.kind !== 'item' && h.kind !== 'tool' ? h : null,
   });
   localStorage.setItem(SAVE_KEY, JSON.stringify(d));
 };
@@ -109,16 +114,17 @@ function load() {
   for (const [x, z, k] of d.trash || []) spawnTrash(x, z, k);
   for (const f of d.floor || []) G.phys.add(f.inst, new THREE.Vector3(...f.p), undefined, f.ry, true);
   eggLoad(d.eggsGround);
+  messLoad(d.mess);
   if (d.player) playerStart = d.player;
   me().holding = d.holdTrash || null;
-  updateBin(); updateSign(); updateWorld(); updateCoop();
+  updateBin(); updateSign(); updateWorld(); updateCoop(); updateDecor();
 }
 
 // ---------- player ----------
 const keys = {};
 const ray = new THREE.Raycaster(); ray.far = 3.2;
 const CENTER = new THREE.Vector2();
-let target = null, bobT = 0;
+let target = null, targetHit = null, bobT = 0, mouseHeld = false, shake = 0;
 
 function blocked(x, z) {
   if (G.world === 'exp') return EXP.blocked(x, z);
@@ -128,7 +134,7 @@ function blocked(x, z) {
 }
 
 function movePlayer(dt) {
-  const exp = G.world === 'exp';
+  const exp = G.world === 'exp', my = me();
   if (exp && EXP.isFrozen()) return;
   const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
   const rgt = new THREE.Vector3(-f.z, 0, f.x);
@@ -138,33 +144,39 @@ function movePlayer(dt) {
   const p = camera.position;
   const run = (keys.ShiftLeft || keys.ShiftRight) && (!exp || EXP.canRun());
   G.running = run && v.lengthSq() > 0;
+  my.walking = v.lengthSq() > 0;
   if (v.lengthSq()) {
-    v.normalize().multiplyScalar((run ? 5.5 : 3.2) * (exp ? EXP.speedMult() : 1) * dt);
+    my.emote = null; // moving ends an emote
+    const perkRun = !exp && run && myPerk('stocker') >= 3 ? 1.15 : 1;
+    v.normalize().multiplyScalar((run ? 5.5 * perkRun : 3.2) * (exp ? EXP.speedMult() : 1) * dt);
     if (!blocked(p.x + v.x, p.z)) p.x += v.x;
     if (!blocked(p.x, p.z + v.z)) p.z += v.z;
     bobT += dt * (run ? 13 : 9);
   }
-  const eye = exp ? EXP.eyeHeight() : 1.6;
+  const eye = my.emote === 'sit' ? 1.05 : exp ? EXP.eyeHeight() : 1.6;
   p.y += (eye + (S.bob ? Math.sin(bobT) * 0.035 : 0) - p.y) * Math.min(1, dt * 12);
+  if (shake > 0) { shake -= dt; p.x += (Math.random() - 0.5) * 0.03; p.y += (Math.random() - 0.5) * 0.03; }
 }
 
 // ---------- what you hold (view model in the shop) ----------
 let holdKey = null;
 function updateHoldMesh() {
   const h = me()?.holding;
-  const k = !h ? null : h.kind === 'item' ? h.inst.uid : h.kind + (h.n || '');
+  const k = !h ? null : h.kind === 'item' ? h.inst.uid : h.kind === 'tool' ? 'tool' + h.tool : h.kind + (h.n || '');
   if (k === holdKey) return;
   holdKey = k;
   if (G.holdMesh) camera.remove(G.holdMesh);
   G.holdMesh = null;
   UI.hud();
   if (!h) return;
-  const g = new THREE.Group();
+  let g = new THREE.Group();
   if (h.kind === 'bag') {
     part(g, new THREE.IcosahedronGeometry(0.2, 1), 0x111111, 0, 0, 0, { roughness: 0.3 }).scale.set(1, 1.2, 1);
     part(g, new THREE.ConeGeometry(0.06, 0.12, 6), 0x111111, 0, 0.26, 0);
   } else if (h.kind === 'trash') {
     for (let i = 0; i < h.n; i++) part(g, new THREE.IcosahedronGeometry(0.05, 0), 0xe8e4d8, (i % 2) * 0.07, Math.floor(i / 2) * 0.07, 0);
+  } else if (h.kind === 'tool') {
+    g = toolMesh(h.tool);
   } else {
     const m = makeItemMesh(itemById(h.inst.id));
     const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
@@ -222,20 +234,29 @@ function toggleCarry() {
 }
 
 // ---------- interaction ----------
+let scrubP = -1;
 function hintFor(t) {
   if (!t) return '';
   const E = UI.kbd('E'), F = UI.kbd('F'), Gk = UI.kbd('G'), h = me().holding;
   if (t.customer) {
     const c = t.customer;
-    return isFirstInQueue(c) ? `${E} Serve customer <span class="dim">(${c.seller ? 'selling' : 'buying'})</span>`
+    if (c.iconE === '❗' || c.state === 'flee') return `${E} <b class="down">Stop the shoplifter!</b>`;
+    if (c.iconE === '🙋' || (c.help > 0 && !c.helped)) return `${E} Help this customer <span class="dim">("Can I see that?" → they pay more)</span>`;
+    if (c.detective) return '🕵️ <span class="dim">A detective. Hope you have nothing stolen…</span>';
+    return isFirstInQueue(c) ? `${E} Serve customer${c.reg ? ` <b>${c.reg}</b>` : ''} <span class="dim">(${c.seller ? 'selling' : 'buying'})</span>`
       : c.state === 'queue' ? '<span class="dim">Waiting in line…</span>' : '';
   }
   if (t.body) return h ? '<span class="dim">Hands full</span>' : `${E} Pick up ${itemById(t.body.inst.id).icon} ${itemById(t.body.inst.id).name}`;
+  if (t.kind === 'spill') {
+    const k = SPILLS[t.spill.kind], tool = k.tool === 'mop' ? '🧽 mop' : '🧹 broom';
+    if (h?.kind === 'tool' && h.tool === k.tool) return scrubP >= 0 ? `Cleaning… <span class="bar"><i style="width:${Math.round(scrubP * 100)}%"></i></span>` : `Hold <b>left mouse</b> to clean the ${k.name.toLowerCase()}`;
+    return `${k.name} <span class="dim">(needs the ${tool}, from the cleaning corner)</span>`;
+  }
   switch (t.kind) {
     case 'computer': return `${E} Use computer`;
     case 'opensign': return G.phase === 'prep' ? `${E} Open the store` : G.phase === 'evening' ? `${E} Head out for the night` : G.phase === 'open' ? 'Open until 6:00 PM' : 'Closing…';
     case 'door': return `${E} ${G.doorOpen ? 'Close' : 'Open'} the front door <span class="dim">(closed = no new customers)</span>`;
-    case 'trash': return h && h.kind !== 'trash' || h?.n >= 4 ? '<span class="dim">Hands full</span>' : `${E} Pick up trash`;
+    case 'trash': return h && h.kind !== 'trash' || h?.n >= 8 ? '<span class="dim">Hands full</span>' : `${E} Pick up trash`;
     case 'bin':
       if (h?.kind === 'trash') return G.binCount >= G.up.binCap ? '<span class="down">Bin is full! Take the bag out first</span>' : `${E} Throw away (${G.binCount}/${G.up.binCap})`;
       if (!h && G.binCount > 0) return `${E} Take out trash bag (${G.binCount}/${G.up.binCap})`;
@@ -247,6 +268,14 @@ function hintFor(t) {
     case 'hatch': return G.standWaiting ? `${E} Sell eggs (${G.eggs} in the basket)` : `Egg stand · ${G.eggs} eggs <span class="dim">(customers ring the bell)</span>`;
     case 'bench': return G.up.workshop ? `${E} Repair a broken item` : '';
     case 'wsdoor': return G.up.workshop ? '' : 'Workshop: for rent <span class="dim">(computer → Upgrades)</span>';
+    case 'closet': return h?.kind === 'tool' ? `${E} Put the ${h.tool === 'sign' ? 'sign' : h.tool} back` : h ? '<span class="dim">Hands full</span>' : `${E} Cleaning corner: mop, broom, wet floor sign`;
+    case 'sink': return h?.kind === 'tool' && h.tool === 'mop' ? `${E} Rinse the mop${h.dirt ? ` (dirty ×${h.dirt})` : ''}` : 'Sink <span class="dim">(rinse the mop here)</span>';
+    case 'wetsign': return h ? '<span class="dim">Hands full</span>' : `${E} Pick up the wet floor sign`;
+    case 'radio': { const st = STATIONS[G.radio]; return `${E} Radio: <b>${st.name}</b> <span class="dim">(next station)</span>`; }
+    case 'board': return `${E} Order board (${G.orders.length})`;
+    case 'mail': return `${E} Mailbox${unread() ? ` <b class="ok">(${unread()} new)</b>` : ''}`;
+    case 'breaker': return G.intro === 'dark' ? `${E} Flip the breaker` : 'Breaker box';
+    case 'note': return `${E} Read Chuck's note`;
   }
   const slot = t.slot;
   if (slot?.item) {
@@ -261,8 +290,10 @@ function hintFor(t) {
 function updateTarget() {
   if (G.carry) { target = null; return; }
   ray.setFromCamera(CENTER, camera);
-  const hit = ray.intersectObjects([...G.shelves, ...G.customers.map(c => c.mesh), ...G.trash, ...G.interactables, ...G.phys.bodies.map(b => b.mesh), ...G.eggMeshes, ...G.chickens.map(c => c.mesh)], true)[0];
+  const hit = ray.intersectObjects([...G.shelves, ...G.customers.map(c => c.mesh), ...G.trash, ...G.interactables, ...G.phys.bodies.map(b => b.mesh), ...G.eggMeshes,
+    ...G.chickens.map(c => c.mesh), ...G.spills.map(s => s.g), ...G.signs.map(s => s.g)], true)[0];
   target = hit ? hit.object.userData : null;
+  targetHit = hit;
   UI.hint(hintFor(target));
 }
 
@@ -270,7 +301,13 @@ async function interact() {
   const t = target;
   if (!t) return;
   const h = me().holding;
-  if (t.customer) { if (isFirstInQueue(t.customer)) serve(t.customer.cid); return; }
+  if (t.customer) {
+    const c = t.customer;
+    if (c.iconE === '❗' || c.state === 'flee') return act('catchThief', c.cid);
+    if (c.iconE === '🙋' || (c.help > 0 && !c.helped)) return act('helpCustomer', c.cid);
+    if (isFirstInQueue(c)) serve(c.cid);
+    return;
+  }
   if (t.body) return act('grabBody', t.body.uid);
   switch (t.kind) {
     case 'computer': return openComputer();
@@ -295,6 +332,14 @@ async function interact() {
         G.relock();
       }, i => i.broken);
     case 'wsdoor': if (!G.up.workshop) UI.toast('Rent the workshop on the computer (Upgrades).'); return;
+    case 'closet': if (h?.kind === 'tool') return act('returnTool'); if (!h) closetPanel(); return;
+    case 'sink': if (h?.kind === 'tool' && h.tool === 'mop') act('rinseMop'); return;
+    case 'wetsign': return act('takeSign', t.sign.gid);
+    case 'radio': return act('radio');
+    case 'board': return boardPanel();
+    case 'mail': return mailPanel();
+    case 'breaker': return act('breaker');
+    case 'note': return readNote();
   }
   const slot = t.slot;
   if (!slot) return;
@@ -309,6 +354,12 @@ async function interact() {
 
 function grabOrThrow() {
   const h = me().holding;
+  if (h?.kind === 'tool' && h.tool === 'sign') {
+    const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
+    const p = targetHit?.point && targetHit.distance < 3 ? targetHit.point : camera.position.clone().addScaledVector(f, 1.3);
+    if (!walkable(p.x, p.z)) return UI.toast('Put it on the shop floor.', 'bad');
+    return act('placeSign', p.x, p.z);
+  }
   if (h?.kind === 'item') {
     const { p, v } = throwFrom(camera, keys.ShiftLeft ? 7 : 4.5);
     return act('throwHeld', p.toArray(), v.toArray());
@@ -320,6 +371,27 @@ function grabOrThrow() {
 function toStock() {
   const slot = target?.slot;
   if (slot?.item) act('toStock', slot.shelf.userData.sid, slot.i);
+}
+
+// Thrown hard, fragile things break (broken glass on the floor). The duck squeaks and bonks people.
+G.phys.onImpact = (b, speed) => {
+  if (isGuest() || !b.inst || b.inst.broken || speed < 5.5 || !FRAGILE.includes(b.inst.id)) return;
+  b.inst.broken = true;
+  spawnSpill('glass', b.p.x, b.p.z);
+  sfx.glass();
+  UI.toast(`💥 The ${itemById(b.inst.id).name} broke! Sweep up the glass (broom).`, 'bad');
+};
+G.onBonk = () => { shake = 0.25; UI.toast('🦆 Bonk!'); };
+function duckBonks() {
+  const now = performance.now();
+  for (const b of G.phys.bodies) {
+    if (b.sleep || b.inst.id !== 'duck' || now - (b.bonk || 0) < 800 || b.v.length() < 3) continue;
+    for (const p of Object.values(G.players)) {
+      if (p.world !== 'shop' || Math.hypot(b.p.x - p.x, b.p.z - p.z) > 0.5 || Math.abs(b.p.y - 1.4) > 0.6) continue;
+      b.bonk = now; b.v.multiplyScalar(-0.4);
+      if (p.id === G.me) { sfx.squeak(); G.onBonk(); } else send(p.id, { t: 'bonk' });
+    }
+  }
 }
 
 // ---------- day / night ----------
@@ -344,17 +416,24 @@ ACTIONS.sleep = () => {
   G.onSleep();
   return true;
 };
+// What's new this morning (shop event, letters, orders).
+function morningNews() {
+  const ev = todayEvent(), n = unread();
+  return [ev ? `${ev.icon} <b>${ev.name}</b> today: ${ev.desc}` : '', n ? `📬 ${n} new letter${n > 1 ? 's' : ''} in the mailbox.` : '',
+    G.orders.some(o => o.due === G.day) ? '📋 An order is due today!' : ''].filter(Boolean).map(t => `<p>${t}</p>`).join('');
+}
 G.onSleep = () => {
   G.phase = isGuest() ? G.phase : 'prep';
   updateSign(); G.save();
   UI.closePanel(); UI.hud();
   UI.toast(`You slept through the night. Good morning, Day ${G.day}!`);
+  const ev = todayEvent(); if (ev) UI.toast(`${ev.icon} ${ev.name}: ${ev.desc}`);
 };
 
 G.startExpedition = params => {
   if (G.carry) { const s = G.carry; G.carry = null; if (s.userData.from) placeShelf(s, ...s.userData.from); }
   G.world = 'exp';
-  Object.assign(me(), { world: 'exp', hp: 100, down: false, hidden: false, cab: false });
+  Object.assign(me(), { world: 'exp', hp: 100, down: false, dead: false, bleed: 0, hidden: false, cab: false, emote: null });
   if (G.holdMesh) G.holdMesh.visible = false;
   UI.closePanel(false);
   showHud(true);
@@ -366,7 +445,8 @@ G.startExpedition = params => {
 G.endExpedition = r => {
   scene.add(camera);
   G.world = 'shop';
-  Object.assign(me(), { world: 'shop', hp: 100, down: false, hidden: false, cab: false, light: false });
+  Object.assign(me(), { world: 'shop', hp: 100, down: false, dead: false, bleed: 0, hidden: false, cab: false, light: false });
+  stopChase();
   camera.position.set(-4.5 + (+G.me.slice(1)) * 0.6, 1.6, 3.6); camera.rotation.set(0, 0, 0);
   if (G.holdMesh) G.holdMesh.visible = true;
   showHud(true);
@@ -375,6 +455,7 @@ G.endExpedition = r => {
   const list = ids => ids.map(id => itemById(id).icon + ' ' + itemById(id).name).join(', ');
   const mine = r.kept[G.me] || [], lost = r.lost[G.me] || [];
   const title = { drive: '🏠 Back home safe', time: '🛻 The truck left', wiped: '💀 Everybody went down' }[r.reason];
+  const hosp = Object.entries(r.hospital || {});
   UI.openPanel(`<h2>${title}</h2>
     <p class="dim">${r.loc} · ${UI.skulls(r.skulls)} · ${r.ev}</p>
     ${r.reason === 'time' && lost.length ? '<p>You weren\'t in the truck when it left. You walked home all night, and somebody robbed your bag.</p>' : ''}
@@ -382,6 +463,10 @@ G.endExpedition = r => {
     <p>🛻 The truck brought home <b>${r.cargo.length}</b> item(s)${r.cargo.length ? ': ' + list(r.cargo) : '.'}</p>
     ${mine.length ? `<p>🎒 Your bag: ${list(mine)}</p>` : ''}
     ${lost.length ? `<p class="down">Lost: ${list(lost)}</p>` : ''}
+    ${r.cash ? `<p class="up">💵 Rusty's cash: ${UI.money(r.cash)}</p>` : ''}
+    ${(r.pages || []).map(p => `<div class="okbox ledger">📜 New ledger page!<br><i>${p}</i></div>`).join('')}
+    ${hosp.length ? `<div class="alert">🏥 <b>Hospital bill: ${UI.money(r.bill)}</b><br>${hosp.map(([n, v]) => `${n}: ${UI.money(v)}`).join(' · ')}</div>` : ''}
+    ${morningNews()}
     <p class="dim">Everything is in the stock crates. Check prices on the computer before you sell. Broken items can be repaired in the workshop.</p>
     <div class="row"><button id="ex-ok">Start Day ${G.day} ☀</button></div>`, { esc: false });
   UI.$('ex-ok').onclick = () => { UI.closePanel(); UI.hud(); };
@@ -396,7 +481,13 @@ function dayTick(dt) {
       broadcast({ t: 'say', text: '6:00 PM: closing time! Serve the last customers.' });
       UI.toast('6:00 PM: closing time! Serve the last customers.');
     }
-  } else if (G.phase === 'closing' && !G.customers.length && !G.customers.some(c => c.servedBy) && !UI.panelOpen() && !G.carry) {
+    // empty shelves slowly cost trust (customers like full shelves)
+    if ((G.stockT = (G.stockT || 0) - dt) <= 0) {
+      G.stockT = 20;
+      const slots = G.shelves.flatMap(s => s.userData.slots);
+      if (slots.length && slots.filter(s => !s.item).length / slots.length > 0.5) G.trust = Math.max(0, G.trust - 0.002);
+    }
+  } else if (G.phase === 'closing' && !G.customers.length && !UI.panelOpen() && !G.carry) {
     finishDay();
   }
   if (isAuctionDay() && G.auction?.started && G.phase !== 'evening') auctionTick(dt, (kind, lot) => {
@@ -420,6 +511,8 @@ G.onSummary = s => {
   if (s.gameOver) return prison(s);
   if (!isGuest()) G.save();
   refreshTags();
+  const ev = s.event && SHOP_EVENTS[s.event];
+  s.extraHTML = (ev ? `<p class="dim">${ev.icon} Today was a ${ev.name}.</p>` : '') + weekLine(s) + reportCard(s.report);
   UI.summaryPanel(s, () => { UI.closePanel(); UI.hud(); UI.toast('Evening: buy gear on the computer, then press O to head out.'); });
 };
 
@@ -432,21 +525,29 @@ function endGame() {
 
 function prison(s) {
   endGame();
+  setMood('prison');
   UI.endScreen('prison', `<h1>BUSTED</h1><p>Three missed payments. The IRS took everything, including your freedom.</p>
     <p class="dim">You kept Chucky's House open for ${s.day} days. Loan left: ${UI.money(G.debt)}</p>`, () => location.reload());
 }
 
+// The loan is paid: the win cutscene (inspiration → twist → CHAPTER 2). The save stays, marked "Chapter 1 complete".
 G.win = () => {
-  if (G.ended) return;
-  endGame();
-  sfx.cash();
-  UI.endScreen('win', `<h1>DEBT FREE!</h1><p>You paid off the loan on Day ${G.day}. Chucky's House is finally yours.</p>
-    <p class="dim">Cash left: ${UI.money(G.money)}</p>`, () => location.reload());
+  if (G.winning) return;
+  G.winning = true;
+  document.exitPointerLock();
+  showHud(false);
+  setMood(null); stopChase();
+  playWin(() => {
+    G.story.ch1 = true;
+    G.save();
+    G.ended = true;
+    location.reload();
+  });
 };
 
 // ---------- input ----------
 addEventListener('keydown', e => {
-  if (G.chatting) return;
+  if (G.chatting || G.cine) return;
   keys[e.code] = true;
   if (e.code === 'KeyY' && approveKey(true)) return;
   if (e.code === 'KeyN' && approveKey(false)) return;
@@ -454,7 +555,12 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV' && S.micMode === 'ptt') setPTT(true);
   if (e.code === 'KeyB' && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
   if (e.code === 'KeyT' && online() && !G.uiOpen) { e.preventDefault(); return openChat(() => G.relock()); }
+  if (G.world === 'exp' && e.code === 'KeyR' && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
   if (G.uiOpen || !controls.isLocked) return;
+  if (e.code === 'KeyH' && !e.repeat) showEmoteBar(true);
+  const n = e.code.startsWith('Digit') ? +e.code.slice(5) : -1;
+  if (keys.KeyH && EMOTES[n]) { me().emote = EMOTES[n][0]; sfx.click(); return; }
+  if (e.code === 'KeyZ') return ping(camera, G.pingScene());
   if (G.world === 'exp') {
     if (e.code === 'KeyE') EXP.interact();
     if (e.code === 'KeyF') EXP.toggleLight();
@@ -462,8 +568,7 @@ addEventListener('keydown', e => {
     if (e.code === 'KeyG') EXP.dropSelected();
     if (e.code === 'KeyC') EXP.toggleCrouch();
     if (e.code === 'Space') EXP.nextSpectate();
-    const n = e.code.startsWith('Digit') ? +e.code.slice(5) - 1 : -1;
-    if (n >= 0 && n < 9) EXP.select(n);
+    if (n >= 1 && n <= 9) EXP.select(n - 1);
     return;
   }
   if (e.code === 'KeyE') interact();
@@ -477,12 +582,16 @@ addEventListener('keyup', e => {
   keys[e.code] = false;
   if (e.code === 'KeyV') setPTT(false);
   if (e.code === 'KeyB') setRadio(false);
+  if (e.code === 'KeyH') showEmoteBar(false);
 });
 addEventListener('mousedown', e => {
-  if (e.button !== 0 || !controls.isLocked || G.uiOpen) return;
+  if (e.button !== 0) return;
+  mouseHeld = true;
+  if (!controls.isLocked || G.uiOpen) return;
   if (G.world === 'exp') EXP.use();
   else if (me().holding?.kind === 'item') grabOrThrow();
 });
+addEventListener('mouseup', e => { if (e.button === 0) { mouseHeld = false; scrubP = -1; } });
 addEventListener('wheel', e => { if (controls.isLocked && G.world === 'exp') EXP.cycle(Math.sign(e.deltaY)); });
 
 // ---------- menus ----------
@@ -496,7 +605,9 @@ const showHud = on => {
 function showMenu() {
   G.mode = 'menu';
   menu.classList.remove('hidden');
-  UI.$('m-continue').classList.toggle('hidden', !G.hasSave);
+  const done = G.hasSave && G.story.ch1;
+  UI.$('m-continue').classList.toggle('hidden', !G.hasSave || done);
+  UI.$('m-ch1').classList.toggle('hidden', !done);
   if (G.hasSave) UI.$('m-info').textContent = `Day ${G.day} · ${UI.money(G.money)} cash · Loan ${UI.money(G.debt)}`;
   showHud(false);
 }
@@ -508,16 +619,22 @@ function enterPlay() {
   camera.position.set(playerStart[0] + off, 1.6, playerStart[1]);
   camera.rotation.set(0, 0, 0);
   showHud(true);
+  applyIntroWorld();
   UI.hud();
   controls.lock();
   // a co-op host brings everyone already connected into the game (later joiners get it on hello)
   if (isHost()) setTimeout(() => broadcast({ t: 'start', ss: shopSnap() }), 300);
 }
-G.onCoopStart = () => { UI.closePanel(false); enterPlay(); };
+// Guests: the host's game starts. If the intro is still playing here, start right after it.
+G.onCoopStart = () => { UI.closePanel(false); if (G.cine) G.pendingStart = true; else enterPlay(); };
+G.onStoryIntro = () => {
+  UI.closePanel(false); menu.classList.add('hidden');
+  playIntro(() => { if (G.pendingStart) { G.pendingStart = false; enterPlay(); } else UI.toast('Waiting for the host…'); });
+};
 // Host: start the game for the co-op (the host's save, or a new game with the intro).
 G.hostStartGame = () => {
   if (G.mode === 'play') return;
-  if (!G.hasSave) { G.hasSave = true; UI.cutscene(INTRO, () => { G.save(); enterPlay(); }); } else enterPlay();
+  if (!G.hasSave) { G.hasSave = true; menu.classList.add('hidden'); startIntro(() => { G.save(); enterPlay(); }); } else enterPlay();
 };
 // Party: wipe the save and reload into a new game (the intro plays, then the game starts).
 G.newGameReload = () => {
@@ -527,10 +644,10 @@ G.newGameReload = () => {
   location.reload();
 };
 
-const showPause = () => { if (G.mode === 'play' && !G.uiOpen && !G.ended && !G.chatting) pause.classList.remove('hidden'); };
-G.relock = () => { if (G.mode === 'play' && !G.ended && !UI.panelOpen()) controls.lock(); };
+const showPause = () => { if (G.mode === 'play' && !G.uiOpen && !G.ended && !G.chatting && !G.cine) pause.classList.remove('hidden'); };
+G.relock = () => { if (G.mode === 'play' && !G.ended && !UI.panelOpen() && !G.cine) controls.lock(); };
 controls.addEventListener('lock', () => pause.classList.add('hidden'));
-controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; setPTT(false); setRadio(false); showPause(); });
+controls.addEventListener('unlock', () => { for (const k in keys) keys[k] = false; mouseHeld = false; setPTT(false); setRadio(false); showEmoteBar(false); showPause(); });
 document.addEventListener('pointerlockerror', showPause);
 
 const mics = async () => (await navigator.mediaDevices?.enumerateDevices?.() || []).filter(d => d.kind === 'audioinput');
@@ -538,10 +655,7 @@ const back = () => { UI.closePanel(false); };
 UI.$('m-continue').onclick = enterPlay;
 UI.$('m-new').onclick = async () => {
   if (G.hasSave && !await UI.confirmBox('<h3>Start a new game?</h3><p>Your current save will be deleted.</p>', 'New game')) return;
-  localStorage.removeItem(SAVE_KEY);
-  sessionStorage.setItem(NEW_FLAG, '1');
-  G.save = () => {};
-  location.reload();
+  G.newGameReload();
 };
 UI.$('m-coop').onclick = () => openCoop(G.hostStartGame, () => { UI.closePanel(false); if (!online()) { leaveNet(); closeVoice(); } });
 UI.$('m-settings').onclick = async () => UI.settingsPanel(S, apply, back, await mics());
@@ -562,28 +676,39 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.6';
+UI.$('ver').textContent = 'Prototype v0.7';
+initMusic().then(() => { if (G.mode === 'menu') setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
   menu.classList.add('hidden');
   G.hasSave = true;
-  UI.cutscene(INTRO, () => { G.save(); enterPlay(); });
+  startIntro(() => { G.save(); enterPlay(); });
 } else {
   showMenu();
 }
 // The game asks for the microphone right away (voice chat).
 micStatus();
 initMic().then(micStatus);
-setInterval(() => { if (G.mode === 'play') G.save(); }, 10000);
+setInterval(() => { if (G.mode === 'play' && !G.cine) G.save(); }, 10000);
+G.pingScene = () => (G.world === 'exp' ? EXP.activeScene() : null) || scene;
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
-let menuT = 0, hudT = 0, fpsN = 0, fpsT = 0, lastFrame = 0;
+let menuT = 0, hudT = 0, fpsN = 0, fpsT = 0, lastFrame = 0, worldKey = '', mailT = 0;
 function dayLight() {
+  if (G.intro === 'dark' || G.intro === 'bank') return 0.03;
   if (G.phase === 'prep') return 0.85;
   if (G.phase === 'evening') return 0.04;
   if (G.phase === 'closing') return 0.3;
   return G.time < 360 ? 1 : 1 - (G.time - 360) / 180 * 0.7;
+}
+// Music for the moment (the shop's music comes out of the radio on the counter).
+function music() {
+  if (G.cine) return;
+  if (G.mode === 'menu') return setMood('menu');
+  if (G.world === 'exp') { setMood(me()?.down && !me()?.dead ? 'down' : 'night'); setChase(EXP.chaseLevel()); return; }
+  const st = STATIONS[G.radio];
+  setMood(st.mood && G.auction?.started && isAuctionDay() && G.phase !== 'evening' ? 'auction' : st.mood, true);
 }
 
 renderer.setAnimationLoop(now => {
@@ -591,6 +716,14 @@ renderer.setAnimationLoop(now => {
   lastFrame = now;
   const dt = Math.min(clock.getDelta(), 0.05);
   fpsN++; if ((fpsT += dt) > 0.5) { UI.$('fps').textContent = Math.round(fpsN / fpsT) + ' FPS'; fpsN = 0; fpsT = 0; }
+  // cutscenes take over the screen
+  if (G.cine) {
+    G.cine.update(dt);
+    updateCity(dt, G.cineDay ?? dayLight());
+    updateMusic(G.cine.camera);
+    renderer.render(G.cine.scene, G.cine.camera);
+    return;
+  }
   const my = me();
   const live = controls.isLocked || G.uiOpen || online() || G.chatting;
   if (G.mode === 'menu') {
@@ -604,22 +737,33 @@ renderer.setAnimationLoop(now => {
       ray.setFromCamera(CENTER, camera);
       EXP.updateTarget(ray);
     }
-    if (live) EXP.update(dt);
+    if (live || EXP.isDead()) EXP.update(dt);
   } else if (G.mode === 'play' && !G.ended) {
     if (controls.isLocked) {
       movePlayer(dt);
       if (G.carry) updateCarry();
       updateTarget();
+      // hold left mouse with the mop / broom on a spill
+      if (mouseHeld && target?.kind === 'spill') { scrubP = scrubTick(dt, target.spill); if (scrubP >= 1) scrubP = -1; } else if (!mouseHeld) scrubP = -1;
     }
     if (live) {
       if (!isGuest()) {
         dayTick(dt);
         updateCustomers(dt);
         G.phys.step(dt);
+        duckBonks();
       }
       updateChickens(dt, !isGuest());
+      updateMess(dt, !isGuest());
+      updateTutorial(dt, !isGuest());
       if ((hudT -= dt) <= 0) { UI.hud(); hudT = 0.25; }
     }
+    // the shop's look follows the story / today's event
+    const wk = G.intro + '|' + G.shopEvent + '|' + G.phase;
+    if (wk !== worldKey) { worldKey = wk; applyIntroWorld(); setRain(G.shopEvent === 'rain' && G.phase !== 'evening'); }
+    if (G.shopEvent === 'powercut' && G.intro === 'done') flickerLights(dt);
+    if ((mailT -= dt) <= 0) { mailT = 1; updateMailbox(); }
+    animateDecor(now / 1000);
     updateCity(dt, dayLight());
     updateHoldMesh();
   }
@@ -629,6 +773,9 @@ renderer.setAnimationLoop(now => {
     G.camPos = { x: camera.position.x + dir.x * 2, z: camera.position.z + dir.z * 2 }; // where bought furniture appears
   }
   const sc = G.world === 'exp' ? EXP.activeScene() || scene : scene;
+  music();
+  updateMusic(camera);
+  updateFun(dt);
   if (G.mode === 'play') {
     netTick(dt, camera);
     updateAvatars(dt, sc);
@@ -640,3 +787,5 @@ renderer.setAnimationLoop(now => {
   }
   renderer.render(sc, camera);
 });
+
+void alert;

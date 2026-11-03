@@ -24,6 +24,11 @@ export const freshStats = () => ({ sales: 0, sold: 0, spent: 0, eggs: 0 });
 export const addTrust = d => { G.trust = clamp(G.trust + d, 0, 1); };
 // Trust = how much extra customers are willing to pay (0 % to +100 %).
 export const trustMult = () => 1 + G.trust;
+// Things that make trust grow faster register a multiplier here (clean shop, decorations, music on the radio).
+export const trustMods = [];
+export const gainTrust = d => addTrust(d * trustMods.reduce((m, f) => m * f(), 1));
+// Other modules plug into the morning (shop events, orders, regulars, letters…). Run at the end of rollMarket().
+export const morningHooks = [];
 
 const roundHalf = v => Math.round(v * 2) / 2;
 
@@ -32,13 +37,14 @@ export function rollMarket() {
     G.marketPrev[it.id] = G.market[it.id] ?? Math.round(mid(it.id));
     G.market[it.id] = Math.max(1, Math.round(rand(...it.range)));
   }
-  const pool = ITEMS.filter(i => !['big', 'weapon', 'food', 'car', 'scrap'].includes(i.cat) && i.range[1] < 400);
+  const pool = ITEMS.filter(i => !['big', 'weapon', 'food', 'car', 'scrap', 'fun', 'story', 'cash'].includes(i.cat) && i.range[1] < 400);
   G.deals = Array.from({ length: 5 }, () => {
     const inst = makeInst(pick(pool).id, { q: rand(0.8, 1.1) });
     return { inst, cost: Math.round(marketPrice(inst.id) * inst.q * rand(0.45, 0.68)) };
   });
   G.night = Object.fromEntries(Object.entries(SKULLS).map(([k, [a, b]]) => [k, roundHalf(rand(a, b))]));
   G.auction = isAuctionDay() ? genAuction() : null;
+  for (const h of morningHooks) h();
 }
 
 // ---------- auction (one day a week) ----------
@@ -104,7 +110,11 @@ function seize(itemFrac, moneyFrac) {
 
 // Called when the last customer leaves after 6 PM. Returns a summary for the UI.
 export function endDay() {
-  const s = { ...G.stats, day: G.day, trust: G.trust };
+  const s = { ...G.stats, day: G.day, trust: G.trust, clean: G.clean, event: G.shopEvent, report: G.dayStats };
+  G.dayStats = {};
+  G.history.push({ day: G.day, sales: G.stats.sales + (G.stats.eggs || 0), spent: G.stats.spent, trust: +G.trust.toFixed(3), clean: Math.round(G.clean) });
+  if (G.history.length > 60) G.history.shift();
+  G.life.days++;
   s.interest = Math.round(G.debt * INTEREST);
   G.debt += s.interest;
   if (G.day % 7 === 0) {

@@ -48,6 +48,7 @@ export function makeEnemy(E, kind, x, z, seed, extra = {}) {
     atk: 0, shells: 2, aimT: 0, sniff: 0, wp: 0, patrol: extra.patrol || null, target: null, last: null, alerted: false,
   };
   E.enemies.push(en);
+  mesh.traverse(o => { o.userData.enemy = en; });
   return en;
 }
 
@@ -116,7 +117,7 @@ export function updateEnemiesHost(E, dt, players, cb) {
       const d = Math.hypot(p.pos.x - m.position.x, p.pos.z - m.position.z);
       const visR = en.vision * (p.light ? 1.35 : 1) * (p.crouch ? 0.7 : 1) * (E.ev.id === 'fog' ? 0.6 : E.ev.id === 'day' ? 1.4 : 1);
       const sees = !p.hidden && d < visR && los(m.position, p.pos);
-      const hears = !p.hidden && d < en.hear * (p.run ? 1 : p.crouch ? 0.2 : 0.4);
+      const hears = !p.hidden && d < en.hear * (p.run ? 1 : p.crouch ? 0.2 : 0.4) * (p.quiet ? 0.75 : 1);
       const sniff = p.hidden && en.kind === 'dog' && d < 2.6;
       // it saw you a moment before you got in: it knows where you are
       const sawHide = p.hidden && en.target === p.pid && performance.now() - (en.seenAt || 0) < 1500 + (en.state === 'chase' ? 2500 : 0) && d < 8;

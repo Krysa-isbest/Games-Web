@@ -12,12 +12,27 @@ export const G = {
   // things you own once
   tools: { flashlight: 0, radio: 0, screwdriver: 0, wrench: 0, crowbar: 0, magnifier: 0 },
   weapons: { bat: 0, baton: 0, pepper: 0, taser: 0, revolver: 0, shotgun: 0 },
-  up: { workshop: false, coop: false, chickens: 0, stand: false, permit: false, binCap: 5, bag: 4 },
+  up: { workshop: false, coop: false, chickens: 0, stand: false, permit: false, binCap: 5, bag: 4,
+    register2: false, truckBed: false, truckQuiet: false, truckLights: false, truckWinch: false },
   eggs: 0, doorOpen: true, index: {},
   binCount: 0, stats: { sales: 0, sold: 0, spent: 0, eggs: 0 },
+  // v0.7: cleaning, jobs, story, events, orders, regulars, decorations, music radio
+  clean: 100,                 // cleanliness 0..100 (host computes)
+  jobs: {},                   // by player NAME: { cashier, cleaner, stocker, scav } job XP (lifetime)
+  dayStats: {},               // by player NAME: today's counts for the report card
+  life: { sold: 0, sales: 0, nights: 0, eggs: 0, cleaned: 0, days: 0 }, // lifetime totals (win credits)
+  history: [],                // [{ day, sales, spent, trust, clean }] for the graphs
+  orders: [], regulars: {}, decor: [],
+  shopEvent: null, weekEvent: null,
+  story: { pages: [], letters: [], read: [], ch1: false },
+  intro: 'done',              // new game: 'bank' -> 'dark' (breaker) -> 'note' (read Chuck's note) -> 'done'
+  tut: 99,                    // Day 1 tutorial step (99 = finished)
+  tutFlags: {},
+  radio: 0,                   // counter radio station index (last = off)
   // runtime only
-  me: 'p0', players: {}, pending: null,
+  me: 'p0', players: {}, pending: null, spills: [], signs: [], wet: [],
   spawnT: 3, standT: 20, shelves: [], customers: [], trash: [], interactables: [], chickens: [], eggMeshes: [],
+  cine: null, alerted: new Set(),
   scene: null, sun: null, openSign: null, binFill: null, carry: null, serving: null, uiOpen: false, running: false,
 };
 
@@ -41,5 +56,8 @@ export function rng(seed) {
 }
 
 export function ensurePlayer(id, name = 'Player') {
-  return G.players[id] ??= { id, name, x: -4.5, y: 1.6, z: 3.6, ry: 0, world: 'shop', hp: 100, down: false, hidden: false, holding: null, talking: false, radio: false, cab: false };
+  return G.players[id] ??= { id, name, x: -4.5, y: 1.6, z: 3.6, ry: 0, world: 'shop', hp: 100, down: false, dead: false, bleed: 0, hidden: false,
+    holding: null, talking: false, radio: false, cab: false, emote: null, quiet: false };
 }
+export const playerCount = () => Math.max(1, Object.keys(G.players).length);
+export const nameOf = pid => G.players[pid]?.name || 'Player';

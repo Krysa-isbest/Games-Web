@@ -390,10 +390,32 @@ export const ITEMS = [
   { id: 'egg', name: 'Fresh Egg', icon: '🥚', cat: 'food', range: [2, 4], build(g) {
     part(g, S(0.035, 1), 0xf4ead8, 0, 0.04, 0).scale.set(1, 1.3, 1);
   } },
+  // ---------- fun ----------
+  { id: 'duck', name: 'Rubber Duck', icon: '🦆', cat: 'fun', range: [3, 6], build(g) {
+    part(g, S(0.07, 1), 0xf4d020, 0, 0.06, 0, { roughness: 0.3 }).scale.set(1.2, 0.85, 1);
+    part(g, S(0.045, 1), 0xf4d020, 0.05, 0.13, 0, { roughness: 0.3 });
+    part(g, B(0.04, 0.012, 0.035), 0xe07a10, 0.1, 0.125, 0);
+    for (const z of [-0.022, 0.022]) part(g, S(0.008, 0), 0x111111, 0.075, 0.145, z);
+    part(g, new THREE.ConeGeometry(0.03, 0.05, 6), 0xf4d020, -0.09, 0.08, 0, { roughness: 0.3 }).rotation.z = 1.2;
+  } },
+  // ---------- story & cash (never sold in the shop) ----------
+  { id: 'ledger', name: 'Chuck\'s Ledger Page', icon: '📜', cat: 'story', range: [1, 1], build(g) {
+    part(g, B(0.2, 0.004, 0.27), 0xe8dcb0, 0, 0.002, 0).rotation.y = 0.2;
+    for (let k = 0; k < 7; k++) part(g, B(0.15, 0.001, 0.006), 0x3a2a1a, 0.005, 0.005, -0.09 + k * 0.03).rotation.y = 0.2;
+    part(g, B(0.06, 0.002, 0.06), 0x8a1a1a, 0.06, 0.006, 0.09);
+  } },
+  { id: 'cashbundle', name: 'Cash Bundle', icon: '💵', cat: 'cash', range: [300, 700], build(g) {
+    for (let k = 0; k < 3; k++) part(g, B(0.16, 0.035, 0.07), 0x5a8a4a, (k - 1) * 0.02, 0.018 + k * 0.035, (k % 2) * 0.01).rotation.y = k * 0.2;
+    part(g, B(0.04, 0.11, 0.072), 0xd8c070, 0, 0.055, 0);
+  } },
 ];
 
 export const itemById = id => ITEMS.find(i => i.id === id);
-export const CATS = { house: 'Household', collect: 'Collectibles', jewel: 'Jewellery', elec: 'Electronics', tool: 'Tools', music: 'Music', antique: 'Antiques', weapon: 'Weapons', car: 'Car parts', scrap: 'Scrap', big: 'Big stuff', food: 'Food' };
+export const CATS = { house: 'Household', collect: 'Collectibles', jewel: 'Jewellery', elec: 'Electronics', tool: 'Tools', music: 'Music', antique: 'Antiques', weapon: 'Weapons', car: 'Car parts', scrap: 'Scrap', big: 'Big stuff', food: 'Food', fun: 'Fun' };
+// Items that never show up in shops, markets or customer hands.
+export const NOT_FOR_SALE = ['story', 'cash'];
+// Fragile items: thrown hard, they break (and leave broken glass on the floor).
+export const FRAGILE = ['lamp', 'vase', 'globe', 'crt', 'headlight', 'tube', 'camera', 'blender', 'worldglobe', 'painting', 'clock'];
 
 export function makeItemMesh(def) {
   const g = new THREE.Group();
