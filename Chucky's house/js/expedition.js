@@ -12,6 +12,8 @@ import { NET, act, send, broadcast, on, tell, isGuest } from './net.js';
 import { addJob, bagCap, perk } from './jobs.js';
 import { noiseRing, resetChips } from './fun.js';
 import { addPage } from './story.js';
+import { kb } from './keys.js';
+import { tip } from './tips.js';
 import { S } from './settings.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
@@ -381,6 +383,7 @@ export async function use() {
 export function select(i) { if (E && i < slots().length) { E.slot = i; sfx.click(); buildViewModel(); hud(); } }
 export function cycle(d) { if (E) { const n = slots().length; select((E.slot + d + n) % n); } }
 export function toggleCrouch() { if (E && !E.down) { E.crouch = !E.crouch; hud(); } }
+export function setCrouch(on) { if (E && !E.down && E.crouch !== on) { E.crouch = on; hud(); } } // "hold to crouch" setting
 
 export function toggleLight() {
   if (isOver() || E.down) return;
@@ -407,33 +410,34 @@ function lookAtDowned() {
 
 export function updateTarget(ray) {
   E.target = null;
-  if (E.dead) return UI.hint(`<span class="down">You died.</span> Spectating · ${UI.kbd('Space')} next player · ${UI.kbd('R')} ghost roulette`);
-  if (E.down) return UI.hint(teamAlive() ? `<span class="down">Bleeding out: ${Math.ceil(E.bleed)} s.</span> A teammate can revive you with a bandage. ${UI.kbd('Space')} spectate` : '<span class="down">Knocked out…</span>');
-  if (E.inCab) return UI.hint(`${UI.kbd('E')} Get out · ${waitingText()}`);
-  if (E.hidden != null) return UI.hint(`Hiding… ${UI.kbd('E')} Get out`);
+  if (E.dead) return UI.hint(`<span class="down">You died.</span> Spectating · ${kb('spectate')} next player · ${kb('roulette')} ghost roulette`);
+  if (E.down) return UI.hint(teamAlive() ? `<span class="down">Bleeding out: ${Math.ceil(E.bleed)} s.</span> A teammate can revive you with a bandage. ${kb('spectate')} spectate` : '<span class="down">Knocked out…</span>');
+  if (E.inCab) return UI.hint(`${kb('interact')} Get out · ${waitingText()}`);
+  if (E.hidden != null) return UI.hint(`Hiding… ${kb('interact')} Get out`);
   const mate = lookAtDowned();
-  if (mate) return UI.hint(`${UI.kbd('E')} Revive ${G.players[mate].name} with a bandage (${G.gear.bandage} left)`);
+  if (mate) return UI.hint(`${kb('interact')} Revive ${G.players[mate].name} with a bandage (${G.gear.bandage} left)`);
   if (E.carrying != null) {
     const b = E.bigs.find(x => x.bid === E.carrying), n = b?.carriers.length || 1;
-    return UI.hint(nearTruckBed() ? `${UI.kbd('E')} Load the ${itemById(b.id).name} into the truck` : `Carrying ${itemById(b.id).name} ${n > 1 ? `with a teammate` : '<span class="down">alone: slow and LOUD</span>'} · ${UI.kbd('E')} Put down`);
+    return UI.hint(nearTruckBed() ? `${kb('interact')} Load the ${itemById(b.id).name} into the truck` : `Carrying ${itemById(b.id).name} ${n > 1 ? `with a teammate` : '<span class="down">alone: slow and LOUD</span>'} · ${kb('interact')} Put down`);
   }
-  if (nearCab()) return UI.hint(`${UI.kbd('E')} Get in the truck (ready to leave)`);
+  if (nearCab()) return UI.hint(`${kb('interact')} Get in the truck (ready to leave)`);
   const objs = [...E.loot.map(l => l.g), ...E.phys.bodies.map(b => b.mesh), ...E.crates.filter(c => !c.open).map(c => c.g), ...E.hides.map(h => h.g), ...E.bigs.filter(b => !b.gone && !b.loaded).map(b => b.g),
     ...(E.safe && !E.safe.open ? [E.safe.g] : [])];
   const hitObj = ray.intersectObjects(objs, true)[0];
-  if (nearTruckBed() && (!hitObj || hitObj.distance > 2.6)) return UI.hint(E.bag.length ? `${UI.kbd('E')} Dump your bag into the truck bed (${E.bag.length} item${E.bag.length > 1 ? 's' : ''})` : 'Truck bed: dump your bag here to keep the loot safe');
+  if (nearTruckBed() && (!hitObj || hitObj.distance > 2.6)) return UI.hint(E.bag.length ? `${kb('interact')} Dump your bag into the truck bed (${E.bag.length} item${E.bag.length > 1 ? 's' : ''})` : 'Truck bed: dump your bag here to keep the loot safe');
   if (!hitObj || hitObj.distance > 2.6) return UI.hint('');
   const u = hitObj.object.userData, cap = bagCap(G.me), full = n => bagSize(E.bag) + n > cap;
-  if (u.safe) { E.target = { safe: u.safe }; const s = u.safe;
-    return UI.hint(s.cracking ? `Cracking the safe… ${Math.round(s.progress * 100)} % <span class="dim">(stay close · ${UI.kbd('E')} stop)</span>` : `${UI.kbd('E')} Crack Rusty's safe <span class="dim">(${G.tools.crowbar ? '~6' : '~12'} s, loud)</span>`); }
+  if (u.safe) { E.target = { safe: u.safe }; const s = u.safe; tip('safe');
+    return UI.hint(s.cracking ? `Cracking the safe… ${Math.round(s.progress * 100)} % <span class="dim">(stay close · ${kb('interact')} stop)</span>` : `${kb('interact')} Crack Rusty's safe <span class="dim">(${G.tools.crowbar ? '~6' : '~12'} s, loud)</span>`); }
   if (u.loot) { E.target = { loot: u.loot }; const d = itemById(u.loot.id), sz = d.size || 1;
-    return UI.hint(full(sz) ? `<span class="down">Bag full (${bagSize(E.bag)}/${cap})</span> ${d.icon} ${d.name}` : `${UI.kbd('E')} Pick up ${d.icon} ${d.name} <span class="r-${u.loot.rarity}">${u.loot.rarity}</span>${sz > 1 ? ` <small class="dim">(${sz} slots)</small>` : ''}`); }
-  if (u.body) { E.target = { body: u.body }; const d = itemById(u.body.inst.id); return UI.hint(`${UI.kbd('E')} Pick up ${d.icon} ${d.name}`); }
-  if (u.crate) { E.target = { crate: u.crate }; return UI.hint(G.tools.crowbar ? `${UI.kbd('E')} Pry open the locked crate (loud)` : '<span class="dim">Locked crate. Needs a 🪝 crowbar.</span>'); }
-  if (u.hide) { E.target = { hide: u.hide }; return UI.hint(`${UI.kbd('E')} Hide ${u.hide.kind === 'wreck' ? 'in the wreck' : u.hide.kind === 'potty' ? 'in the porta-potty' : 'in the dumpster'}`); }
+    return UI.hint(full(sz) ? `<span class="down">Bag full (${bagSize(E.bag)}/${cap})</span> ${d.icon} ${d.name}` : `${kb('interact')} Pick up ${d.icon} ${d.name} <span class="r-${u.loot.rarity}">${u.loot.rarity}</span>${sz > 1 ? ` <small class="dim">(${sz} slots)</small>` : ''}`); }
+  if (u.body) { E.target = { body: u.body }; const d = itemById(u.body.inst.id); return UI.hint(`${kb('interact')} Pick up ${d.icon} ${d.name}`); }
+  if (u.crate) { E.target = { crate: u.crate }; return UI.hint(G.tools.crowbar ? `${kb('interact')} Pry open the locked crate (loud)` : '<span class="dim">Locked crate. Needs a 🪝 crowbar.</span>'); }
+  if (u.hide) { E.target = { hide: u.hide }; tip('hide'); return UI.hint(`${kb('interact')} Hide ${u.hide.kind === 'wreck' ? 'in the wreck' : u.hide.kind === 'potty' ? 'in the porta-potty' : 'in the dumpster'}`); }
   if (u.big) {
+    tip('big');
     E.target = { big: u.big }; const d = itemById(u.big.id), tools = d.big.tools.map(t => t === 'wrench' ? '🔧' : '🪛').join('');
-    return UI.hint(`${d.icon} ${d.name} · ${UI.kbd('E')} Carry${u.big.carriers.length ? ' (help)' : ''} · ${UI.kbd('X')} Take apart ${tools}`);
+    return UI.hint(`${d.icon} ${d.name} · ${kb('interact')} Carry${u.big.carriers.length ? ' (help)' : ''} · ${kb('dismantle')} Take apart ${tools}`);
   }
   UI.hint('');
 }
@@ -540,6 +544,7 @@ function goDown() {
   UI.$('hurt').style.opacity = 0.75;
   sfx.bad();
   UI.toast(`You are down! ${BLEED} seconds until you bleed out.`, 'bad');
+  tip('down');
   act('xDown');
 }
 // The bleed-out ran out: dead for the night, spectate only.
@@ -548,7 +553,8 @@ function die() {
   UI.$('hurt').style.opacity = 0.35;
   UI.$('bleed').classList.add('hidden');
   sfx.boom();
-  UI.toast('You died. Spectate your team until the night is over (R: ghost roulette).', 'bad');
+  UI.toast('You died. Spectate your team until the night is over.', 'bad');
+  tip('dead');
   act('xDead');
 }
 function revived() {
@@ -1017,9 +1023,9 @@ export function hud() {
     + (E.objective ? `<div class="obj small">⭐ ${E.objective}${E.safe?.open ? ' <span class="ok">✓ open</span>' : ''}</div>` : '');
   const team = Object.values(G.players).filter(p => p.world === 'exp');
   UI.$('exp-light').innerHTML = (G.tools.flashlight
-    ? `🔦 ${E.lightOn ? '<b class="ok">ON</b>' : 'off'} ${UI.kbd('F')}<div class="batt"><div style="width:${E.charge / BATTERY * 100}%"></div></div>🔋 ×${G.gear.battery}`
+    ? `🔦 ${E.lightOn ? '<b class="ok">ON</b>' : 'off'} ${kb('flashlight')}<div class="batt"><div style="width:${E.charge / BATTERY * 100}%"></div></div>🔋 ×${G.gear.battery}`
     : '<span class="dim">No flashlight</span>')
-    + (G.tools.radio ? `<div class="dim small">📻 hold ${UI.kbd('B')} to radio</div>` : '')
+    + (G.tools.radio ? `<div class="dim small">📻 hold ${kb('radio')} to radio</div>` : '')
     + (team.length > 1 ? `<div class="team">${team.map(p => `<div>${p.dead ? '💀' : p.down ? '🩸' : p.cab ? '🛻' : p.hidden !== false && p.hidden != null ? '🫥' : '🧍'} ${p.name} <span class="dim">${p.dead ? 'dead' : p.down ? `bleeding ${Math.ceil(p.bleed || 0)} s` : Math.ceil(p.hp) + ' HP'}</span></div>`).join('')}</div>` : '');
   const cnt = { trap: G.gear.trap, mine: G.gear.mine, bandage: G.gear.bandage, pepper: G.gear.pepper, taser: G.gear.taser, revolver: G.gear.ammo9, shotgun: G.gear.shells };
   const icon = { trap: ['🪤', 'Trap'], mine: ['💣', 'Mine'], bandage: ['🩹', 'Bandage'] };

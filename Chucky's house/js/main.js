@@ -7,7 +7,7 @@ import { buildWorld, walkable, STATIC, physStatics, updateBin, updateSign, updat
 import { updateCity, setRain } from './city.js';
 import { SHELF_TYPES, makeShelf, placeShelf, setSlotItem, shelfBySid, refreshTags, setMarketFn } from './shelves.js';
 import { spawnTrash } from './trash.js';
-import { updateCustomers, serve, isFirstInQueue } from './customers.js';
+import { updateCustomers, serve, isFirstInQueue, MESS_FROM } from './customers.js';
 import { openComputer } from './computer.js';
 import * as EXP from './expedition.js';
 import { rollMarket, endDay, DAY_LEN, START_DEBT, marketPrice, auctionTick, isAuctionDay } from './economy.js';
@@ -27,6 +27,8 @@ import { reportCard, myPerk } from './jobs.js';
 import { todayEvent, SHOP_EVENTS } from './events.js';
 import { alert } from './social.js';
 import { startIntro, playIntro, buildStory, applyIntroWorld, updateTutorial, readNote, mailPanel, updateMailbox, weekLine, playWin, unread } from './story.js';
+import { K, is, kb } from './keys.js';
+import { updateTips } from './tips.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
@@ -139,10 +141,10 @@ function movePlayer(dt) {
   const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
   const rgt = new THREE.Vector3(-f.z, 0, f.x);
   const v = new THREE.Vector3()
-    .addScaledVector(f, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0))
-    .addScaledVector(rgt, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0));
+    .addScaledVector(f, (keys[K.forward] ? 1 : 0) - (keys[K.back] ? 1 : 0))
+    .addScaledVector(rgt, (keys[K.right] ? 1 : 0) - (keys[K.left] ? 1 : 0));
   const p = camera.position;
-  const run = (keys.ShiftLeft || keys.ShiftRight) && (!exp || EXP.canRun());
+  const run = keys[K.run] && (!exp || EXP.canRun());
   G.running = run && v.lengthSq() > 0;
   my.walking = v.lengthSq() > 0;
   if (v.lengthSq()) {
@@ -217,7 +219,7 @@ function updateCarry() {
   const snap = v => Math.round(v * 4) / 4;
   placeShelf(s, snap(camera.position.x + f.x * 2.2), snap(camera.position.z + f.z * 2.2), s.userData.r);
   s.userData.ok = carryValid(s.userData.box);
-  UI.hint(s.userData.ok ? `${UI.kbd('F')} Place · ${UI.kbd('R')} Rotate` : `<span class="down">Can't place here</span> · ${UI.kbd('R')} Rotate`);
+  UI.hint(s.userData.ok ? `${kb('furniture')} Place · ${kb('rotate')} Rotate` : `<span class="down">Can't place here</span> · ${kb('rotate')} Rotate`);
 }
 
 function toggleCarry() {
@@ -237,7 +239,7 @@ function toggleCarry() {
 let scrubP = -1;
 function hintFor(t) {
   if (!t) return '';
-  const E = UI.kbd('E'), F = UI.kbd('F'), Gk = UI.kbd('G'), h = me().holding;
+  const E = kb('interact'), F = kb('furniture'), Gk = kb('grab'), h = me().holding;
   if (t.customer) {
     const c = t.customer;
     if (c.iconE === '❗' || c.state === 'flee') return `${E} <b class="down">Stop the shoplifter!</b>`;
@@ -249,7 +251,7 @@ function hintFor(t) {
   if (t.body) return h ? '<span class="dim">Hands full</span>' : `${E} Pick up ${itemById(t.body.inst.id).icon} ${itemById(t.body.inst.id).name}`;
   if (t.kind === 'spill') {
     const k = SPILLS[t.spill.kind], tool = k.tool === 'mop' ? '🧽 mop' : '🧹 broom';
-    if (h?.kind === 'tool' && h.tool === k.tool) return scrubP >= 0 ? `Cleaning… <span class="bar"><i style="width:${Math.round(scrubP * 100)}%"></i></span>` : `Hold <b>left mouse</b> to clean the ${k.name.toLowerCase()}`;
+    if (h?.kind === 'tool' && h.tool === k.tool) return scrubP >= 0 ? `Cleaning… <span class="bar"><i style="width:${Math.round(scrubP * 100)}%"></i></span>` : `Hold ${kb('attack')} to clean the ${k.name.toLowerCase()}`;
     return `${k.name} <span class="dim">(needs the ${tool}, from the cleaning corner)</span>`;
   }
   switch (t.kind) {
@@ -280,7 +282,7 @@ function hintFor(t) {
   const slot = t.slot;
   if (slot?.item) {
     const d = itemById(slot.item.id);
-    return `${d.icon} ${d.name}: <b>${UI.money(slot.item.price)}</b> <span class="dim">(today ~${UI.money(marketPrice(d.id))})</span> · ${E} Price · ${Gk} Take · ${UI.kbd('Q')} To stock`;
+    return `${d.icon} ${d.name}: <b>${UI.money(slot.item.price)}</b> <span class="dim">(today ~${UI.money(marketPrice(d.id))})</span> · ${E} Price · ${Gk} Take · ${kb('stock')} To stock`;
   }
   if (slot) return h?.kind === 'item' ? `${E} Put ${itemById(h.inst.id).name} here` : `Empty slot · ${E} Place from stock (${G.backstock.length}) · ${F} Move`;
   if (t.shelf) return `${F} Move ${SHELF_TYPES[t.shelf.userData.type].name.toLowerCase()}`;
@@ -361,7 +363,7 @@ function grabOrThrow() {
     return act('placeSign', p.x, p.z);
   }
   if (h?.kind === 'item') {
-    const { p, v } = throwFrom(camera, keys.ShiftLeft ? 7 : 4.5);
+    const { p, v } = throwFrom(camera, keys[K.run] ? 7 : 4.5);
     return act('throwHeld', p.toArray(), v.toArray());
   }
   if (!h && target?.slot?.item) return act('takeFromShelf', target.slot.shelf.userData.sid, target.slot.i);
@@ -419,7 +421,8 @@ ACTIONS.sleep = () => {
 // What's new this morning (shop event, letters, orders).
 function morningNews() {
   const ev = todayEvent(), n = unread();
-  return [ev ? `${ev.icon} <b>${ev.name}</b> today: ${ev.desc}` : '', n ? `📬 ${n} new letter${n > 1 ? 's' : ''} in the mailbox.` : '',
+  return [G.day === MESS_FROM ? '🧽 <b>New:</b> from today customers spill coffee (and drag mud in when it rains). Get the mop from the cleaning corner.' : '',
+    ev ? `${ev.icon} <b>${ev.name}</b> today: ${ev.desc}` : '', n ? `📬 ${n} new letter${n > 1 ? 's' : ''} in the mailbox.` : '',
     G.orders.some(o => o.due === G.day) ? '📋 An order is due today!' : ''].filter(Boolean).map(t => `<p>${t}</p>`).join('');
 }
 G.onSleep = () => {
@@ -428,6 +431,7 @@ G.onSleep = () => {
   UI.closePanel(); UI.hud();
   UI.toast(`You slept through the night. Good morning, Day ${G.day}!`);
   const ev = todayEvent(); if (ev) UI.toast(`${ev.icon} ${ev.name}: ${ev.desc}`);
+  if (G.day === MESS_FROM) UI.toast('🧽 From today customers spill coffee. The mop is in the cleaning corner.');
 };
 
 G.startExpedition = params => {
@@ -546,52 +550,54 @@ G.win = () => {
 };
 
 // ---------- input ----------
-addEventListener('keydown', e => {
+// Keyboard keys and mouse buttons go through the same two functions, so anything can be bound to anything
+// (Settings → Controls). code = e.code, or 'Mouse0' / 'Mouse1' / 'Mouse2' for mouse buttons.
+function press(code, e) {
   if (G.chatting || G.cine) return;
-  keys[e.code] = true;
-  if (e.code === 'KeyY' && approveKey(true)) return;
-  if (e.code === 'KeyN' && approveKey(false)) return;
+  keys[code] = true;
+  if (is('approve', code) && approveKey(true)) return;
+  if (is('deny', code) && approveKey(false)) return;
   if (G.mode !== 'play') return;
-  if (e.code === 'KeyV' && S.micMode === 'ptt') setPTT(true);
-  if (e.code === 'KeyB' && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
-  if (e.code === 'KeyT' && online() && !G.uiOpen) { e.preventDefault(); return openChat(() => G.relock()); }
-  if (G.world === 'exp' && e.code === 'KeyR' && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
+  if (is('ptt', code) && S.micMode === 'ptt' && !e.repeat) setPTT(S.pttToggle ? !VOICE.ptt : true);
+  if (is('radio', code) && !e.repeat && online()) { if (!setRadio(true)) UI.toast('Your team has no walkie-talkies (computer → Tools).'); }
+  if (is('chat', code) && online() && !G.uiOpen) { e.preventDefault?.(); return openChat(() => G.relock()); }
+  if (G.world === 'exp' && is('roulette', code) && EXP.isDead() && !G.uiOpen) return openRoulette(() => G.relock());
   if (G.uiOpen || !controls.isLocked) return;
-  if (e.code === 'KeyH' && !e.repeat) showEmoteBar(true);
-  const n = e.code.startsWith('Digit') ? +e.code.slice(5) : -1;
-  if (keys.KeyH && EMOTES[n]) { me().emote = EMOTES[n][0]; sfx.click(); return; }
-  if (e.code === 'KeyZ') return ping(camera, G.pingScene());
+  if (is('emote', code) && !e.repeat) showEmoteBar(true);
+  const n = code.startsWith('Digit') ? +code.slice(5) : -1;
+  if (keys[K.emote] && EMOTES[n]) { me().emote = EMOTES[n][0]; sfx.click(); return; }
+  if (is('ping', code)) return ping(camera, G.pingScene());
   if (G.world === 'exp') {
-    if (e.code === 'KeyE') EXP.interact();
-    if (e.code === 'KeyF') EXP.toggleLight();
-    if (e.code === 'KeyX') EXP.dismantleTarget();
-    if (e.code === 'KeyG') EXP.dropSelected();
-    if (e.code === 'KeyC') EXP.toggleCrouch();
-    if (e.code === 'Space') EXP.nextSpectate();
+    if (is('attack', code)) EXP.use();
+    if (is('interact', code)) EXP.interact();
+    if (is('flashlight', code)) EXP.toggleLight();
+    if (is('dismantle', code)) EXP.dismantleTarget();
+    if (is('drop', code)) EXP.dropSelected();
+    if (is('crouch', code) && !e.repeat) S.crouchHold ? EXP.setCrouch(true) : EXP.toggleCrouch();
+    if (is('spectate', code)) EXP.nextSpectate();
     if (n >= 1 && n <= 9) EXP.select(n - 1);
     return;
   }
-  if (e.code === 'KeyE') interact();
-  if (e.code === 'KeyF') toggleCarry();
-  if (e.code === 'KeyQ') toStock();
-  if (e.code === 'KeyG') grabOrThrow();
-  if (e.code === 'KeyR' && G.carry) G.carry.userData.r = (G.carry.userData.r + 1) % 4;
-  if (e.code === 'KeyO') openStore();
-});
-addEventListener('keyup', e => {
-  keys[e.code] = false;
-  if (e.code === 'KeyV') setPTT(false);
-  if (e.code === 'KeyB') setRadio(false);
-  if (e.code === 'KeyH') showEmoteBar(false);
-});
-addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  mouseHeld = true;
-  if (!controls.isLocked || G.uiOpen) return;
-  if (G.world === 'exp') EXP.use();
-  else if (me().holding?.kind === 'item') grabOrThrow();
-});
-addEventListener('mouseup', e => { if (e.button === 0) { mouseHeld = false; scrubP = -1; } });
+  if (is('attack', code)) { mouseHeld = true; if (me().holding?.kind === 'item') grabOrThrow(); }
+  if (is('interact', code)) interact();
+  if (is('furniture', code)) toggleCarry();
+  if (is('stock', code)) toStock();
+  if (is('grab', code)) grabOrThrow();
+  if (is('rotate', code) && G.carry) G.carry.userData.r = (G.carry.userData.r + 1) % 4;
+  if (is('open', code)) openStore();
+}
+function release(code) {
+  keys[code] = false;
+  if (is('ptt', code) && !S.pttToggle) setPTT(false);
+  if (is('radio', code)) setRadio(false);
+  if (is('emote', code)) showEmoteBar(false);
+  if (is('attack', code)) { mouseHeld = false; scrubP = -1; }
+  if (is('crouch', code) && S.crouchHold && G.world === 'exp') EXP.setCrouch(false);
+}
+addEventListener('keydown', e => press(e.code, e));
+addEventListener('keyup', e => release(e.code));
+addEventListener('mousedown', e => press('Mouse' + e.button, e));
+addEventListener('mouseup', e => release('Mouse' + e.button));
 addEventListener('wheel', e => { if (controls.isLocked && G.world === 'exp') EXP.cycle(Math.sign(e.deltaY)); });
 
 // ---------- menus ----------
@@ -660,6 +666,9 @@ UI.$('m-new').onclick = async () => {
 UI.$('m-coop').onclick = () => openCoop(G.hostStartGame, () => { UI.closePanel(false); if (!online()) { leaveNet(); closeVoice(); } });
 UI.$('m-settings').onclick = async () => UI.settingsPanel(S, apply, back, await mics());
 UI.$('m-controls').onclick = () => UI.controlsPanel(back);
+G.openKeySettings = async () => UI.settingsPanel(S, apply, back, await mics(), 'keys');
+// right mouse can be bound to an action: no browser menu while playing
+addEventListener('contextmenu', e => { if (controls.isLocked || G.mode === 'play') e.preventDefault(); });
 UI.$('p-resume').onclick = () => controls.lock();
 UI.$('p-settings').onclick = async () => UI.settingsPanel(S, apply, back, await mics());
 UI.$('p-controls').onclick = () => UI.controlsPanel(back);
@@ -676,7 +685,7 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.7';
+UI.$('ver').textContent = 'Prototype v0.8';
 initMusic().then(() => { if (G.mode === 'menu') setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);
@@ -776,6 +785,7 @@ renderer.setAnimationLoop(now => {
   music();
   updateMusic(camera);
   updateFun(dt);
+  updateTips(dt);
   if (G.mode === 'play') {
     netTick(dt, camera);
     updateAvatars(dt, sc);

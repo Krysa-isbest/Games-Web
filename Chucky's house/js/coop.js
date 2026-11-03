@@ -16,6 +16,7 @@ import { updateDecor } from './decor.js';
 import { applyIntroWorld } from './story.js';
 import { setRain } from './city.js';
 import { animateEmote } from './fun.js';
+import { kb } from './keys.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
@@ -218,7 +219,7 @@ function approvePrompt(req) {
   if (req.pid === G.me) { UI.toast(`Asked your team to approve: ${req.name} (${UI.money(req.cost)})`); return; }
   approving = req;
   const el = UI.$('approve');
-  el.innerHTML = `<b>${req.who}</b> wants to buy <b>${req.name}</b> for <b>${UI.money(req.cost)}</b><br>${UI.kbd('Y')} Approve · ${UI.kbd('N')} Deny`;
+  el.innerHTML = `<b>${req.who}</b> wants to buy <b>${req.name}</b> for <b>${UI.money(req.cost)}</b><br>${kb('approve')} Approve · ${kb('deny')} Deny`;
   el.classList.remove('hidden');
   sfx.bell();
 }

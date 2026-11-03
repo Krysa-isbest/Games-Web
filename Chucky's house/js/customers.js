@@ -25,6 +25,7 @@ const TYPES = [
 ];
 // Two registers once the second one is bought. Each has its own queue.
 const REGS = [new THREE.Vector3(-4.5, 0, 1.0), new THREE.Vector3(-3.35, 0, 1.0)];
+export const MESS_FROM = 4; // coffee spills and mud start on this day (trash from Day 1)
 const DOOR_IN = new THREE.Vector3(0, 0, 3.6);
 const DOOR_OUT = new THREE.Vector3(0, 0, 6.3);
 const NO_SELL = ['big', 'food', 'car', 'scrap', 'weapon', 'fun', 'story', 'cash'];
@@ -85,14 +86,15 @@ export function makeCustomerMesh(c) {
 
 function spawn(detective = false) {
   const reg = detective ? null : pickRegular();
-  let type = pick(TYPES), seller = Math.random() < 0.32;
+  // few people come to SELL in the first days: stock has to come from the nights
+  let type = pick(TYPES), seller = Math.random() < (G.day <= 3 ? 0.1 : G.day <= 5 ? 0.2 : 0.32);
   if (reg) { type = moodType(reg); seller = reg.role === 'seller'; }
   if (detective) { type = { name: 'Detective', mult: 1, patience: 9 }; seller = false; }
   const side = Math.random() < 0.5 ? -1 : 1;
   const c = { cid: nextCid++, seed: Math.random() * 1e9 | 0, type, seller, state: 'enter', wait: 0, qt: 0, patience: type.patience, t: 0, q: 0,
     reg: reg?.name || null, detective };
   c.thief = !reg && !seller && !detective && G.customers.length >= 2 && Math.random() < 0.07 * (isEvent('festival') ? 1.5 : 1);
-  c.coffee = !seller && !detective && Math.random() < 0.15;
+  c.coffee = !seller && !detective && G.day >= MESS_FROM && Math.random() < 0.15; // spills start on Day 4
   makeCustomerMesh(c);
   coffeeCup(c, c.coffee);
   c.mesh.position.set(side * 14, 0, 6.8);
@@ -138,7 +140,7 @@ function arrive(c) {
       c.path = [DOOR_IN.clone()];
       return;
     }
-    if (isEvent('rain') && Math.random() < 0.55) spawnSpill('mud', rand(-0.8, 0.8), rand(2.4, 3.8));
+    if (isEvent('rain') && G.day >= MESS_FROM && Math.random() < 0.55) spawnSpill('mud', rand(-0.8, 0.8), rand(2.4, 3.8));
     if (c.detective) {
       c.state = 'inspect';
       const sh = stocked();
@@ -184,6 +186,8 @@ function browse(c) {
   let choices = filled;
   if (r?.cats) { const fav = filled.filter(s => r.cats.includes(itemById(s.item.id).cat)); if (fav.length) choices = fav; }
   if (isEvent('heatwave')) { const hot = filled.filter(s => HOT_ITEMS.includes(s.item.id)); if (hot.length && Math.random() < 0.7) choices = hot; }
+  // first days: people mostly buy the cheap stuff (the cheaper half of the shelf)
+  if (G.day <= 4 && choices.length > 1 && Math.random() < 0.7) choices = [...choices].sort((a, b) => a.item.price - b.item.price).slice(0, Math.ceil(choices.length / 2));
   const slot = pick(choices), inst = slot.item;
   if (c.thief) {
     c.inst = inst; c.slot = slot;

@@ -38,7 +38,8 @@ export function rollMarket() {
     G.market[it.id] = Math.max(1, Math.round(rand(...it.range)));
   }
   const pool = ITEMS.filter(i => !['big', 'weapon', 'food', 'car', 'scrap', 'fun', 'story', 'cash'].includes(i.cat) && i.range[1] < 400);
-  G.deals = Array.from({ length: 5 }, () => {
+  // early days are short on supply (the nights are where stock comes from): 2 deals, then 3, then 5
+  G.deals = Array.from({ length: G.day <= 3 ? 2 : G.day <= 5 ? 3 : 5 }, () => {
     const inst = makeInst(pick(pool).id, { q: rand(0.8, 1.1) });
     return { inst, cost: Math.round(marketPrice(inst.id) * inst.q * rand(0.45, 0.68)) };
   });

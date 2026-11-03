@@ -11,6 +11,7 @@ import { morningHooks } from './economy.js';
 import { setMood, playEnding, playPad, hasTracks } from './music.js';
 import { act, broadcast, on, tell, isGuest } from './net.js';
 import { JOBS } from './jobs.js';
+import { keyName } from './keys.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
 
@@ -332,20 +333,20 @@ export function readNote() {
 // ---------- Day 1 tutorial ----------
 const TUT = [
   { text: 'Use the computer and buy an item from the Supplier.', at: () => V(-5.6, 1.75, 2.0), done: () => G.backstock.length > 0 || anyShelved() },
-  { text: 'Take the item out of the stock crates (E on the crates).', at: () => V(6.1, 1.5, -4.1), done: () => Object.values(G.players).some(p => p.holding?.kind === 'item') || anyShelved() },
-  { text: 'Put it on a shelf: E on an empty slot.', at: () => shelfTop(), done: () => anyShelved() },
-  { text: 'Set its price: E on the item. The tag shows today\'s market price too.', at: () => shelfTop(), done: () => G.tutFlags.price },
-  { text: 'Open the store: E on the OPEN sign in the window.', at: () => V(2.85, 2.7, 4.85), done: () => G.phase !== 'prep' },
-  { text: 'Serve a customer at the register (E on them when they\'re first in line).', at: () => V(-4.5, 1.9, 1.6), done: () => G.stats.sold > 0 || G.stats.spent > 0 && G.phase !== 'prep' },
+  { text: 'Take the item out of the stock crates ({E} on the crates).', at: () => V(6.1, 1.5, -4.1), done: () => Object.values(G.players).some(p => p.holding?.kind === 'item') || anyShelved() },
+  { text: 'Put it on a shelf: {E} on an empty slot.', at: () => shelfTop(), done: () => anyShelved() },
+  { text: 'Set its price: {E} on the item. The tag shows today\'s market price too.', at: () => shelfTop(), done: () => G.tutFlags.price },
+  { text: 'Open the store: {E} on the OPEN sign in the window.', at: () => V(2.85, 2.7, 4.85), done: () => G.phase !== 'prep' },
+  { text: 'Serve a customer at the register ({E} on them when they\'re first in line).', at: () => V(-4.5, 1.9, 1.6), done: () => G.stats.sold > 0 || G.stats.spent > 0 && G.phase !== 'prep' },
   { text: 'Customers drop trash. Pick it up and throw it in the bin.', at: () => V(-1.6, 1.3, 4.5), done: () => G.tutFlags.bin },
-  { text: 'That\'s the basics! Spills need the mop (cleaning corner). At night, head out for loot.', at: () => null, done: () => (G.tutFlags.endT = (G.tutFlags.endT || 0) + 1) > 30 },
+  { text: 'That\'s the basics! Stock is short in the first days: at night, head out for loot.', at: () => null, done: () => (G.tutFlags.endT = (G.tutFlags.endT || 0) + 1) > 30 },
 ];
 const anyShelved = () => G.shelves.some(s => s.userData.slots.some(x => x.item));
 const shelfTop = () => { const s = G.shelves[0]; return s ? V(s.position.x, 2.4, s.position.z) : null; };
 let tutT = 0;
 export function updateTutorial(dt, host) {
   const step = TUT[G.tut];
-  G.tutText = step && G.intro === 'done' ? `Tutorial ${G.tut + 1}/${TUT.length}: ${step.text}` : G.intro === 'dark' ? 'Find the breaker box at the back of the shop (E).' : G.intro === 'note' ? 'Read the note on the counter (E).' : '';
+  G.tutText = (step && G.intro === 'done' ? `Tutorial ${G.tut + 1}/${TUT.length}: ${step.text}` : G.intro === 'dark' ? 'Find the breaker box at the back of the shop ({E}).' : G.intro === 'note' ? 'Read the note on the counter ({E}).' : '').replaceAll('{E}', keyName('interact'));
   const at = G.intro === 'dark' ? V(-4.4, 2.2, -4.6) : G.intro === 'note' ? V(-3.45, 1.5, 2.15) : step?.at();
   arrow.visible = !!at && G.world === 'shop';
   if (at) { arrow.position.copy(at); arrow.position.y += Math.sin(performance.now() * 0.004) * 0.08; arrow.rotation.y += dt * 2; }
@@ -360,6 +361,7 @@ export const skipTutorial = () => { G.tut = 99; };
 export const LETTERS = [
   { id: 'l1', day: 2, from: 'First National Bank · Mr. Graves', title: 'Your first installment', body: 'A friendly reminder: $600 is due by the end of Sunday. The bank appreciates punctuality. It does not appreciate excuses.' },
   { id: 'l2', day: 3, from: 'Unknown', title: '(no title)', body: 'We know Chuck kept a ledger. It belongs to us. Find it before we have to look for it ourselves.' },
+  { id: 'l9', day: 4, from: 'A note taped to the mop bucket', title: 'It gets messier from here', body: 'Word is out that the shop is open again. From today people spill coffee and, when it rains, drag mud in. Mop is in the cleaning corner by the back. Rinse it at the sink, and put the yellow sign up or somebody WILL slip. — C.' },
   { id: 'l3', day: 5, from: 'Dumont Auction House', title: 'Invitation', body: 'Every Saturday our auction is open to licensed dealers. Rare pieces, fair competition. Log in from your shop computer.' },
   { id: 'l4', day: 8, from: 'A postcard (no stamp)', title: 'Greetings from nowhere', body: 'Weather\'s fine. Don\'t look for me. Keep the lights on. — C.' },
   { id: 'l5', day: 10, from: 'City Police Department', title: 'Notice to pawnbrokers', body: 'Stolen goods are being fenced in your district. Dealers caught with them will be fined. Detectives may visit without notice.' },

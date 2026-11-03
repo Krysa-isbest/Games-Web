@@ -33,7 +33,7 @@ morningHooks.push(() => {
 
 // A regular for the next customer (or null). Each comes at most once a day.
 export function pickRegular() {
-  if (Math.random() > 0.25) return null;
+  if (G.day < 3 || Math.random() > 0.25) return null; // the regulars find the new owner from Day 3
   const free = REGULARS.filter(r => !(G.regVisited || []).includes(r.name));
   if (!free.length) return null;
   const r = pick(free);

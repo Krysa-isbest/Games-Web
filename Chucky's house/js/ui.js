@@ -2,6 +2,8 @@ import { G, level, me } from './state.js';
 import { itemById } from './data.js';
 import { dueRemaining, weekEnd, dayName, isAuctionDay } from './economy.js';
 import { PRESETS } from './settings.js';
+import { ACTIONS as KEY_ACTIONS, K, kb, keyName, conflicts, setKey, resetKeys, listenForKey } from './keys.js';
+import { resetTips } from './tips.js';
 import { sfx } from './sfx.js';
 
 export const $ = id => document.getElementById(id);
@@ -25,18 +27,19 @@ export function clock() {
 function objective() {
   const h = me()?.holding;
   if (G.tutText) return G.tutText;
-  if (h?.kind === 'tool') return h.tool === 'sign' ? 'Wet floor sign: G to put it down next to a wet floor.'
-    : `${h.tool === 'mop' ? 'Mop' : 'Broom'}: hold left mouse on a ${h.tool === 'mop' ? 'spill' : 'pile of broken glass'}. E at the cleaning corner to put it back.${h.tool === 'mop' && h.dirt ? ` (dirty ${h.dirt}, rinse at the sink)` : ''}`;
+  const E = keyName('interact');
+  if (h?.kind === 'tool') return h.tool === 'sign' ? `Wet floor sign: ${keyName('grab')} to put it down next to a wet floor.`
+    : `${h.tool === 'mop' ? 'Mop' : 'Broom'}: hold ${keyName('attack')} on a ${h.tool === 'mop' ? 'spill' : 'pile of broken glass'}. ${E} at the cleaning corner to put it back.${h.tool === 'mop' && h.dirt ? ` (dirty ${h.dirt}, rinse at the sink)` : ''}`;
   if (h?.kind === 'bag') return 'Take the trash bag to the dumpster out back.';
-  if (h?.kind === 'item') return `Holding ${itemById(h.inst.id).name}: E on an empty shelf slot or the stock crates, G / click to throw.`;
+  if (h?.kind === 'item') return `Holding ${itemById(h.inst.id).name}: ${E} on an empty shelf slot or the stock crates, ${keyName('grab')} / ${keyName('attack')} to throw.`;
   if (G.binCount >= G.up.binCap) return 'The trash bin is full: take out the bag.';
-  if (G.phase === 'evening') return 'Evening: buy gear on the computer, then press O (or the open sign) to head out.';
-  if (G.phase === 'prep' && !G.shelves.some(s => s.userData.slots.some(x => x.item))) return 'Your shelves are empty! Buy stock on the computer (Supplier), then E on the stock crates.';
-  if (G.phase === 'prep') return 'Set your prices, open the door, then open the store (O).';
+  if (G.phase === 'evening') return `Evening: buy gear on the computer, then press ${keyName('open')} (or the open sign) to head out.`;
+  if (G.phase === 'prep' && !G.shelves.some(s => s.userData.slots.some(x => x.item))) return `Your shelves are empty! Buy stock on the computer (Supplier), then ${E} on the stock crates.`;
+  if (G.phase === 'prep') return `Set your prices, open the door, then open the store (${keyName('open')}).`;
   if (!G.doorOpen && G.phase === 'open') return 'The front door is CLOSED: no customers can come in.';
   if (G.customers.some(c => c.state === 'queue')) return 'A customer is waiting at the register!';
   if (G.standWaiting) return 'Someone is waiting at the egg stand window!';
-  if (G.customers.some(c => c.state === 'flee')) return 'SHOPLIFTER! Catch them before the door (E)!';
+  if (G.customers.some(c => c.state === 'flee')) return `SHOPLIFTER! Catch them before the door (${E})!`;
   if (G.clean < 60) return 'The shop is dirty: customers pay less. Trash in the bin, mop the spills!';
   if (G.trash.length >= 3) return 'Customers hate trash: clean it up!';
   if (G.phase === 'closing') return 'Closing time: finish serving customers.';
@@ -211,12 +214,13 @@ export function summaryPanel(s, cb) {
 }
 
 // ---------- settings ----------
-let setTab = 'graphics';
-export function settingsPanel(S, apply, onClose, mics = []) {
+let setTab = 'graphics', listening = null;
+export function settingsPanel(S, apply, onClose, mics = [], tab) {
+  if (tab) setTab = tab;
   const range = (id, label, min, max, step, v, fmt = x => x) => `<div class="set"><span>${label}</span><span class="rng"><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"><output id="${id}-o">${fmt(v)}</output></span></div>`;
   const seg = (key, label, opts) => `<div class="set"><span>${label}</span><div class="seg">${opts.map(([v, t]) => `<button class="${S[key] == v ? 'on' : ''}" data-k="${key}" data-v="${v}">${t}</button>`).join('')}</div></div>`;
   const check = (id, label, v) => `<div class="set"><span>${label}</span><input type="checkbox" id="${id}" ${v ? 'checked' : ''}></div>`;
-  const tabs = { graphics: '🖥 Graphics', audio: '🔊 Audio & voice', game: '🎮 Game' };
+  const tabs = { graphics: '🖥 Graphics', audio: '🔊 Audio & voice', keys: '⌨️ Controls', game: '🎮 Game' };
   const body = {
     graphics: () => `
       <div class="set"><span><b>Preset</b></span><div class="seg">${Object.keys(PRESETS).map(p => `<button class="${S.preset === p ? 'on' : ''}" data-preset="${p}">${p}</button>`).join('')}<button class="${S.preset === 'custom' ? 'on' : ''}" disabled>custom</button></div></div>
@@ -243,11 +247,24 @@ export function settingsPanel(S, apply, onClose, mics = []) {
       ${check('s-echo', 'Voice echo (rooms, alleys, hiding spots)', S.echo)}
       ${seg('micMode', 'Microphone', [['open', 'Open mic'], ['ptt', 'Push to talk (V)']])}
       <div class="set"><span>Mic device <small class="dim">(after restart)</small></span><select id="s-mic"><option value="">Default</option>${mics.map(m => `<option value="${m.deviceId}" ${S.micDevice === m.deviceId ? 'selected' : ''}>${m.label || 'Microphone'}</option>`).join('')}</select></div>
-      <p class="dim small">Hold ${kbd('B')} to talk over the walkie-talkie (if your team owns one): everyone with a radio hears you, anywhere.</p>`,
+      ${check('s-ptttog', 'Push to talk: press once to toggle (instead of holding)', S.pttToggle)}
+      <p class="dim small">Hold ${kb('radio')} to talk over the walkie-talkie (if your team owns one): everyone with a radio hears you, anywhere.</p>`,
+    keys: () => {
+      const groups = {};
+      for (const [id, a] of Object.entries(KEY_ACTIONS)) (groups[a.group] ??= []).push(id);
+      return `<p class="dim small">Click a key, then press the new key or mouse button (Esc cancels). If another action already uses it, they swap.</p>
+        ${Object.entries(groups).map(([g, ids]) => `<h3>${g}</h3>${ids.map(id => `<div class="set"><span>${KEY_ACTIONS[id].name}</span><button class="bind-btn ${listening === id ? 'listening' : ''}" data-bind="${id}">${listening === id ? 'press a key…' : keyName(id)}</button></div>`).join('')}`).join('')}
+        <h3>Options</h3>
+        ${check('s-crouch', 'Hold to crouch (instead of toggle)', S.crouchHold)}
+        <div class="row"><button id="k-reset" class="ghost">Reset all keys to default</button></div>
+        <p class="dim small">The hotbar (1–9) and the emote numbers (1–4) stay on the number keys.</p>`;
+    },
     game: () => `
       <div class="set"><span>Your name (co-op)</span><input id="s-name" class="text" maxlength="16" value="${S.name}"></div>
       ${range('s-sens', 'Mouse sensitivity', 0.2, 2.5, 0.05, S.sens)}
-      ${check('s-bob', 'Head bob', S.bob)}`,
+      ${check('s-bob', 'Head bob', S.bob)}
+      ${check('s-tips', 'Show tips for new things', S.tips)}
+      <div class="row"><button id="s-tipreset" class="ghost">Show all tips again</button></div>`,
   };
   const render = () => {
     openPanel(`<h2>⚙ Settings</h2><div class="tabs">${Object.entries(tabs).map(([k, v]) => `<button class="tab ${k === setTab ? 'on' : ''}" data-st="${k}">${v}</button>`).join('')}</div>
@@ -267,8 +284,22 @@ export function settingsPanel(S, apply, onClose, mics = []) {
       $(id + '-o').textContent = { res: pct, viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: pct, music: pct, voiceVol: pct }[key]?.(S[key]) ?? S[key];
       apply();
     };
-    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo' };
+    const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo', 's-ptttog': 'pttToggle', 's-crouch': 'crouchHold', 's-tips': 'tips' };
     for (const [id, key] of Object.entries(chk)) if ($(id)) $(id).onchange = e => { S[key] = e.target.checked; apply(); };
+    panel.querySelectorAll('[data-bind]').forEach(b => b.onclick = () => {
+      listening = b.dataset.bind; render();
+      listenForKey(code => {
+        const id = listening; listening = null;
+        if (code) {
+          const clash = conflicts(id, code);
+          setKey(id, code);
+          if (clash.length) toast(`Swapped: ${clash.map(c => KEY_ACTIONS[c].name).join(', ')} → ${keyName(clash[0])}`);
+        }
+        render();
+      });
+    });
+    if ($('k-reset')) $('k-reset').onclick = () => { resetKeys(); toast('All keys are back to default.'); render(); };
+    if ($('s-tipreset')) $('s-tipreset').onclick = () => { resetTips(); toast('Tips will show again.'); };
     if ($('s-mic')) $('s-mic').onchange = e => { S.micDevice = e.target.value; apply(); };
     if ($('s-name')) $('s-name').oninput = e => { S.name = e.target.value.trim().slice(0, 16) || 'Player'; apply(); };
     $('s-done').onclick = onClose;
@@ -277,27 +308,18 @@ export function settingsPanel(S, apply, onClose, mics = []) {
 }
 
 export function controlsPanel(onClose) {
+  // built from YOUR key binds (Settings → Controls changes them)
   const k = (keys, what) => `<div class="sum-row"><span>${keys}</span><span>${what}</span></div>`;
+  const groups = {};
+  for (const [id, a] of Object.entries(KEY_ACTIONS)) (groups[a.group] ??= []).push(k(kb(id), a.name));
   openPanel(`<h2>🎮 Controls</h2>
-    <h3>Shop</h3>
-    ${k(kbd('W') + kbd('A') + kbd('S') + kbd('D'), 'Move')}${k(kbd('Shift'), 'Run')}${k('Mouse', 'Look')}
-    ${k(kbd('E'), 'Interact · set price · serve · stock crates · door')}${k(kbd('Q'), 'Shelf item back into stock')}
-    ${k(kbd('G') + ' / left click', 'Take item off a shelf / throw what you hold')}
-    ${k(kbd('F'), 'Pick up / place furniture')}${k(kbd('R'), 'Rotate carried furniture')}
-    ${k(kbd('O'), 'Open the store / head out at night')}
-    ${k('Hold left click', 'Mop / sweep a spill (with the mop or broom)')}${k(kbd('G'), 'Put the wet floor sign down')}
-    ${k(kbd('E') + ' on 🙋 / ❗', 'Help a customer / catch a shoplifter')}
-    <h3>Expeditions</h3>
-    ${k('Left click', 'Attack / use selected item')}${k(kbd('1') + '–' + kbd('9') + ' / wheel', 'Select weapon or item')}
-    ${k(kbd('F'), 'Flashlight')}${k(kbd('E'), 'Pick up · hide · dump bag in the truck · get in the cab · carry · crack the safe')}
-    ${k(kbd('X'), 'Take apart (with tools)')}${k(kbd('G'), 'Drop the selected bag item')}${k(kbd('C'), 'Crouch (quieter)')}
-    ${k(kbd('Space') + ' (down / dead)', 'Spectate the next player')}${k(kbd('R') + ' (dead)', 'Ghost roulette (free)')}
-    <h3>Everyone</h3>
-    ${k(kbd('Z'), 'Ping a spot for your team')}${k('Hold ' + kbd('H') + ' + ' + kbd('1') + '–' + kbd('4'), 'Emotes: wave, point, sit, dance')}
-    ${k(kbd('V'), 'Push to talk (if enabled)')}${k(kbd('B'), 'Talk on the walkie-talkie')}${k(kbd('T'), 'Text chat')}
-    ${k(kbd('Y') + ' / ' + kbd('N'), 'Approve / deny a teammate\'s big purchase')}${k(kbd('Esc'), 'Pause')}
-    <div class="row"><button id="c-done">Back</button></div>`, { esc: onClose, cls: 'wide' });
+    ${Object.entries(groups).map(([g, rows]) => `<h3>${g}</h3>${rows.join('')}`).join('')}
+    <h3>Fixed</h3>
+    ${k('Mouse', 'Look')}${k(kbd('1') + '–' + kbd('9') + ' / wheel', 'Hotbar at night')}${k(kbd('Esc'), 'Pause')}
+    ${k(kb('interact') + ' on 🙋 / ❗', 'Help a customer / catch a shoplifter')}
+    <div class="row"><button id="c-keys">⌨️ Change keys</button><button id="c-done" class="ghost">Back</button></div>`, { esc: onClose, cls: 'wide' });
   $('c-done').onclick = onClose;
+  $('c-keys').onclick = () => G.openKeySettings?.();
 }
 
 export function cutscene(cards, done) {

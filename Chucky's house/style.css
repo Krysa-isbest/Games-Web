@@ -340,6 +340,22 @@ select { width: auto; }
 .ch1-badge { background: linear-gradient(90deg, #6a4a10, #3a2a08); border: 1px solid var(--brass2); border-radius: 8px; padding: 10px 16px; font-weight: bold; color: #ffd86a; }
 .ch1-badge small { display: block; font-weight: normal; color: var(--dim); }
 
+/* first-time tip cards */
+#tip-card { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); width: 330px; display: flex; gap: 12px; align-items: flex-start; z-index: 24;
+  background: linear-gradient(#20160ff2, #140e0bf2); border: 1px solid var(--brass2); border-left: 5px solid var(--brass2); border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 10px 30px #000c; animation: tipIn .35s; transition: opacity .5s, transform .5s; }
+#tip-card.out { opacity: 0; transform: translate(30px, -50%); pointer-events: none; }
+#tip-card .tip-icon { font-size: 34px; line-height: 1; }
+#tip-card small { display: block; font-size: 10px; letter-spacing: 2px; color: var(--brass); }
+#tip-card b { color: var(--brass2); font-size: 16px; }
+#tip-card p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; }
+#tip-card .tip-x { position: absolute; top: 6px; right: 6px; padding: 0 6px; font-size: 12px; background: transparent; box-shadow: none; color: var(--dim); }
+@keyframes tipIn { from { opacity: 0; transform: translate(40px, -50%); } }
+
+/* key binding buttons */
+.bind-btn { min-width: 120px; font: bold 14px monospace; background: #120c09 !important; border: 1px solid var(--brass) !important; box-shadow: none !important; }
+.bind-btn.listening { border-color: var(--green) !important; color: var(--green); animation: blink 1s infinite; }
+
 /* ghost roulette */
 .roulette { position: relative; width: 220px; height: 220px; margin: 6px auto; }
 .wheel { width: 100%; height: 100%; border-radius: 50%; border: 6px solid #c9a227; transition: transform 2.1s cubic-bezier(.15, .8, .2, 1);

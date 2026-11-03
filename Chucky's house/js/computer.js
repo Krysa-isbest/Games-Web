@@ -8,6 +8,7 @@ import { SETS, have, setReady, setPay, canDeliver, orderPay } from './orders.js'
 import { JOBS, levelOf, nextAt } from './jobs.js';
 import { LETTERS, PAGES, CHUCK_NOTE } from './story.js';
 import { SHOP_EVENTS } from './events.js';
+import { TIPS, tipSeen } from './tips.js';
 import { act, online } from './net.js';
 import { sfx } from './sfx.js';
 import * as UI from './ui.js';
@@ -27,6 +28,7 @@ const APPS = {
   stats: { icon: '📊', name: 'Stats', color: '#4a4a5a' },
   team: { icon: '👥', name: 'Jobs', color: '#5a4a7a' },
   journal: { icon: '📓', name: 'Journal', color: '#6a4a2a' },
+  guide: { icon: '❓', name: 'Guide', color: '#2a5a6a' },
 };
 let app = 'market', query = '', cat = 'all', timer = 0;
 
@@ -92,6 +94,14 @@ const VIEWS = {
         const xp = G.jobs[n][k] || 0, lv = levelOf(xp), nx = nextAt(xp);
         return `<div><span>${J.icon} ${J.name} <b>Lv ${lv}</b></span>${UI.meter(nx ? xp / nx : 1)}<small class="dim">${J.perks.slice(1, lv).filter(Boolean).join(' · ') || 'no perks yet'}${nx ? ` · next at ${nx} XP` : ' · max'}</small></div>`;
       }).join('')}</div></div>`).join('') : '<p class="dim">Nobody has worked yet. Get to it!</p>'}`;
+  },
+
+  guide: () => {
+    const groups = {};
+    for (const [id, t] of Object.entries(TIPS)) (groups[t.group] ??= []).push([id, t]);
+    return `<p class="dim">Everything the tip cards have told you (and what they will). Keys shown are your own binds: change them in Settings → Controls.</p>
+      ${Object.entries(groups).map(([g, list]) => `<h3>${g}</h3><div class="list">${list.map(([id, t]) =>
+        row(t.icon, `<b>${t.title}</b>${tipSeen(id) ? '' : ' <small class="dim">(not met yet)</small>'}<br><small>${t.text()}</small>`, '')).join('')}</div>`).join('')}`;
   },
 
   journal: () => {

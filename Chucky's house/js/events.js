@@ -13,7 +13,8 @@ export const HOT_ITEMS = ['fan', 'acunit', 'blender'];
 // One shop event per week, on a random weekday (not Sunday: payment day).
 morningHooks.push(() => {
   const week = Math.ceil(G.day / 7);
-  if (G.weekEvent?.week !== week) G.weekEvent = { week, day: (week - 1) * 7 + 1 + (Math.random() * 6 | 0), id: pick(Object.keys(SHOP_EVENTS)) };
+  // week 1: no rain (mud only starts on Day 4, and the first week is busy enough)
+  if (G.weekEvent?.week !== week) G.weekEvent = { week, day: (week - 1) * 7 + 1 + (Math.random() * 6 | 0), id: pick(Object.keys(SHOP_EVENTS).filter(k => week > 1 || k !== 'rain')) };
   G.shopEvent = G.weekEvent.day === G.day ? G.weekEvent.id : null;
 });
 

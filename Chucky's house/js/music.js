@@ -1,7 +1,7 @@
 // Music. The owner's tracks go in music/ and are listed in music/list.json:
 //   { "menu": ["menu.mp3"], "shop": [...], "evening": [...], "auction": [...], "night": [...], "chase": [...],
 //     "down": [...], "prison": [...], "intro": [...] }
-// Empty lists = silence (nothing breaks). Shop music plays from the radio on the counter (positional).
+// Empty lists fall back to a synthesized track (see STYLES) where there is one. Shop music plays from the radio on the counter (positional).
 // The ending track is synthesized live (an original slow build that explodes), so it needs no file.
 import * as THREE from 'three';
 import { G, ACTIONS, pick } from './state.js';
@@ -57,10 +57,14 @@ export function setMood(mood, viaRadio = false) {
   graph();
   M.mood = mood; M.viaRadio = viaRadio;
   const c = audioCtx(), now = c.currentTime;
-  for (const d of M.decks) { d.g.gain.setTargetAtTime(0, now, 0.6); const old = d; setTimeout(() => { old.el.pause(); old.g.disconnect(); }, 2600); }
+  for (const d of M.decks) { d.g.gain.setTargetAtTime(0, now, 0.6); const old = d; setTimeout(() => { old.el?.pause(); old.stop?.(); old.g.disconnect(); }, 2600); }
   M.decks = [];
   const files = M.list[mood] || [];
-  if (!files.length) return;
+  if (!files.length) {
+    // no file for this moment: a synthesized track instead (if there is one)
+    if (SYNTH[mood]) { const d = synthDeck(SYNTH[mood], viaRadio ? M.radioIn : M.direct); M.decks.push(d); d.g.gain.setTargetAtTime(1, now, 0.8); }
+    return;
+  }
   const playNext = () => {
     if (M.mood !== mood) return;
     const d = deck(pick(files), viaRadio);
@@ -118,12 +122,100 @@ ACTIONS.radio = pid => {
   G.radio = (G.radio + 1) % STATIONS.length;
   const st = STATIONS[G.radio];
   sfx.click2();
-  tell(pid, st.mood ? `📻 ${st.name}${hasTracks(st.mood) ? '' : ' (no tracks yet)'}` : '📻 Radio off');
+  tell(pid, st.mood ? `📻 ${st.name}${hasMusic(st.mood) ? '' : ' (no tracks yet)'}` : '📻 Radio off');
   return G.radio;
 };
-export const radioOn = () => !!STATIONS[G.radio]?.mood && hasTracks(STATIONS[G.radio].mood);
+export const radioOn = () => !!STATIONS[G.radio]?.mood && hasMusic(STATIONS[G.radio].mood);
 // Customers like music: trust grows 10 % faster with the radio (or the jukebox) on.
 trustMods.push(() => radioOn() || G.decor.includes('jukebox') ? 1.1 : 1);
+
+// ---------- synthesized tracks for the moments without a file ----------
+// The owner's tracks win whenever list.json has one for that moment.
+const SYNTH = { evening: 'jazz', auction: 'hype', night: 'ambient', down: 'heart', prison: 'blues' };
+export const hasMusic = mood => hasTracks(mood) || !!SYNTH[mood];
+const hz = n => 440 * Math.pow(2, (n - 69) / 12);
+function noiseBuffer(c) {
+  if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return noiseBuf;
+}
+
+// Each style plays one 16th-note step at a time: play(step, time, sound).
+const STYLES = {
+  // Night Jazz: Rhodes chords, a walking bass, brushes and a lazy ride (ii-V-I-vi in C)
+  jazz: { bpm: 84, play(s, t, x) {
+    const bar = Math.floor(s / 16) % 4, i = s % 16, B = x.beat;
+    const CH = [[50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59], [45, 48, 52, 55]][bar];
+    if (i === 0 || i === 6) for (const n of CH) { x.tone('sine', hz(n + 12), t, B * 2.2, 0.035); x.tone('triangle', hz(n), t, B * 1.8, 0.02); }
+    if (i % 4 === 0) x.tone('triangle', hz(CH[[0, 2, 1, 3][i / 4]] - 12), t, B * 0.9, 0.12, { lp: 700 });
+    if (i === 4 || i === 12) x.noise(t, 0.18, 0.05, 5000, 0.5);
+    if (i % 4 === 0 || i % 4 === 3) x.noise(t, 0.06, 0.03, 9000, 2);
+    if (i % 4 === 0 && Math.random() < 0.35) x.tone('triangle', hz(CH[Math.random() * 4 | 0] + 24), t + (Math.random() < 0.5 ? B / 3 : 0), B * 0.8, 0.03);
+  } },
+  // Hype Radio / the auction: four-on-the-floor, offbeat hats, a pumping bass, chord stabs (Am F C G)
+  hype: { bpm: 126, play(s, t, x) {
+    const bar = Math.floor(s / 16) % 4, i = s % 16, B = x.beat, R = [45, 41, 48, 43][bar];
+    if (i % 4 === 0) x.tone('sine', 110, t, 0.25, 0.4, { to: 40 });
+    if (i === 4 || i === 12) { x.noise(t, 0.15, 0.18, 1800, 0.6); x.noise(t, 0.08, 0.1, 4000, 1); }
+    if (i % 4 === 2) x.noise(t, 0.05, 0.07, 9000, 2);
+    if (i % 2 === 0) x.tone('sawtooth', hz(R - 12), t, B * 0.4, 0.07, { lp: 500 });
+    if (i % 8 === 6) for (const n of [R + 12, R + 15 + (bar === 1 || bar === 2 ? 1 : 0), R + 19]) x.tone('sawtooth', hz(n), t, B * 0.3, 0.03, { lp: 2200 });
+    if (bar % 2 === 1) x.tone('square', hz([R + 24, R + 27, R + 31, R + 36][i % 4]), t, B * 0.2, 0.012, { lp: 3000 });
+  } },
+  // Night ambience: dark pads, a lonely pluck now and then, wind
+  ambient: { bpm: 60, play(s, t, x) {
+    const bar = Math.floor(s / 16) % 4, i = s % 16, B = x.beat;
+    if (i === 0) for (const [n, d] of [[[40, 36, 33, 35][bar], 0], [[47, 43, 40, 42][bar], 3], [[52, 48, 45, 47][bar], -3]]) x.tone('sawtooth', hz(n) * (1 + d * 0.001), t, B * 4.6, 0.025, { a: 1.5, lp: 520 });
+    if (i % 4 === 0 && Math.random() < 0.22) x.tone('triangle', hz([64, 67, 69, 71, 74, 76][Math.random() * 6 | 0]), t, B * 3, 0.03, { lp: 2500 });
+    if (i === 8 && Math.random() < 0.3) x.tone('sine', 50, t, 0.8, 0.12, { to: 35 });
+    if (i === 0) x.noise(t, B * 4.5, 0.03, 350, 0.4, { a: 1.5 });
+  } },
+  // Bleeding out: a low drone that rubs against itself, a thin high whine
+  heart: { bpm: 50, play(s, t, x) {
+    const i = s % 32, B = x.beat;
+    if (i === 0) { x.tone('sine', hz(28), t, B * 8.5, 0.12, { a: 2 }); x.tone('sine', hz(29), t, B * 8.5, 0.05, { a: 2 }); x.tone('sine', hz(88), t, B * 8, 0.008, { a: 3 }); }
+  } },
+  // Prison: slow blues, a lonely "harmonica" (A7 D7 A7 E7)
+  blues: { bpm: 68, play(s, t, x) {
+    const bar = Math.floor(s / 16) % 4, i = s % 16, B = x.beat, R = [45, 50, 45, 52][bar];
+    if (i === 0 || i === 8) for (const n of [R, R + 4, R + 7, R + 10]) x.tone('triangle', hz(n + 12), t, B * 1.8, 0.02);
+    if (i % 8 === 0) x.tone('triangle', hz(R - 12), t, B * 1.6, 0.1, { lp: 500 });
+    if (i % 4 === 0 && Math.random() < 0.45) x.tone('square', hz([69, 72, 74, 75, 76, 79][Math.random() * 6 | 0]), t, B * (Math.random() < 0.5 ? 1 : 2), 0.018, { a: 0.08, lp: 1400, vib: 5 });
+  } },
+};
+
+function synthDeck(style, dest) {
+  const c = audioCtx(), P = STYLES[style], g = c.createGain();
+  g.gain.value = 0; g.connect(dest);
+  const beat = 60 / P.bpm, step16 = beat / 4, buf = noiseBuffer(c);
+  const x = {
+    beat,
+    tone(type, f, t, dur, vol, o = {}) {
+      const osc = c.createOscillator(), e = c.createGain();
+      osc.type = type; osc.frequency.setValueAtTime(f, t);
+      if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+      if (o.vib) { const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = o.vib; lg.gain.value = f * 0.012; l.connect(lg).connect(osc.frequency); l.start(t); l.stop(t + dur + 0.1); }
+      const a = o.a || 0.01;
+      e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(vol, t + a); e.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(dur, a + 0.05));
+      let last = osc.connect(e);
+      if (o.lp) { const f2 = c.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = o.lp; last = last.connect(f2); }
+      last.connect(g);
+      osc.start(t); osc.stop(t + Math.max(dur, a + 0.05) + 0.05);
+    },
+    noise(t, dur, vol, freq, q = 1, o = {}) {
+      const src = c.createBufferSource(), f = c.createBiquadFilter(), e = c.createGain();
+      src.buffer = buf; src.loop = true; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+      const a = o.a || 0.005;
+      e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(vol, t + a); e.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f).connect(e).connect(g); src.start(t); src.stop(t + dur + 0.05);
+    },
+  };
+  let step = 0, stopped = false;
+  const t0 = c.currentTime + 0.1;
+  const tick = () => { if (stopped) return; while (t0 + step * step16 < c.currentTime + 0.3) { P.play(step, t0 + step * step16, x); step++; } };
+  const iv = setInterval(tick, 60);
+  tick();
+  return { g, stop() { stopped = true; clearInterval(iv); } };
+}
 
 // ---------- synthesized ending: tiny and tense, builds and builds, then explodes ----------
 let noiseBuf;
