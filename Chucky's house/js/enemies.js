@@ -1,7 +1,7 @@
 // Enemies. The host runs the AI; guests only mirror positions/animation states.
 // Skulls (difficulty) scale hp, damage, speed, senses, and make stuns shorter.
 import * as THREE from 'three';
-import { clamp, rand } from './state.js';
+import { clamp, rand, playerCount } from './state.js';
 import { part } from './data.js';
 import { makePerson, animatePerson, poseArms } from './people.js';
 import { makeDog, makeRat, animateQuad } from './creatures.js';
@@ -65,10 +65,12 @@ export function makeEnemy(E, kind, x, z, seed, extra = {}) {
   mesh.position.set(x, 0, z);
   mesh.rotation.y = (seed % 628) / 100;
   E.scene.add(mesh);
-  const hp = Math.round(b.hp * (0.8 + s * 0.25));
+  // co-op: +40 % health and +10 % damage for every extra player (solo is unchanged)
+  const extra = playerCount() - 1, hpMult = 1 + 0.4 * extra, dmgMult = 1 + 0.1 * extra;
+  const hp = Math.round(b.hp * (0.8 + s * 0.25) * hpMult);
   const en = {
     id: E.enemies.length, kind, mesh, hp, maxHp: hp, st: 0,
-    run: b.run * (0.95 + s * 0.05) * (angry ? 1.25 : 1), walk: b.walk, dmg: b.dmg * (0.8 + s * 0.2) * (angry ? 1.5 : 1),
+    run: b.run * (0.95 + s * 0.05) * (angry ? 1.25 : 1), walk: b.walk, dmg: b.dmg * (0.8 + s * 0.2) * (angry ? 1.5 : 1) * dmgMult,
     vision: b.vision * (0.9 + s * 0.08), hear: b.hear * (0.9 + s * 0.08), reach: b.reach, cdMax: b.cd,
     state: kind === 'guard' ? 'patrol' : 'wander', path: [], repath: 0, cd: 0, stun: 0, t: Math.random() * 10, lost: 0, idle: extra.idle ? 999 : rand(0, 3),
     atk: 0, shells: 2, aimT: 0, sniff: 0, wp: 0, patrol: extra.patrol || null, target: null, last: null, alerted: false,
