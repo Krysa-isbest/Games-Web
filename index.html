@@ -241,12 +241,16 @@ const GAMES = [
     desc: 'Run a pawn shop to pay off the bank: haggle, ring up sales and spot fakes. At night, drive the pickup out to the Back Alley or the Junkyard and bring back whatever you can carry.',
     mp: 'Online co-op · up to 4 · voice chat', lang: 'English', genre: 'Shop sim · scavenging',
     updating: true, changelog: [
+      { version: '0.8.2', date: '2026-11-03', notes: [
+        'Enemies can now hear voice chat at night. Talking carries about 5 m, shouting much further, and whispering is safe. Hiding spots muffle your voice, but if something is standing right outside, talking gives you away. A light-blue ring shows how far your voice reaches. You can turn this off in Settings → Audio.'
+      ] },
       { version: '0.8.1', date: '2026-11-03', notes: [
         'Saves: a new Saves button in the main menu lets you export your shop to a file, import it again (on any computer) or delete it.',
         'Esc now only opens the menu, and the game keeps running. Click "Pause the game" to really pause. In co-op only the host can, and it pauses for everyone.',
         'The main menu music no longer plays during the opening cutscene.',
         'Push to talk in toggle mode no longer switches itself off when a window opens (computer, customers, chat…). The mic icon in the corner shows whether you\'re on.',
-        'Fixed a gray box that could stay stuck over the first shelf. The dust sheets in the dark intro now look like real draped cloth, and they always come off when you flip the breaker.'
+        'Fixed a gray box that could stay stuck over the first shelf. The dust sheets in the dark intro now look like real draped cloth, and they always come off when you flip the breaker.',
+        'Co-op: heading out at night now shows everyone a 3-second "into the truck" countdown, then the whole team goes together. If the game can\'t grab your mouse by itself, a "Click to continue" screen appears instead of the menu.'
       ] },
       { version: '0.8.0', date: '2026-11-03', notes: [
         'Music! A main menu theme, shop music on the counter radio and a chase track at night. Night Jazz, the auction, night expeditions, bleeding out and prison get their own synthesized tracks.',
