@@ -1,0 +1,11 @@
+{
+  "menu": ["Main menu.mp3"],
+  "intro": [],
+  "shop": ["Background music (Shop).mp3"],
+  "evening": [],
+  "auction": [],
+  "night": [],
+  "chase": ["Chase.mp3"],
+  "down": [],
+  "prison": []
+}
