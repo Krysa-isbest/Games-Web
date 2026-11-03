@@ -52,6 +52,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .card:hover .play{opacity:1;transform:none}
 .flags{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .flag.big{color:#fff;background:rgba(184,80,47,.94)}
+.flag.vr{color:#fff;background:rgba(32,120,160,.94)}
 .flag{
   font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
@@ -145,6 +146,11 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    changelog entries look like: { version: '1.1', date: '2026-10-26', notes: ['Added X', 'Fixed Y'] }
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
+  {
+    file: 'Scrap fist/Scrap Fist — VR Robot Arena.html', title: 'Scrap Fist', subtitle: 'VR Robot Arena', art: 'scrap', vrtest: true,
+    desc: 'Punch and shoot your way through waves of scrap robots in an arena. Built for VR, with a desktop mode too.',
+    mp: null, lang: 'English', genre: 'VR arena brawler'
+  },
   {
     file: 'Farm Chaos/index.html', party: 'farm', title: 'Chaos Farm', art: 'farm',
     desc: 'Grow crops, sell the harvest and pay off the farm\'s debt, while tornadoes, meteors, nukes, aliens and black holes try to wreck everything.',
@@ -421,7 +427,16 @@ const ART = {
     <rect x="110" y="104" width="80" height="58" fill="#ffcf7a" opacity=".85"/><path d="M150 104v58M110 133h80" stroke="#4a2a22" stroke-width="3"/>
     <rect x="216" y="112" width="40" height="88" fill="#2a1a12"/><circle cx="249" cy="158" r="3" fill="#c9973f"/>
     <g fill="#c9973f"><circle cx="286" cy="96" r="7"/><circle cx="276" cy="112" r="7"/><circle cx="296" cy="112" r="7"/><path d="M286 82v8" stroke="#c9973f" stroke-width="2"/></g>
-    <rect y="186" width="400" height="14" fill="#1a1a1e"/>`
+    <rect y="186" width="400" height="14" fill="#1a1a1e"/>`,
+  scrap: `
+    <defs><linearGradient id="g12" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1b2a"/><stop offset="1" stop-color="#1f3b4d"/></linearGradient>
+    <radialGradient id="g12b" cx=".5" cy=".55" r=".45"><stop offset="0" stop-color="#2ad4ff" stop-opacity=".35"/><stop offset="1" stop-color="#2ad4ff" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#g12)"/><rect width="400" height="200" fill="url(#g12b)"/>
+    <ellipse cx="200" cy="186" rx="190" ry="22" fill="#14252f"/><ellipse cx="200" cy="186" rx="150" ry="14" fill="none" stroke="#2ad4ff" stroke-opacity=".5" stroke-width="2"/>
+    <g fill="#3a4a55"><rect x="176" y="60" width="48" height="40" rx="6"/><rect x="166" y="104" width="68" height="62" rx="8"/><rect x="146" y="110" width="16" height="44" rx="6"/><rect x="238" y="110" width="16" height="44" rx="6"/><rect x="176" y="166" width="16" height="20"/><rect x="208" y="166" width="16" height="20"/></g>
+    <g fill="#ff5a3a"><rect x="186" y="74" width="10" height="8" rx="2"/><rect x="204" y="74" width="10" height="8" rx="2"/></g>
+    <g fill="#c9d2d8" opacity=".9"><rect x="40" y="110" width="54" height="40" rx="10"/><rect x="306" y="96" width="54" height="40" rx="10"/></g>
+    <g stroke="#c9d2d8" stroke-width="3" opacity=".5"><path d="M98 130h30M298 116h-30"/></g>`
 };
 
 const ICON_MP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 13.6c2.6.2 4.5 2 4.5 4.9"/></svg>';
@@ -440,7 +455,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${g.big || g.updating ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
+        ${g.big || g.updating || g.vrtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
