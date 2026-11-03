@@ -244,6 +244,7 @@ export function settingsPanel(S, apply, onClose, mics = [], tab) {
       ${range('s-vol', 'Game volume', 0, 1, 0.05, S.volume, v => Math.round(v * 100) + '%')}
       ${range('s-mvol', 'Music volume', 0, 1, 0.05, S.music, v => Math.round(v * 100) + '%')}
       ${range('s-vvol', 'Voice chat volume', 0, 2, 0.05, S.voiceVol, v => Math.round(v * 100) + '%')}
+      ${range('s-rvol', 'Walkie-talkie volume', 0, 2, 0.05, S.radioVol, v => Math.round(v * 100) + '%')}
       ${check('s-echo', 'Voice echo (rooms, alleys, hiding spots)', S.echo)}
       ${seg('micMode', 'Microphone', [['open', 'Open mic'], ['ptt', 'Push to talk (V)']])}
       <div class="set"><span>Mic device <small class="dim">(after restart)</small></span><select id="s-mic"><option value="">Default</option>${mics.map(m => `<option value="${m.deviceId}" ${S.micDevice === m.deviceId ? 'selected' : ''}>${m.label || 'Microphone'}</option>`).join('')}</select></div>
@@ -277,12 +278,12 @@ export function settingsPanel(S, apply, onClose, mics = [], tab) {
       if (setTab === 'graphics') S.preset = 'custom';
       apply(); render();
     });
-    const rng = { 's-res': 'res', 's-view': 'viewDist', 's-sdist': 'shadowDist', 's-lights': 'lights', 's-bri': 'brightness', 's-fov': 'fov', 's-vol': 'volume', 's-mvol': 'music', 's-vvol': 'voiceVol', 's-sens': 'sens' };
+    const rng = { 's-res': 'res', 's-view': 'viewDist', 's-sdist': 'shadowDist', 's-lights': 'lights', 's-bri': 'brightness', 's-fov': 'fov', 's-vol': 'volume', 's-mvol': 'music', 's-vvol': 'voiceVol', 's-rvol': 'radioVol', 's-sens': 'sens' };
     const pct = v => Math.round(v * 100) + '%';
     for (const [id, key] of Object.entries(rng)) if ($(id)) $(id).oninput = e => {
       S[key] = +e.target.value;
       if (['res', 'viewDist', 'shadowDist', 'lights'].includes(key)) S.preset = 'custom';
-      $(id + '-o').textContent = { res: pct, viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: pct, music: pct, voiceVol: pct }[key]?.(S[key]) ?? S[key];
+      $(id + '-o').textContent = { res: pct, viewDist: v => v + ' m', shadowDist: v => v + ' m', fov: v => v + '°', volume: pct, music: pct, voiceVol: pct, radioVol: pct }[key]?.(S[key]) ?? S[key];
       apply();
     };
     const chk = { 's-aa': 'aa', 's-ps1': 'ps1', 's-fps': 'showFps', 's-bob': 'bob', 's-echo': 'echo', 's-ptttog': 'pttToggle', 's-crouch': 'crouchHold', 's-tips': 'tips', 's-vnoise': 'voiceNoise' };

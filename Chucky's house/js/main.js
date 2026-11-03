@@ -779,7 +779,7 @@ function micStatus() {
 // ---------- boot ----------
 apply();
 load();
-UI.$('ver').textContent = 'Prototype v0.8.2';
+UI.$('ver').textContent = 'Prototype v0.8.3';
 initMusic().then(() => { if (G.mode === 'menu' && !G.cine) setMood('menu'); });
 if (sessionStorage.getItem(NEW_FLAG)) {
   sessionStorage.removeItem(NEW_FLAG);

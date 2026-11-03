@@ -205,9 +205,11 @@ export function updateVoice(camera) {
     c.prox.gain.setTargetAtTime(muted ? 0 : ghostChat ? 1 : same && !p.radio ? 1 : same ? 0.5 : 0, now, 0.08);
     const radioOn = !p.dead && p.radio && G.tools.radio > 0;
     if (radioOn !== v.wasRadio) { v.wasRadio = radioOn; if (radioOn || v.level < 0.5) sfx.squelch(); }
-    c.radio.gain.setTargetAtTime(radioOn ? 0.9 : 0, now, 0.03);
+    // the distortion makes the radio much louder than normal voice, so its base level is low (Settings → Walkie-talkie volume)
+    const rv = S.radioVol ?? 1;
+    c.radio.gain.setTargetAtTime(radioOn ? 0.4 * rv : 0, now, 0.03);
     // static on the radio: more crackle the further away they are
-    c.stat.gain.setTargetAtTime(radioOn ? Math.min(0.35, 0.03 + dist / 120) * (0.6 + Math.random() * 0.4) : 0, now, 0.05);
+    c.stat.gain.setTargetAtTime(radioOn ? Math.min(0.35, 0.03 + dist / 120) * (0.6 + Math.random() * 0.4) * rv : 0, now, 0.05);
     // heavy breathing while bleeding out, weaker as the 30 s run out
     const bleeding = p.down && !p.dead && same && !my.dead;
     const br = bleeding ? 0.22 * (0.3 + 0.7 * Math.min(1, (p.bleed || 0) / 30)) * Math.pow(Math.max(0, Math.sin(t * Math.PI * 0.9)), 2) : 0;
