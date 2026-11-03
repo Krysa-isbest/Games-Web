@@ -288,14 +288,31 @@ export function applyIntroWorld() {
   setNeon(!dark);
   breaker.userData.glow.intensity = dark ? 1.5 : 0;
   note.visible = G.intro === 'note' || G.intro === 'done';
-  if (dark && !sheets.length) {
-    for (const s of G.shelves) {
-      const b = s.userData.box, sz = b.getSize(V(0, 0, 0)), c = b.getCenter(V(0, 0, 0));
-      const m = part(G.scene, new THREE.BoxGeometry(sz.x + 0.15, sz.y + 0.1, sz.z + 0.15), 0xe8e4da, c.x, c.y + 0.03, c.z, { roughness: 1 });
-      m.raycast = () => {}; sheets.push(m);
-    }
+  if (dark && !sheets.length) for (const s of G.shelves) sheets.push(dustSheet(s.userData.box));
+  if (!dark) removeSheets();
+}
+// A dusty cloth draped over a shelf: wider at the top, folds hanging down, hem near the floor.
+export function dustSheet(box) {
+  const sz = box.getSize(V(0, 0, 0)), c = box.getCenter(V(0, 0, 0)), g = new THREE.Group();
+  g.position.set(c.x, 0, c.z);
+  const cloth = 0xefe9dc, fold = 0xd8d0be;
+  part(g, new THREE.BoxGeometry(sz.x + 0.18, 0.06, sz.z + 0.18), cloth, 0, sz.y + 0.05, 0, { roughness: 1 }); // over the top
+  part(g, new THREE.BoxGeometry(sz.x + 0.1, sz.y - 0.15, sz.z + 0.1), cloth, 0, sz.y / 2 + 0.05, 0, { roughness: 1 });
+  for (let k = 0; k < 5; k++) { // folds on the front and back
+    const x = (k / 4 - 0.5) * sz.x * 0.9;
+    for (const zs of [-1, 1]) part(g, new THREE.BoxGeometry(0.06, sz.y - 0.2, 0.05), fold, x, sz.y / 2, zs * (sz.z / 2 + 0.07), { roughness: 1 }).rotation.z = (k % 2 ? 0.03 : -0.03);
   }
-  if (!dark && sheets.length) { for (const m of sheets) G.scene.remove(m); sheets = []; }
+  part(g, new THREE.BoxGeometry(sz.x + 0.22, 0.04, sz.z + 0.22), fold, 0, 0.12, 0, { roughness: 1 }); // the hem
+  g.traverse(o => { o.userData.sheet = true; o.raycast = () => {}; });
+  G.scene.add(g);
+  return g;
+}
+// Takes every dust sheet out of the shop (also any left behind by an older version).
+export function removeSheets() {
+  const left = [];
+  G.scene.traverse(o => { if (o.userData.sheet && o.parent === G.scene) left.push(o); });
+  for (const o of [...sheets, ...left]) G.scene.remove(o);
+  sheets = [];
 }
 
 ACTIONS.breaker = pid => {
@@ -309,8 +326,7 @@ ACTIONS.breaker = pid => {
 on('lightsOn', () => lightsOn());
 async function lightsOn() {
   sfx.breaker();
-  for (const s of sheets) G.scene.remove(s);
-  sheets = [];
+  removeSheets();
   breaker.userData.glow.intensity = 0;
   for (let k = 1; k <= 4; k++) { await wait(380); setShopPower(k / 4, k); sfx.hum(); }
   setShopPower(1);
@@ -478,12 +494,12 @@ export async function playWin(done) {
   halves.forEach(h => sc.remove(h)); sc.remove(graves);
   // 3. before → now
   await fade(true, 600);
-  setShopPower(0.12); const tmpSheets = G.shelves.map(s => { const b = s.userData.box, sz = b.getSize(V(0, 0, 0)), c = b.getCenter(V(0, 0, 0)); return part(sc, new THREE.BoxGeometry(sz.x + 0.15, sz.y + 0.1, sz.z + 0.15), 0xe8e4da, c.x, c.y, c.z, { roughness: 1 }); });
+  setShopPower(0.12); G.shelves.forEach(s => dustSheet(s.userData.box));
   cam.position.set(5.5, 2.3, 3.8); cam.lookAt(-1, 1, -2);
   big('<small>DAY 1</small>', 'story-small');
   await fade(false, 700); await at(17.5);
   await fade(true, 700);
-  tmpSheets.forEach(m => sc.remove(m)); setShopPower(1);
+  removeSheets(); setShopPower(1);
   const crowd = Array.from({ length: 5 }, (_, i) => { const p = makePerson({ seed: 300 + i }); p.position.set(-2 + i * 1.3, 0, -1 - (i % 2) * 1.4); p.rotation.y = i; sc.add(p); return p; });
   big(`<small>DAY ${G.day}</small>`, 'story-small');
   move(cam, [[V(5.5, 2.3, 3.8), V(-1, 1, -2)], [V(4.5, 2.0, 2.4), V(-1.5, 1, -2)]], 6000);

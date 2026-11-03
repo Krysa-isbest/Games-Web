@@ -16,7 +16,8 @@ export function part(g, geo, color, x, y, z, o) {
 }
 
 // Invisible material for interaction hitboxes.
-export const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+// visible: false = never drawn (no gray boxes on any setting), but raycasts still hit it.
+export const hitMat = new THREE.MeshBasicMaterial({ visible: false });
 
 export function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
