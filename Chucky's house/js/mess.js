@@ -82,7 +82,7 @@ function addWet(x, z, t = WET_TIME) {
 function signMesh() {
   const g = new THREE.Group();
   const y = 0xf0c020;
-  for (const s of [-1, 1]) { const p = part(g, new THREE.BoxGeometry(0.34, 0.62, 0.02), y, 0, 0.3, s * 0.1); p.rotation.x = s * 0.3; }
+  for (const s of [-1, 1]) { const p = part(g, new THREE.BoxGeometry(0.34, 0.62, 0.02), y, 0, 0.3, s * 0.1); p.rotation.x = -s * 0.3; } // the two boards lean in and meet at the top (an A, not a V)
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.3), new THREE.MeshBasicMaterial({ map: canvasTex(64, 70, (c, w, h) => {
     c.fillStyle = '#f0c020'; c.fillRect(0, 0, w, h); c.fillStyle = '#111'; c.font = 'bold 34px sans-serif'; c.textAlign = 'center'; c.fillText('⚠', 32, 36);
     c.font = 'bold 11px sans-serif'; c.fillText('WET FLOOR', 32, 60);
