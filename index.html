@@ -307,6 +307,30 @@ const GAMES = [
     ]
   },
   {
+    file: 'Ship madness/index.html', party: 'shipmadness', title: 'Ship Madness', art: 'ships', big: true,
+    desc: 'Sink ships in first person. Blow voxel holes in tugboats, yachts, ferries, container ships and cruise liners, patch the leaks with planks, bail out the water, board the enemy and kill their captain. Watch out for the sharks.',
+    mp: 'Online · up to 4 · voice chat', lang: 'English', genre: 'Naval FPS · voxel destruction',
+    updating: true, changelog: [
+      { version: '0.4', date: '2026-11-04', notes: [
+        'Online play for up to 4 players with a room code or LAN/Tailscale codes: free-for-all (with AI captains to fill up), a co-op campaign where the crew votes on the route, and a shared sandbox. Proximity voice chat, text chat and a kill feed.',
+        'Works with the party lobby: the leader picks the mode and the game starts when everyone is aboard.',
+        'Every ship type now looks different: tugboat fenders, yacht decks, a trawler gantry, a ferry with twin funnels, a container ship bridge tower with cranes, and a six-deck cruise ship with a pool and a waterslide.',
+        'Sharks now circle the ships. Chase camera at the helm (X).',
+        'Fixed: you could only take the helm or use the deck guns while standing at the plank storage.'
+      ] },
+      { version: '0.3', date: '2026-11-04', notes: [
+        'Modern ships that come unarmed: buy deck guns in the Garage.',
+        'Real underwater look in the sea and in a flooded hold.',
+        'A brand new menu, advanced graphics settings, voice chat settings with a mic test and rebindable keys.'
+      ] },
+      { version: '0.2', date: '2026-11-04', notes: [
+        'Finer voxels, a new ocean with foam and wakes, guns with arms, animations and attachments.',
+        'Garage with levels and Ferryman Tokens (FT), fires on deck, free-for-all against AI captains and a campaign that ends with the Ferryman.'
+      ] },
+      { version: '0.1', date: '2026-11-04', notes: ['First playable sandbox: drive, flood, repair and sink voxel ships.'] }
+    ]
+  },
+  {
     file: 'Containment/containment.html', party: 'containment', title: 'Containment', art: 'containment',
     desc: 'Hold a sealed chamber against waves of drones. Pick upgrades between waves, craft gear and face a Warden every fifth wave.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: '3D shooter',
@@ -356,6 +380,19 @@ const GAMES = [
 
 /* Atmospheric card art: gradient sky + layered silhouettes */
 const ART = {
+  ships: `
+    <defs><linearGradient id="g13" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb3d9"/><stop offset=".55" stop-color="#bfd9e8"/><stop offset=".56" stop-color="#2f6f8f"/><stop offset="1" stop-color="#123a52"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#g13)"/>
+    <path d="M232 78h112l-10 32h-96z" fill="#e8e6e0"/><path d="M246 60h70v18h-70z" fill="#e8e6e0"/><path d="M258 46h40v14h-40z" fill="#e8e6e0"/>
+    <g fill="#1d3442"><rect x="250" y="64" width="62" height="6"/><rect x="240" y="84" width="96" height="5"/><rect x="262" y="50" width="32" height="5"/></g>
+    <rect x="300" y="28" width="14" height="22" rx="3" fill="#d8392b"/><rect x="300" y="28" width="14" height="5" fill="#1d1f22"/>
+    <path d="M214 110h150l-14 26H230z" fill="#1f3d5c"/><path d="M216 124h144" stroke="#d8392b" stroke-width="4"/>
+    <path d="M40 132h86l-10 20H52z" fill="#2a2a2e"/><rect x="62" y="116" width="40" height="16" fill="#b9b4a8"/>
+    <g fill="#ff8a2a"><circle cx="150" cy="122" r="16"/><circle cx="162" cy="112" r="10"/></g><g fill="#5a5856" opacity=".7"><circle cx="170" cy="96" r="12"/><circle cx="184" cy="80" r="9"/></g>
+    <path d="M118 128l90-8" stroke="#ffd27a" stroke-width="2" stroke-dasharray="4 4"/>
+    <path d="M0 150q50-8 100 0t100 0 100 0 100 0v50H0z" fill="#174a63"/>
+    <path d="M70 176l10-14 4 14z" fill="#3d474e"/><path d="M300 182l8-12 3 12z" fill="#3d474e"/>
+    <path d="M0 166q60-6 120 0t140 0 140 0" stroke="#e8f4f6" stroke-opacity=".5" stroke-width="2" fill="none"/>`,
   farm: `
     <defs><linearGradient id="g10" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9aa6b8"/><stop offset=".6" stop-color="#d9c79a"/><stop offset="1" stop-color="#c9a464"/></linearGradient></defs>
     <rect width="400" height="200" fill="url(#g10)"/>
@@ -532,6 +569,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Survival/party-adapter.js"></script>
 <script src="Farm%20Chaos/party-adapter.js"></script>
 <script src="Chucky's%20house/party-adapter.js"></script>
+<script src="Ship%20madness/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
 </html>

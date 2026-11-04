@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ship Madness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hurt"></div>
+<div id="flash"></div>
+<div id="fade"></div>
+<div id="scope" class="hidden"><div class="ring"></div></div>
+<div id="fps" class="hidden"></div>
+<div id="mic-ind" class="hidden">🎙️</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="cross"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmark">✕</div>
+  <div id="mode-hud" class="card hidden"></div>
+  <div id="vitals" class="card">
+    <div class="bar"><span>❤️</span><div class="track"><div id="hp-fill" class="fill hp"></div></div><small id="hp-num">100</small></div>
+    <div id="o2" class="bar hidden"><span>🫧</span><div class="track"><div id="o2-fill" class="fill o2"></div></div></div>
+  </div>
+  <div id="weapon" class="card"></div>
+  <div id="ship-panel" class="card hidden"></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="prompt" class="hidden"></div>
+  <div id="nuke" class="hidden"></div>
+  <div id="dead" class="hidden"><b>YOU DIED</b><small id="dead-t"></small></div>
+  <div id="help" class="card hidden"></div>
+</div>
+<div id="toasts"></div>
+<div id="killfeed"></div>
+<div id="chat"><div id="chat-log"></div><input id="chat-in" class="hidden" maxlength="140" placeholder="Say something… (Enter to send, Esc to cancel)"></div>
+<div id="overlay" class="hidden"></div>
+<div id="admin" class="hidden">
+  <div class="adm-head"><b>🛠️ Admin panel</b><small>Admin key or Esc to close</small></div>
+  <div id="admin-body"></div>
+</div>
+
+<!-- splash -->
+<div id="splash">
+  <div class="splash-logo"><span class="l1">SHIP</span><span class="l2">MADNESS</span></div>
+  <div class="splash-sub">Sink them. Board them. Don't feed the sharks.</div>
+  <div class="splash-click">Click anywhere to start</div>
+</div>
+
+<!-- main menu -->
+<div id="menu" class="screen menu hidden">
+  <div class="topbar">
+    <div class="logo"><span class="l1">SHIP</span><span class="l2">MADNESS</span></div>
+    <div id="profile" class="profile-chip"></div>
+  </div>
+  <nav class="side-nav">
+    <button class="nav-btn on" data-tab="play"><i>▶</i>PLAY</button>
+    <button class="nav-btn" data-go="garage"><i>🛠</i>GARAGE</button>
+    <button class="nav-btn" data-go="settings"><i>⚙</i>SETTINGS</button>
+    <button class="nav-btn" data-tab="news"><i>📰</i>WHAT'S NEW</button>
+  </nav>
+  <section id="tab-play" class="menu-main">
+    <h2 class="section-title">Choose a mode</h2>
+    <div class="mode-cards">
+      <div class="mode-card ffa" data-go="ffa">
+        <div class="mc-art">⚔️</div>
+        <div class="mc-body"><b>Free-for-all</b><p>Up to 4 captains, one ocean. Sink their ships, board them, kill the captain. Last one standing wins.</p><span id="mc-ffa" class="chip"></span></div>
+      </div>
+      <div class="mode-card camp" data-go="camp">
+        <div class="mc-art">🧭</div>
+        <div class="mc-body"><b>Campaign</b><p>Plot a route through battles, wrecks and storms. Upgrade between stops. The Ferryman waits at the end.</p><span id="mc-camp" class="chip"></span></div>
+      </div>
+      <div class="mode-card sand" data-go="sandbox">
+        <div class="mc-art">🏝️</div>
+        <div class="mc-body"><b>Sandbox</b><p>Everything unlocked. Admin panel: spawn ships, crates, sharks, airstrikes and nukes.</p><span class="chip">All unlocked</span></div>
+      </div>
+      <div class="mode-card online" data-go="online">
+        <div class="mc-art">🌐</div>
+        <div class="mc-body"><b>Online</b><p>Host or join with friends: FFA, co-op campaign or sandbox for up to 4 players, with voice and text chat.</p><span class="chip warn">Up to 4 players</span></div>
+      </div>
+    </div>
+  </section>
+  <section id="tab-news" class="menu-main hidden">
+    <h2 class="section-title">What's new</h2>
+    <div class="news card-glass">
+      <h3>v0.4</h3>
+      <ul>
+        <li>Online play for up to 4: FFA (with AI captains to fill up), a co-op campaign where the crew votes on the route, and a shared sandbox. Room codes or LAN codes, voice chat (proximity) and text chat (Enter).</li>
+        <li>Every ship type now has its own design: tug fenders, yacht decks, trawler gantry, ferry twin funnels and ramp, a container ship bridge tower with cranes, a six-deck cruise ship with a pool and waterslide.</li>
+        <li>Fixed: you could only take the helm or use deck guns while standing at the plank storage.</li>
+        <li>Sharks now patrol around the ships with big fins and a foam trail.</li>
+        <li>Chase camera at the helm (X).</li>
+      </ul>
+      <h3>v0.3</h3>
+      <ul>
+        <li>Modern ships: tugboat, motor yacht, fishing trawler, ferry, container ship and cruise ship. They come unarmed: buy deck guns in the Garage.</li>
+        <li>Real underwater look: wobbly light, god rays, murk, floating particles and bubbles. Flooded holds are murky too.</li>
+        <li>A brand new menu, advanced graphics settings, voice chat settings with a mic test and rebindable keys.</li>
+        <li>Fixed: A and D strafed the wrong way.</li>
+      </ul>
+      <h3>v0.2</h3>
+      <ul><li>0.25 m voxels, new ocean, new guns with arms and attachments, Garage with levels and FT, fires, FFA and the campaign.</li></ul>
+    </div>
+  </section>
+  <div id="ver" class="ver"></div>
+</div>
+
+<!-- mode setups -->
+<div id="ffa" class="screen hidden"><div class="panel">
+  <div class="panel-head"><button class="back" data-go="menu">‹</button><h2>⚔️ Free-for-all</h2></div>
+  <p class="note">Kill every rival captain to win. Lost your ship? Swim to a rival's ladder and take theirs. After 2 minutes a storm closes in. You earn FFA FT and XP for kills, sunk ships and the win.</p>
+  <div class="opt"><span>Rival captains</span><div class="seg" id="ffa-rivals" data-value="3"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+  <div class="opt"><span>Ships</span><div class="seg" id="ffa-layout" data-value="own"><button data-v="own">Everyone has a ship</button><button data-v="one">All on one ship</button></div></div>
+  <div class="opt"><span>Sea</span><div class="seg" id="ffa-sea" data-value="1"><button data-v="0.5">Calm</button><button data-v="1">Normal</button><button data-v="1.8">Rough</button></div></div>
+  <div class="panel-foot"><button data-go="garage" data-mode="ffa">🛠 FFA Garage</button><button id="ffa-start" class="primary">FIGHT ▶</button></div>
+</div></div>
+
+<div id="camp" class="screen hidden"><div class="panel">
+  <div class="panel-head"><button class="back" data-go="menu">‹</button><h2>🧭 Campaign</h2></div>
+  <p class="note">A route of 7 stops: battles, wrecks, storms, shops and calm coves, then the Ferryman's ghost liner. Damage stays between stops. If your ship sinks, the run is over.</p>
+  <div class="opt"><span>Difficulty</span><div class="seg" id="camp-diff" data-value="normal"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="hard">Hard</button><button data-v="ferryman">Ferryman</button></div></div>
+  <div class="panel-foot"><button data-go="garage" data-mode="camp">🛠 Campaign Garage</button><button id="camp-start" class="primary">SET SAIL ▶</button></div>
+</div></div>
+
+<div id="sandbox" class="screen hidden"><div class="panel">
+  <div class="panel-head"><button class="back" data-go="menu">‹</button><h2>🏝️ Sandbox</h2></div>
+  <p class="note">Everything is unlocked. Pick your ship, guns and loadout in the Garage (Sandbox tab). Press <b id="sb-admin-key">P</b> in game for the admin panel.</p>
+  <div class="opt"><span>Sea</span><div class="seg" id="sb-sea" data-value="1"><button data-v="0.4">Calm</button><button data-v="1">Normal</button><button data-v="2.1">Storm</button></div></div>
+  <div class="opt"><span>Sharks</span><div class="seg" id="sb-sharks" data-value="6"><button data-v="0">None</button><button data-v="3">Few</button><button data-v="6">Some</button><button data-v="12">Many</button></div></div>
+  <div class="opt"><span>Start with an enemy</span><div class="seg" id="sb-enemies" data-value="1"><button data-v="1">Yes</button><button data-v="0">No</button></div></div>
+  <div class="panel-foot"><button data-go="garage" data-mode="sandbox">🛠 Sandbox Garage</button><button id="sb-start" class="primary">SET SAIL ▶</button></div>
+</div></div>
+
+<div id="online" class="screen hidden"><div class="panel wide">
+  <div class="panel-head"><button class="back" data-go="menu">‹</button><h2>🌐 Online</h2><span class="note" style="margin-left:auto">Playing as <b id="lb-name"></b></span></div>
+  <div id="lb-pick">
+    <div class="opt"><span>Connection</span><div class="seg" id="lb-way" data-value="net"><button data-v="net">Internet (room code)</button><button data-v="lan">LAN / Tailscale (direct codes)</button></div></div>
+    <div id="lb-net" class="lb-cols">
+      <div class="card-glass"><h3 class="set-h">Host a game</h3><p class="note">Make a room and share the 5-letter code.</p><button id="lb-create" class="primary">Create room</button></div>
+      <div class="card-glass"><h3 class="set-h">Join a game</h3><input id="lb-join-code" class="code-in" maxlength="5" placeholder="CODE"><button id="lb-join" class="primary">Join</button></div>
+    </div>
+    <div id="lb-lan" class="lb-cols hidden">
+      <div class="card-glass"><h3 class="set-h">Host (one code per friend)</h3><button id="lb-dh-make">1. Make an invite code</button><textarea id="lb-dh-code" readonly rows="3"></textarea><textarea id="lb-dh-reply" rows="3" placeholder="2. Paste their reply code here"></textarea><button id="lb-dh-accept">3. Connect</button></div>
+      <div class="card-glass"><h3 class="set-h">Join</h3><textarea id="lb-dj-code" rows="3" placeholder="1. Paste the invite code from the host"></textarea><button id="lb-dj-make">2. Make my reply code</button><textarea id="lb-dj-reply" readonly rows="3" placeholder="3. Send this back to the host"></textarea></div>
+    </div>
+  </div>
+  <div id="lb-room" class="hidden">
+    <div id="lb-codebox" class="lb-codebox hidden">Room code <b id="lb-code"></b><button id="lb-copy" class="small-btn">Copy</button></div>
+    <div id="lb-players" class="lb-players"></div>
+    <div id="lb-hostctl">
+      <div class="opt"><span>Mode</span><div class="seg" id="lb-mode" data-value="ffa"><button data-v="ffa">⚔️ FFA</button><button data-v="camp">🧭 Co-op campaign</button><button data-v="sandbox">🏝️ Sandbox</button></div></div>
+      <div id="lb-o-ffa">
+        <div class="opt"><span>Extra AI captains</span><div class="seg" id="lb-ffa-ai" data-value="1"><button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button></div></div>
+        <div class="opt"><span>Ships</span><div class="seg" id="lb-ffa-layout" data-value="own"><button data-v="own">Everyone has a ship</button><button data-v="one">All on one ship</button></div></div>
+      </div>
+      <div id="lb-o-camp" class="hidden"><div class="opt"><span>Difficulty</span><div class="seg" id="lb-diff" data-value="normal"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="hard">Hard</button><button data-v="ferryman">Ferryman</button></div></div></div>
+      <div id="lb-o-sand" class="hidden"><div class="opt"><span>Friendly fire</span><div class="seg" id="lb-ff" data-value="0"><button data-v="0">Off</button><button data-v="1">On</button></div></div></div>
+      <div class="opt"><span>Sea</span><div class="seg" id="lb-sea" data-value="1"><button data-v="0.5">Calm</button><button data-v="1">Normal</button><button data-v="1.8">Rough</button></div></div>
+      <div class="panel-foot"><button id="lb-start" class="primary">START ▶</button></div>
+    </div>
+    <div id="lb-wait" class="hidden"></div>
+  </div>
+  <div class="panel-foot"><span id="lb-status" class="note"></span><button id="lb-leave">Leave</button></div>
+</div></div>
+
+<div id="garage" class="screen hidden"><div class="panel wide">
+  <div class="panel-head"><button class="back" data-go="back">‹</button><h2>🛠 Garage</h2></div>
+  <div id="g-body"></div>
+</div></div>
+
+<div id="settings" class="screen hidden"><div class="panel wide">
+  <div class="panel-head"><button class="back" data-go="back">‹</button><h2>⚙ Settings</h2></div>
+  <div id="settings-body"></div>
+</div></div>
+
+<div id="pause" class="screen hidden"><div class="panel small">
+  <div class="panel-head"><h2>Paused</h2></div>
+  <button id="p-resume" class="primary">▶ Resume</button>
+  <button data-go="settings">⚙ Settings</button>
+  <button id="p-quit">🚪 Quit to menu</button>
+</div></div>
+
+<div id="results" class="screen hidden"><div class="panel">
+  <div class="panel-head"><h2 id="res-title"></h2></div>
+  <div id="res-body"></div>
+  <div class="panel-foot"><button id="r-garage">🛠 Garage</button><button id="r-menu">Menu</button><button id="r-again" class="primary">↻ Again</button><button id="r-lobby" class="primary hidden">↩ Back to the lobby</button></div>
+</div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
