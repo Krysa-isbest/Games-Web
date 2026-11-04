@@ -66,7 +66,7 @@ export function makeEnemy(E, kind, x, z, seed, extra = {}) {
   mesh.rotation.y = (seed % 628) / 100;
   E.scene.add(mesh);
   // co-op: +40 % health and +10 % damage for every extra player (solo is unchanged)
-  const extra = playerCount() - 1, hpMult = 1 + 0.4 * extra, dmgMult = 1 + 0.1 * extra;
+  const more = playerCount() - 1, hpMult = 1 + 0.4 * more, dmgMult = 1 + 0.1 * more;
   const hp = Math.round(b.hp * (0.8 + s * 0.25) * hpMult);
   const en = {
     id: E.enemies.length, kind, mesh, hp, maxHp: hp, st: 0,
