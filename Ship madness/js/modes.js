@@ -32,25 +32,25 @@ export function humans() {
   return isOnline() ? G.lobby.players.map(p => p.id === G.net.id ? { ...p, ...me } : p) : [me];
 }
 function kitFor(h, mode) {
-  if (!h.kits) { const k = kit(mode), cfg = shipCfg(mode, k.ship); return { ship: k.ship, ...cfg }; }
+  if (!h.kits) { const k = kit(mode), cfg = shipCfg(mode, k.ship); return { ship: k.ship, ...cfg, gunTypes: [...(cfg.gunTypes || [])] }; }
   return h.kits[mode] || { ship: 'tug', guns: 0, armor: 0, pump: 0, engine: 0 };
 }
 export function kitShip(mode, opts = {}, h = humans()[0]) {
   const k = kitFor(h, mode);
-  const s = spawnShip(k.ship, { team: 'player', guns: k.guns, armor: k.armor, pump: k.pump, engine: k.engine, colors: h.colors, name: `${h.name}'s ${SHIP_TYPES[k.ship].name.toLowerCase()}`, ...opts });
+  const s = spawnShip(k.ship, { team: 'player', guns: k.guns, gunTypes: k.gunTypes || [], armor: k.armor, pump: k.pump, engine: k.engine, colors: h.colors, name: `${h.name}'s ${SHIP_TYPES[k.ship].name.toLowerCase()}`, ...opts });
   populateShip(s); G.hookShip(s);
   return s;
 }
 // put a human on a ship (me directly, a guest through a message)
 export function placeHuman(id, ship, lp = null) {
-  lp = lp || ship.driverLp.clone().add(v1.set(1.2, 0, 0));
+  lp = lp || ship.spawnSpot(0);
   if (id === G.net.id) { const me = G.me; me.leaveStation(); if (!me.alive) { me.alive = true; me.hp = 100; me.out = false; } me.home = ship; me.placeOn(ship, lp); }
   else send(id, { t: 'you', s: ship.id, lp: [lp.x, lp.y, lp.z] });
 }
 function newPlayer(mode, ship, team = 'player') {
   const me = new Player(kit(mode), P.name);
   me.team = team; me.home = ship;
-  me.placeOn(ship, ship.driverLp.clone().add(v1.set(1.2, 0, 0)));
+  me.placeOn(ship, ship.spawnSpot(0));
   G.me = me; G.players = [me, ...G.players.filter(p => p.isRemote)];
   return me;
 }
@@ -64,7 +64,7 @@ export class Sandbox {
     const hs = humans();
     const home = kitShip('sandbox', { x: 0, z: 0, yaw: rand(0, 6.28) }, hs[0]);
     newPlayer('sandbox', home);
-    hs.slice(1).forEach((h, i) => placeHuman(h.id, home, home.driverLp.clone().add(v1.set(1.2 - (i + 1) * 0.8, 0, -1))));
+    hs.slice(1).forEach((h, i) => placeHuman(h.id, home, home.spawnSpot(i + 1)));
     spawnSharksNear(this.o.sharks, home);
     if (this.o.enemies) setTimeout(() => G.running && G.game === this && G.spawnEnemy?.('tug'), 4000);
     G.announce(`🏝️ Sandbox! ${isOnline() ? 'The host' : 'You'} can open the admin panel.`, 'good');
@@ -232,10 +232,10 @@ function ffaFinish(won, rivals, t) {
 
 // ================= CAMPAIGN =================
 export const DIFFS = {
-  easy: { name: 'Easy', aim: 1.6, hp: 0.8, dmg: 0.7, extra: -1, reward: 0.8 },
+  easy: { name: 'Easy', aim: 1.6, hp: 0.8, dmg: 0.7, extra: -1, reward: 0.6 },
   normal: { name: 'Normal', aim: 1, hp: 1, dmg: 1, extra: 0, reward: 1 },
-  hard: { name: 'Hard', aim: 0.75, hp: 1.25, dmg: 1.3, extra: 1, reward: 1.3 },
-  ferryman: { name: 'Ferryman', aim: 0.55, hp: 1.5, dmg: 1.6, extra: 1, reward: 1.7 },
+  hard: { name: 'Hard', aim: 0.75, hp: 1.25, dmg: 1.3, extra: 1, reward: 1.6 },
+  ferryman: { name: 'Ferryman', aim: 0.55, hp: 1.5, dmg: 1.6, extra: 1, reward: 2.4 },
 };
 export const NODE = {
   battle: { icon: '⚔️', name: 'Battle', desc: 'Sink every enemy ship.' },
@@ -272,6 +272,9 @@ function makeMap(seed) {
 export const reachableOf = (map, cur) => !cur ? map[0].map((_, i) => i) : map[cur.c][cur.i].next;
 
 // ship-wide shop items (run on the host); personal ones run on each player's own client
+export const DOCK_SHOP = [
+  { id: 'dock', name: 'Dock repair: fixes most of the damage, pumps the water out, fixes the engine', price: 10 },
+];
 export const SHIP_SHOP = [
   { id: 'repair', name: '🔧 Full repair + pump (ship)', price: 150 },
   { id: 'planks', name: '🪵 +6 planks (ship)', price: 50 },
@@ -307,8 +310,8 @@ export class Campaign {
     this.ship = kitShip('camp', { x: sp.x, z: sp.z, yaw: rand(0, 6.28) }, hs[0]);
     this.ship.storage.planks = this.o.diff === 'ferryman' ? 4 : 6;
     newPlayer('camp', this.ship);
-    hs.slice(1).forEach((h, i) => placeHuman(h.id, this.ship, this.ship.driverLp.clone().add(v1.set(1.2 - (i + 1) * 0.8, 0, -1))));
-    G.announce(`🧭 Campaign (${d.name}). Choose your route on the map${isOnline() ? ' (everyone votes)' : ''}.`, 'good');
+    hs.slice(1).forEach((h, i) => placeHuman(h.id, this.ship, this.ship.spawnSpot(i + 1)));
+    G.announce(`🧭 Campaign (${d.name}, ×${d.reward} FT). Choose your route on the map${isOnline() ? ' (everyone votes)' : ''}.`, 'good');
     this.showMap();
   }
   reachable() { return reachableOf(this.map, this.cur); }
@@ -374,7 +377,8 @@ export class Campaign {
     s.updateMatrices();
     const depth = node.c;
     this.enc = { type: node.type, t: 0, done: false, goal: 0, got: 0, enemies: [] };
-    humans().forEach((h, i) => { if (h.id !== G.net.id || G.me.frame !== s || !G.me.alive) placeHuman(h.id, s, s.driverLp.clone().add(v1.set(1.2 - i * 0.8, 0, -i * 0.6))); });
+    humans().forEach((h, i) => { if (h.id !== G.net.id || G.me.frame !== s || !G.me.alive) placeHuman(h.id, s, s.spawnSpot(i)); });
+    s.anchor.state = 'up'; s.kx = s.kz = s.side = 0;
     const ring = dist => { const a = rand(0, 6.28); return openSpot(s.x + Math.cos(a) * dist, s.z + Math.sin(a) * dist, 30, 30); };
     const crewBonus = isOnline() ? humans().length - 1 : 0;
     const enemy = (key, extra = {}) => {
@@ -445,8 +449,18 @@ export class Campaign {
       return;
     }
     this.reward(base, xp, `${NODE[e.type].icon} ${NODE[e.type].name} cleared!`);
-    setTimeout(() => { if (G.game === this && !this.over) this.showMap(); }, 3500);
+    setTimeout(() => { if (G.game === this && !this.over) this.showDock(); }, 3500);
   }
+  // after a fight: a small dock. 2 free planks, and a cheap repair for 10 FT.
+  showDock() {
+    this.phase = 'dock'; this.ship.throttle = 0;
+    const st = this.ship.storage;
+    st.planks = Math.min(12, st.planks + 2); updateStorage(this.ship);
+    G.unlock?.();
+    G.ui?.campaignDock(this, true);
+    if (isHost()) broadcast({ t: 'cdock' });
+  }
+  leaveDock() { G.ui?.closeOverlay(); this.showMap(); }
   reward(ft, xp, msg, heal = false) {
     ft = Math.round(ft * this.d.reward); xp = Math.round(xp * this.d.reward);
     this.earned += ft; this.nodesDone++;
@@ -476,19 +490,20 @@ export class Campaign {
   shipBuy(id) {
     const s = this.ship;
     if (id === 'repair') { s.repairAll(); s.pumpAll(); return true; }
+    if (id === 'dock') { if (this.docked === this.nodesDone) return false; this.docked = this.nodesDone; s.repairFraction(0.6); s.pumpAll(); s.engineHp = 100; s.fires.length = 0; return true; }
     if (id === 'planks') { if (s.storage.planks >= 12) return false; s.storage.planks = Math.min(12, s.storage.planks + 6); updateStorage(s); return true; }
     if (id === 'refit') { if (s.guns >= s.def.maxGuns) return false; this.refit(s.guns + 1); return true; }
     return false;
   }
   refit(guns) {
     const old = this.ship, cfg = shipCfg('camp', old.key);
-    const s = spawnShip(old.key, { team: 'player', guns, armor: cfg.armor, pump: cfg.pump, engine: cfg.engine, x: old.x, z: old.z, yaw: old.yaw, name: old.name, colors: old.colors });
+    const s = spawnShip(old.key, { team: 'player', guns, gunTypes: [...old.gunTypes, ...(cfg.gunTypes || []).slice(old.gunTypes.length)], armor: cfg.armor, pump: cfg.pump, engine: cfg.engine, x: old.x, z: old.z, yaw: old.yaw, name: old.name, colors: old.colors });
     populateShip(s); G.hookShip(s);
     s.storage.planks = old.storage.planks;
     for (const it of [...G.items]) if (it.ship === old) destroyItem(it);
     despawnShip(old);
     this.ship = s;
-    humans().forEach((h, i) => placeHuman(h.id, s, s.driverLp.clone().add(v1.set(1.2 - i * 0.8, 0, -i * 0.6))));
+    humans().forEach((h, i) => placeHuman(h.id, s, s.spawnSpot(i)));
   }
   leaveShop() { G.ui?.closeOverlay(); this.reward(0, 10, '🛒 Harbour visited.'); this.showMap(); }
   end() { Object.assign(DIFF, { aim: 1, hp: 1, dmg: 1 }); }

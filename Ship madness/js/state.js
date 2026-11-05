@@ -1,5 +1,5 @@
 // Shared game state, settings, profile and small helpers.
-export const VERSION = 'Prototype v0.5';
+export const VERSION = 'Prototype v0.6';
 
 export const G = {
   scene: null, camera: null, renderer: null, sun: null,
@@ -26,7 +26,7 @@ export function bumpId(id) { if (typeof id === 'number' && id > uidN) uidN = id;
 const SKEY = 'shipmadness.settings';
 export const S = Object.assign({
   sens: 1, invertY: false, fov: 75, showFps: false,
-  vol: 0.7, sfxVol: 1, ambVol: 1, musicVol: 0.5,
+  vol: 0.7, sfxVol: 1, ambVol: 1, musicVol: 0.5, menuVol: 0.6,
   preset: 'high', scale: 1, shadows: 'high', ocean: 'high', particles: 'normal', view: 'far', aa: true,
   voice: true, voiceMode: 'ptt', mic: '', micVol: 1, voiceVol: 1, noise: true,
 }, safeLoad(SKEY));

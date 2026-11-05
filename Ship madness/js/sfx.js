@@ -86,7 +86,17 @@ export const sfx = {
   empty() { tone({ f0: 1800, dur: 0.04, type: 'square', gain: 0.08 }); },
   reload(step = 0) { tone({ f0: step ? 520 : 760, dur: 0.05, type: 'square', gain: 0.07 }); noise({ dur: 0.05, freq: 3000, q: 4, type: 'bandpass', gain: 0.2 }); },
   pump() { noise({ dur: 0.08, freq: 1800, q: 3, type: 'bandpass', gain: 0.4 }); noise({ dur: 0.08, freq: 1200, q: 3, type: 'bandpass', gain: 0.4, delay: 0.14 }); },
-  cannon(pos) { noise({ dur: 0.05, freq: 2500, type: 'highpass', gain: 0.8, pos }); noise({ dur: 1.3, freq: 900, sweep: 0.08, gain: 1, pos, wet: 0.7 }); tone({ f0: 80, f1: 26, dur: 0.9, gain: 0.9, pos }); },
+  cannon(pos, kind = 'ball') {
+    if (kind === 'ac') { noise({ dur: 0.04, freq: 3000, type: 'highpass', gain: 0.6, pos }); noise({ dur: 0.25, freq: 1400, sweep: 0.2, gain: 0.7, pos, wet: 0.4 }); tone({ f0: 130, f1: 60, dur: 0.15, gain: 0.5, pos }); return; }
+    if (kind === 'rocket') { noise({ dur: 0.9, freq: 2400, sweep: 0.4, gain: 0.7, pos, attack: 0.03, wet: 0.4 }); return; }
+    if (kind === 'torpedo') { noise({ dur: 0.5, freq: 600, sweep: 0.5, gain: 0.6, pos, attack: 0.04 }); tone({ f0: 90, f1: 50, dur: 0.4, gain: 0.4, pos }); return; }
+    if (kind === 'mortar') { noise({ dur: 0.06, freq: 1800, type: 'highpass', gain: 0.7, pos }); tone({ f0: 60, f1: 22, dur: 0.8, gain: 1, pos }); noise({ dur: 0.9, freq: 500, sweep: 0.1, gain: 0.8, pos, wet: 0.6 }); return; }
+    noise({ dur: 0.05, freq: 2500, type: 'highpass', gain: 0.8, pos }); noise({ dur: 1.3, freq: 900, sweep: 0.08, gain: 1, pos, wet: 0.7 }); tone({ f0: 80, f1: 26, dur: 0.9, gain: 0.9, pos });
+  },
+  c4(pos) { this.boom(pos, 1.2); },
+  knock(pos) { noise({ dur: 0.06, freq: 1300, q: 4, type: 'bandpass', gain: 0.55, pos }); tone({ f0: 320, f1: 200, dur: 0.05, gain: 0.15, pos }); },
+  anchor(pos) { for (let i = 0; i < 14; i++) noise({ dur: 0.05, freq: 2200 + Math.random() * 800, q: 6, type: 'bandpass', gain: 0.25, pos, delay: i * 0.15 }); },
+  ratchet(pos) { noise({ dur: 0.03, freq: 3200, q: 5, type: 'bandpass', gain: 0.3, pos }); },
   boom(pos, big = 1) { noise({ dur: 1.3 + big * 0.7, freq: 1500, sweep: 0.05, gain: Math.min(1.2, 0.7 + big * 0.2), pos, wet: 0.6 }); tone({ f0: 65, f1: 20, dur: 1.1 + big * 0.5, gain: 0.95, pos }); },
   wood(pos) { noise({ dur: 0.1, freq: 800, q: 3, type: 'bandpass', gain: 0.45, pos }); tone({ f0: 240, f1: 160, dur: 0.06, gain: 0.15, pos }); },
   hit(head) { tone({ f0: head ? 1900 : 1300, dur: 0.05, type: 'triangle', gain: 0.16 }); },
@@ -133,7 +143,7 @@ async function loadSamples() {
     ambSrc.connect(amb); ambSrc.start();
   }
 }
-const LOUD = { boom: 1.2, cannon: 1.1, nuke: 1.3 };
+const LOUD = { boom: 1.2, cannon: 1.1, nuke: 1.3, c4: 1.2 };
 function playSample(name, pos) {
   const arr = SAMPLES[name];
   if (!ctx || !arr?.length) return false;
@@ -149,14 +159,19 @@ function playSample(name, pos) {
   return true;
 }
 // which argument of each effect is its position in the world
-const POS_ARG = { shot: 1, cannon: 0, boom: 0, wood: 0, splash: 0, hammer: 0, bite: 0, crash: 0, crackle: 0, bounce: 0 };
+const POS_ARG = { shot: 1, cannon: 0, boom: 0, wood: 0, splash: 0, hammer: 0, bite: 0, crash: 0, crackle: 0, bounce: 0, c4: 0, knock: 0, anchor: 0, ratchet: 0 };
+// gun types that can have their own files (audio/list.json: cannon_autocannon, cannon_mortar...); else "cannon"
+const CANNON_SLOT = { ac: 'cannon_autocannon', mortar: 'cannon_mortar', rocket: 'cannon_rockets', torpedo: 'cannon_torpedo' };
+const synths = { ...sfx };
 for (const k of Object.keys(sfx)) {
-  const synth = sfx[k];
+  const synth = synths[k];
   sfx[k] = (...a) => {
     const pos = POS_ARG[k] != null ? a[POS_ARG[k]] : null;
     if (k === 'shot' && (playSample('shot_' + a[0] + (a[2] ? '_quiet' : ''), pos) || playSample('shot_' + a[0], pos) || playSample('shot', pos))) return;
     if (k === 'boom' && a[1] >= 4 && playSample('nuke', pos)) return;
-    if (k !== 'shot' && playSample(k, pos)) return;
-    synth(...a);
+    if (k === 'cannon') { if (CANNON_SLOT[a[1]] ? playSample(CANNON_SLOT[a[1]], pos) || (a[1] === 'mortar' && playSample('cannon', pos)) : playSample('cannon', pos)) return; return synth.call(synths, ...a); }
+    if (k === 'c4' && (playSample('c4', pos) || playSample('boom', pos))) return;
+    if (k !== 'shot' && k !== 'c4' && playSample(k, pos)) return;
+    synth.call(synths, ...a);
   };
 }

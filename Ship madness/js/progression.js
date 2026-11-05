@@ -3,6 +3,7 @@
 import { P, saveProfile, newKit } from './state.js';
 import { WEAPONS, ATTACH } from './weapons.js';
 import { SHIP_TYPES } from './ship.js';
+import { CANNONS } from './cannons.js';
 
 export const SKILLS = {
   carpenter: { name: 'Carpenter', desc: 'Planks fix 100 %, furniture patches twice as much.' },
@@ -27,12 +28,14 @@ export const UNLOCKS = [
   [10, 'gunner', 400],
   [12, 'cargo', 2600],
   [14, 'repel', 450],
+  // deck gun types
+  [1, 'deckgun', 0], [4, 'autocannon', 450], [6, 'mortar', 600], [9, 'rockets', 800], [11, 'torpedo', 1000],
 ];
 export const MAX_LEVEL = 20;
 export const UPGRADES = {
   armor: { name: 'Hull plating', desc: '+1 toughness on every hull block per level.', price: [300, 650, 1100] },
   pump: { name: 'Bilge pump', desc: 'Pumps water out by itself (0.6 / 1.2 / 2 m³/s).', price: [250, 550, 950] },
-  engine: { name: 'Better rigging', desc: '+8 % speed per level.', price: [200, 450, 800] },
+  engine: { name: 'Engine tuning', desc: '+8 % top speed per level.', price: [200, 450, 800] },
 };
 export const PUMP_RATE = [0, 0.6, 1.2, 2];
 export const gunPrice = n => 150 + 150 * n;
@@ -42,9 +45,10 @@ export function kindOf(id) {
   if (ATTACH[id]) return 'attachment';
   if (SHIP_TYPES[id]) return 'ship';
   if (SKILLS[id]) return 'skill';
+  if (CANNONS[id]) return 'cannon';
   return '?';
 }
-export function nameOf(id) { return WEAPONS[id]?.name || ATTACH[id]?.name || SHIP_TYPES[id]?.name || SKILLS[id]?.name || id; }
+export function nameOf(id) { return WEAPONS[id]?.name || ATTACH[id]?.name || SHIP_TYPES[id]?.name || SKILLS[id]?.name || CANNONS[id]?.name || id; }
 export const unlockOf = id => UNLOCKS.find(u => u[1] === id) || [99, id, 0];
 
 export const xpForLevel = l => 100 + (l - 1) * 60;   // xp needed to go from level l to l+1
@@ -56,7 +60,7 @@ export function levelInfo(xp) {
 
 export const prog = mode => P.prog[mode];
 export function level(mode) { return mode === 'sandbox' ? MAX_LEVEL : levelInfo(prog(mode).xp).level; }
-export function owns(mode, id) { return mode === 'sandbox' || prog(mode).owned.includes(id); }
+export function owns(mode, id) { return mode === 'sandbox' || id === 'deckgun' || prog(mode).owned.includes(id); }
 export function unlocked(mode, id) { return level(mode) >= unlockOf(id)[0]; }
 export function ft(mode) { return mode === 'sandbox' ? Infinity : prog(mode).ft; }
 
@@ -81,7 +85,18 @@ export function kit(mode) {
 export function shipCfg(mode, key) {
   const k = kit(mode);
   if (!k.ships[key]) k.ships[key] = { guns: 0, armor: 0, pump: 0, engine: 0 };
+  if (!k.ships[key].gunTypes) k.ships[key].gunTypes = [];
   return k.ships[key];
+}
+// which gun type sits on gun pair n
+export const gunTypeOf = (cfg, n) => CANNONS[cfg.gunTypes?.[n]] ? cfg.gunTypes[n] : 'deckgun';
+export function setGunType(mode, key, n, type) {
+  if (!owns(mode, type)) return false;
+  const cfg = shipCfg(mode, key);
+  while (cfg.gunTypes.length <= n) cfg.gunTypes.push('deckgun');
+  cfg.gunTypes[n] = type;
+  saveProfile();
+  return true;
 }
 // cannons and upgrades
 export function upgradePrice(mode, key, what) {

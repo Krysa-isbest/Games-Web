@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { G, P, S, isGuest, isHost, isOnline, rand } from './state.js';
 import { NET, on, send, broadcast, act } from './net.js';
-import { spawnShip } from './ship.js';
+import { spawnShip, PLANK_FIX, FURN_K } from './ship.js';
 import { makeItem, destroyItem, placeMesh, holdItem, setBucket, spawnCrate, removeCrate, placeCrate, spawnShark, updateStorage, hookCrate, releaseCrate, crateWorld, ITEMS, raySphere } from './entities.js';
 import { Bot } from './ai.js';
 import { addProjectile, fireCannon, explode, placeC4, detonateC4, armNuke, nukeVisual, nukeBoomVisual, NUKE_R } from './weapons.js';
@@ -122,7 +122,7 @@ export function installHooks() {
 function spawnData(kind, o) {
   const V = p => p ? [r2(p.x), r2(p.y), r2(p.z)] : null;
   if (kind === 'ship') return o.netSpawn();
-  if (kind === 'item') return { id: o.id, kind: o.kind, s: o.ship?.id ?? null, p: V(o.ship ? o.lp : o.wp) };
+  if (kind === 'item') return { id: o.id, kind: o.kind, s: o.ship?.id ?? null, p: V(o.ship ? o.lp : o.wp), r: o.rotY != null ? r2(o.rotY) : null };
   if (kind === 'crate') return { id: o.id, loot: o.loot, p: V(o.wp), chute: o.chute, state: o.state };
   if (kind === 'shark') return { id: o.id, p: V(o.pos) };
   if (kind === 'bot') return { id: o.id, s: o.ship.id, lp: V(o.lp), hp: o.hp, captain: o.captain, name: o.name, team: o.team, colors: o.ship.colors };
@@ -156,7 +156,8 @@ export function sendMyState(dt) {
   if (psT > 0 || !me) return;
   psT = 1 / 15;
   const ps = { t: 'ps', id: G.net.id, s: me.frame?.id ?? null, p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yaw: r2(me.yaw), pitch: r2(me.pitch), mode: me.mode, alive: me.alive, hp: Math.round(me.hp), sea: me.inSea, uw: me.underwater, sw: me.swimming, talk: talking(), hold: me.holding?.id ?? null };
-  if ((me.mode === 'wheel' || me.mode === 'crane') && me.station) { const s = me.station, c = s.crane; ps.drive = [s.id, s.throttle, s.rudderIn, r2(c.yaw), r2(c.reach), r2(c.drop), s.brake ? 1 : 0]; }
+  if (me.mode === 'wheel' && me.station) { const s = me.station; ps.drive = [s.id, r2(s.throttle), r2(s.rudderIn)]; }
+  if (me.mode === 'crane' && me.station) { const s = me.station, c = s.crane; ps.crane = [s.id, r2(c.yaw), r2(c.reach), r2(c.drop)]; }
   if (me.mode === 'cannon') { const { ship, c } = me.station; ps.gun = [ship.id, ship.cannons.indexOf(c), r2(c.yaw), r2(c.pitch)]; }
   send('*', ps);
 }
@@ -181,6 +182,16 @@ export function installActions() {
     if (s.driver === who) { s.driver = null; s.rudderIn = 0; }
     return true;
   };
+  A.crane = (pid, sid, take) => {
+    const s = byId.ship(sid), who = avatarOf(pid);
+    if (!s) return false;
+    if (take) { if (s.crane.user && s.crane.user !== who && s.crane.user.alive !== false) return false; s.crane.user = who; return true; }
+    if (s.crane.user === who) s.crane.user = null;
+    return true;
+  };
+  A.anchor = (pid, sid) => byId.ship(sid)?.toggleAnchor() ?? false;
+  A.hammerCell = (pid, sid, n) => { const s = byId.ship(sid); if (!s || !s.orig[n]) return false; const ok = s.restoreCell(n); if (ok) { const [i, j, k] = s.ijk(n); sfx.knock(s.toWorld(v1.set(s.xOf(i), s.yOf(j), s.zOf(k)))); } return ok; };
+  A.fixEngine = (pid, sid, amount) => { const s = byId.ship(sid); if (!s) return false; s.repairEngine(Math.min(20, Math.max(0, amount))); return true; };
   A.cannon = (pid, sid, ci, take) => {
     const c = byId.ship(sid)?.cannons[ci], who = avatarOf(pid);
     if (!c) return false;
@@ -235,12 +246,12 @@ export function installActions() {
     const s = byId.ship(sid), it = byId.item(iid);
     if (!s) return 0;
     const wp = new THREE.Vector3(...p);
-    const fix = plank ? s.repairAt(wp, 1.2, 60, carp ? 1 : 0.9) : s.repairAt(wp, 0.9, (it?.def.fix || 3) * 4 * (carp ? 2 : 1), 1);
+    const fix = plank ? s.repairAt(wp, 1.2, PLANK_FIX, carp ? 1 : 0.9) : s.repairAt(wp, 0.9, Math.round((it?.def.fix || 3) * 4 * FURN_K * (carp ? 2 : 1)), 1);
     if (fix && it) destroyItem(it);
     if (fix) sfx.hammer(wp);
     return fix;
   };
-  A.bail = (pid, sid, ci, amount, iid) => { const c = byId.ship(sid)?.comps[ci]; if (!c || c.vol < 0.05) return false; c.vol = Math.max(0, c.vol - amount); const it = byId.item(iid); if (it) setBucket(it, true); return true; };
+  A.bail = (pid, sid, ci, amount) => { const c = byId.ship(sid)?.comps[ci]; if (!c || c.vol < 0.05) return false; c.vol = Math.max(0, c.vol - Math.min(6, amount)); return true; };
   A.pour = (pid, sid, ci, amount) => { const c = byId.ship(sid)?.comps[ci]; if (c) c.vol += Math.max(0, Math.min(6, amount)); return true; };
   A.bucket = (pid, iid, full) => { const it = byId.item(iid); if (it) setBucket(it, full); return true; };
   A.extinguish = (pid, sid, p) => byId.ship(sid)?.extinguish(new THREE.Vector3(...p), 2.6) || 0;
@@ -298,6 +309,7 @@ export function installGuestHandlers() {
   on('cvote', m => G.ui.campaignVotes(m.votes));
   on('cclose', () => { G.ui.closeOverlay(); G.toast('⛵ Setting sail! Click the game to take control.', 'good'); });
   on('cshop', () => G.ui.campaignShop(null, false));
+  on('cdock', () => G.ui.campaignDock(null, false));
   on('creward', m => { G.campReward?.(m); if (m.heal && G.me) G.me.hp = 100; });
   on('cres', m => G.campResults?.(m.r));
   on('ffaEnd', m => G.game?.ffaEnd?.(m));
@@ -310,7 +322,7 @@ function spawnFromNet(kind, d) {
   } else if (kind === 'item') {
     if (byId.item(d.id)) return;
     const s = d.s ? byId.ship(d.s) : null;
-    makeItem(d.kind, s, new THREE.Vector3(...(d.p || [0, -50, 0])), d.id);
+    makeItem(d.kind, s, new THREE.Vector3(...(d.p || [0, -50, 0])), d.id, d.r);
   } else if (kind === 'crate') {
     if (byId.crate(d.id)) return;
     const c = spawnCrate(new THREE.Vector3(...d.p), d.loot, d.chute, d.id);
@@ -340,7 +352,7 @@ function applySnap(m) {
   for (const [id, sid, p, holder, full] of m.items) {
     const it = byId.item(id);
     if (!it) continue;
-    if (it.full !== !!full && it.holder !== G.me) setBucket(it, !!full);
+    if (it.kind === 'bucket' && it.full !== !!full && it.holder !== G.me) setBucket(it, !!full);
     if (holder) { if (holder !== G.net.id && it.holder?.id !== holder) { const a = byId.player(holder); if (a) holdItem(it, a); } continue; }
     if (it.holder === G.me) continue;       // I dropped it a moment ago
     const s = sid ? byId.ship(sid) : null;
@@ -358,7 +370,8 @@ export function installSharedHandlers() {
     if (!a || !a.isRemote) return;
     a.apply(m);
     if (isHost()) {     // drivers and gunners steer through their state
-      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; s.crane.yaw = m.drive[3]; s.crane.reach = m.drive[4]; s.crane.drop = m.drive[5]; s.brake = !!m.drive[6]; } }
+      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; } }
+      if (m.crane) { const s = byId.ship(m.crane[0]); if (s && s.crane.user === a) { s.crane.yaw = m.crane[1]; s.crane.reach = m.crane[2]; s.crane.drop = m.crane[3]; } }
       if (m.gun) { const c = byId.ship(m.gun[0])?.cannons[m.gun[1]]; if (c && c.user === a) { c.yaw = m.gun[2]; c.pitch = m.gun[3]; } }
     }
   });
@@ -378,9 +391,9 @@ function playFx(m) {
   const P3 = a => new THREE.Vector3(...a);
   if (m.k === 'shot') { const a = P3(m.a), b = P3(m.b); FX.tracer(a, b); sfx.shot(m.w, a, m.q); if (!m.q) FX.flash(a.x, a.y, a.z, 2); }
   else if (m.k === 'tr') { const a = P3(m.a), b = P3(m.b); FX.tracer(a, b); sfx.shot(m.w || 'ak', a); }
-  else if (m.k === 'cannon') { const p = P3(m.p), d = P3(m.d); for (let i = 0; i < 8; i++) FX.smoke(p.x + d.x * i * 0.3, p.y, p.z + d.z * i * 0.3, 1.1); FX.flash(p.x, p.y, p.z, 14); sfx.cannon(p); }
+  else if (m.k === 'cannon') { const p = P3(m.p), d = P3(m.d), big = m.t === 'ac' ? 0.35 : 1; for (let i = 0; i < 8 * big; i++) FX.smoke(p.x + d.x * i * 0.3, p.y, p.z + d.z * i * 0.3, 1.1 * big); FX.flash(p.x, p.y, p.z, 14 * big); sfx.cannon(p, m.t || 'ball'); }
   else if (m.k === 'proj') { if (isGuest()) addProjectile(m.kind, P3(m.p), P3(m.v), null, { visual: true }); }
-  else if (m.k === 'boom') { if (isGuest()) explode(P3(m.p), { r: m.r, visualOnly: true }); }
+  else if (m.k === 'boom') { if (isGuest()) explode(P3(m.p), { r: m.r, visualOnly: true, sound: m.s || true }); }
   else if (m.k === 'nuke') nukeVisual(m.x, m.z, m.time);
   else if (m.k === 'nukeBoom') nukeBoomVisual(m.x, m.z);
   else if (m.k === 'splash') { FX.splash(m.p[0], m.p[1], m.p[2], m.s); sfx.splash(P3(m.p), m.s); }

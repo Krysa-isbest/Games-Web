@@ -58,6 +58,8 @@ const SECTIONS = () => [
     ['🪵 +6 planks', w => { const s = shipOf(w); if (s) { s.storage.planks = Math.min(12, s.storage.planks + 6); updateStorage(s); } }],
     ['🔥 Start a fire', w => { const s = shipOf(w); if (s) s.ignite(new THREE.Vector3(rand(-1.5, 1.5), 0, rand(-s.hl, s.hl) * 0.5), true); }],
     ['💥 Sink it', w => { const s = shipOf(w); if (s) for (const c of s.comps) c.vol = c.cap; }],
+    ['⚙️ Break the engine', w => { const s = shipOf(w); if (s) s.damageEngine(200); }],
+    ['⚙️ Fix the engine', w => { const s = shipOf(w); if (s) s.engineHp = 100; }],
   ]],
   ['World', false, [
     ['🌊 Calm sea', () => { G.seaAmp = 0.4; }], ['🌊 Normal sea', () => { G.seaAmp = 1; }], ['⛈️ Storm', () => { G.seaAmp = 2.1; }],

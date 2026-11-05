@@ -41,7 +41,7 @@ export function musicTick(dt) {
     if (want === 'battle' || (slot === 'battle' ? (G.musicCalm = (G.musicCalm || 0) + dt) > 6 : true)) { slot = want; G.musicCalm = 0; start(slot); }
   } else G.musicCalm = 0;
   fade = Math.min(1, fade + dt / 2.5);
-  const v = (S.musicVol ?? 0.5) * S.vol;
+  const v = (slot === 'menu' ? S.menuVol ?? 0.6 : S.musicVol ?? 0.5) * S.vol;
   if (cur) cur.volume = Math.min(1, v * fade);
   if (old) { old.volume = Math.max(0, v * (1 - fade)); if (fade >= 1) { old.pause(); old = null; } }
 }

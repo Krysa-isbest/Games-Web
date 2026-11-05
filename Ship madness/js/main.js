@@ -15,7 +15,7 @@ import * as UI from './ui.js';
 import { setAdmin, spawnEnemy, canAdmin } from './admin.js';
 import { Sandbox, FFA, Campaign, GuestGame, campReward, campResults } from './modes.js';
 import { kit, shipCfg } from './progression.js';
-import { setGarageHook, garageMode } from './garage.js';
+import { setGarageHook, garageMode, garageCamera, leaveGarageCamera, initGarage3D } from './garage.js';
 import { renderWorld, resizeUnderwater, setUnderwaterPixelRatio } from './underwater.js';
 import { NET, leaveNet } from './net.js';
 import { Avatar, installHooks, installActions, installGuestHandlers, installSharedHandlers, hostTick, sendMyState, sendChat, startVoice, voiceTick, stopVoice, byId } from './online.js';
@@ -82,8 +82,9 @@ let showcase = null, shotT = 0, shot = 0;
 function makeShowcase(mode = garageMode()) {
   clearWorld();
   const k = kit(mode), cfg = shipCfg(mode, k.ship);
-  showcase = spawnShip(k.ship, { team: 'player', x: 0, z: 0, yaw: 0.4, guns: cfg.guns, name: 'Your ship' });
+  showcase = spawnShip(k.ship, { team: 'player', x: 0, z: 0, yaw: 0.4, guns: cfg.guns, gunTypes: cfg.gunTypes || [], armor: cfg.armor, name: 'Your ship' });
   showcase.throttle = 1; showcase.rudderIn = 0.25;
+  G.showcase = showcase;
   shotT = 0;
 }
 setGarageHook(mode => { if (!G.running) makeShowcase(mode); });
@@ -122,7 +123,7 @@ function clearWorld() {
   if (G.me) { G.me.dispose(); for (const ch of [...G.camera.children]) G.camera.remove(ch); }
   for (const p of G.players) if (p.isRemote) p.remove();
   G.me = null; G.players = []; G.game = null; G.voxOut = [];
-  showcase = null;
+  showcase = null; G.showcase = null;
 }
 
 G.hookShip = s => {
@@ -225,6 +226,7 @@ function backToLobby() {
 }
 
 initUI();
+initGarage3D();
 function initUI() {
   UI.initUI({
     start,
@@ -248,7 +250,7 @@ function initUI() {
       G.lobby.players = G.lobby.players.filter(p => p.id !== pid);
       const a = byId.player(pid);
       if (a) {
-        for (const s of G.ships) { if (s.driver === a) s.driver = null; for (const c of s.cannons) if (c.user === a) c.user = null; }
+        for (const s of G.ships) { if (s.driver === a) s.driver = null; if (s.crane.user === a) s.crane.user = null; for (const c of s.cannons) if (c.user === a) c.user = null; }
         for (const it of G.items) if (it.holder === a) { it.holder = null; it.ship = a.frame; it.lp = a.frame ? a.pos.clone() : null; it.wp = a.frame ? null : a.worldPos(); G.netHook?.('despawn', 'item', it); }
         a.remove(); G.players = G.players.filter(p => p !== a);
         G.game?.onDeath?.(a, null, 'left');
@@ -312,8 +314,14 @@ function frame() {
     if (pressed('Escape') && G.admin.open) { setAdmin(false); lock(); }
   } else if (!G.running) {
     for (const s of G.ships) s.update(dt);
-    cinematic(dt);
+    if (UI.currentScreen() === 'garage') { document.getElementById('fade').classList.remove('on'); garageCamera(camera, dt); }
+    else {
+      leaveGarageCamera(camera);
+      if (showcase && showcase.throttle === 0) { showcase.throttle = 1; showcase.rudderIn = 0.25; }
+      cinematic(dt);
+    }
   }
+  if (G.running) leaveGarageCamera(camera);
   FX.update(live || !G.running ? dt : 0);
   if (G.running && G.me) G.me.updateCamera(camera);
   else if (G.running) { const s = G.ships[0]; if (s) { camera.position.set(s.x + 30, 15, s.z + 30); camera.lookAt(s.x, 2, s.z); } }

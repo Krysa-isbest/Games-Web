@@ -5,7 +5,7 @@ import { listMics, startMicTest, stopMicTest, micLevel } from './voice.js';
 import { setVolume, sfx } from './sfx.js';
 
 const $ = id => document.getElementById(id);
-let tab = 'general', H = null, listening = null, meterRaf = 0;
+let tab = 'general', H = null, listening = null, meterRaf = 0, shownTab = null;
 export function initSettings(h) { H = h; }
 
 const slider = (label, k, min, max, step, fmt = v => v, hint = '') =>
@@ -14,7 +14,8 @@ const toggle = (label, k, hint = '') =>
   `<div class="set-row"><label>${label}${hint ? `<small>${hint}</small>` : ''}</label><div class="ctl"><button class="switch ${S[k] ? 'on' : ''}" data-t="${k}"></button></div></div>`;
 const choice = (label, k, opts, hint = '') =>
   `<div class="set-row"><label>${label}${hint ? `<small>${hint}</small>` : ''}</label><div class="ctl"><div class="seg" data-c="${k}">${opts.map(([v, n]) => `<button data-v="${v}" class="${String(S[k]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div></div></div>`;
-const FMT = { sens: v => (+v).toFixed(2), fov: v => v + '°', scale: v => Math.round(v * 100) + '%', vol: v => Math.round(v * 100) + '%', sfxVol: v => Math.round(v * 100) + '%', ambVol: v => Math.round(v * 100) + '%', micVol: v => Math.round(v * 100) + '%', voiceVol: v => Math.round(v * 100) + '%' };
+const PCT = v => Math.round(v * 100) + '%';
+const FMT = { sens: v => (+v).toFixed(2), fov: v => v + '°', scale: PCT, vol: PCT, sfxVol: PCT, ambVol: PCT, micVol: PCT, voiceVol: PCT, musicVol: PCT, menuVol: PCT };
 const GFX = ['scale', 'shadows', 'ocean', 'particles', 'view', 'aa'];
 
 function general() {
@@ -36,12 +37,13 @@ function graphics() {
 }
 function audio() {
   return `<div class="set-h">Sound</div>` +
-    slider('Master volume', 'vol', 0, 1, 0.05, FMT.vol) +
-    slider('Effects', 'sfxVol', 0, 1, 0.05, FMT.sfxVol) +
-    slider('Music', 'musicVol', 0, 1, 0.05, FMT.sfxVol, 'Your own music from the audio folder.') +
-    slider('Sea & wind', 'ambVol', 0, 1.5, 0.05, FMT.ambVol) +
+    slider('Master volume', 'vol', 0, 1, 0.01, FMT.vol) +
+    slider('Effects', 'sfxVol', 0, 1, 0.01, FMT.sfxVol) +
+    slider('Main menu music', 'menuVol', 0, 1, 0.01, FMT.menuVol, 'The song in the main menu, Garage and Settings.') +
+    slider('In-game music', 'musicVol', 0, 1, 0.01, FMT.musicVol, 'Sailing, battle and boss music (audio folder).') +
+    slider('Sea & wind', 'ambVol', 0, 1.5, 0.01, FMT.ambVol) +
     `<div class="set-h">Voice chat</div>` +
-    toggle('Voice chat', 'voice', 'Talk to your crew in online games (online play comes next).') +
+    toggle('Voice chat', 'voice', 'Talk to your crew in online games.') +
     choice('Mode', 'voiceMode', [['ptt', `Push to talk (${keyName(BINDS.ptt)})`], ['open', 'Open mic']]) +
     `<div class="set-row"><label>Microphone</label><div class="ctl"><select id="mic-sel"><option value="">Default</option></select></div></div>` +
     slider('Mic volume', 'micVol', 0, 2, 0.05, FMT.micVol) +
@@ -53,7 +55,8 @@ function controls() {
   const used = {};
   for (const [a, c] of Object.entries(BINDS)) (used[c] ||= []).push(a);
   // keys that are allowed to share (they are used in different situations)
-  const okShare = new Set(['dive|crane', 'use|craneUp', 'jump|grab', 'crane|dive', 'craneUp|use', 'grab|jump']);
+  const pairs = [['dive', 'crane'], ['jump', 'grab'], ['reload', 'anchor'], ['reload', 'craneUp'], ['anchor', 'craneUp']];
+  const okShare = new Set(pairs.flatMap(([a, b]) => [a + '|' + b, b + '|' + a]));
   const groups = {};
   for (const [a, d] of Object.entries(ACTIONS)) (groups[d.group] ||= []).push(a);
   let h = '<p class="note">Click a key, then press the new one (Esc cancels). Mouse: LMB shoot / use, RMB aim, wheel switches weapons.</p>';
@@ -72,9 +75,12 @@ export function openSettings(t) { if (t) tab = t; render(); }
 export function closeSettings() { stopMicTest(); cancelAnimationFrame(meterRaf); listening = null; }
 
 function render() {
-  const tabs = [['general', 'General'], ['graphics', 'Graphics'], ['audio', 'Audio & voice'], ['controls', 'Controls']];
-  $('settings-body').innerHTML = `<div class="tabs">${tabs.map(([k, n]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <div class="set-body">${{ general, graphics, audio, controls }[tab]()}</div>`;
+  const tabs = [['general', 'General', 'Mouse, view, interface'], ['graphics', 'Graphics', 'Quality and performance'], ['audio', 'Audio & voice', 'Volume, music, microphone'], ['controls', 'Controls', 'Rebind every key']];
+  const scroll = shownTab === tab ? $('settings-body').querySelector('.set-body')?.scrollTop || 0 : 0;
+  shownTab = tab;
+  $('settings-body').innerHTML = `<div class="s2"><nav class="s2-tabs">${tabs.map(([k, n, d]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}"><b>${n}</b><small>${d}</small></button>`).join('')}</nav>
+    <div class="set-body">${{ general, graphics, audio, controls }[tab]()}</div></div>`;
+  $('settings-body').querySelector('.set-body').scrollTop = scroll;
   const root = $('settings-body');
   root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { closeSettings(); tab = b.dataset.tab; render(); sfx.click(); });
   root.querySelectorAll('input[data-k]').forEach(el => el.oninput = () => {

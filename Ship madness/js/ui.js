@@ -1,11 +1,12 @@
 // Menus, HUD, toasts, minimap, results, the campaign map and shop.
 import { G, P, S, VERSION, saveProfile, MAP_HALF } from './state.js';
-import { SHIP_TYPES } from './ship.js';
-import { WEAPONS } from './weapons.js';
+import { SHIP_TYPES, THROTTLE_NAME } from './ship.js';
+import { WEAPONS, SLOTS } from './weapons.js';
+import { cannonOf } from './cannons.js';
 import { ISLANDS } from './islands.js';
 import { sfx } from './sfx.js';
 import { levelInfo, prog } from './progression.js';
-import { NODE, reachableOf, SHIP_SHOP, personalShop } from './modes.js';
+import { NODE, reachableOf, SHIP_SHOP, DOCK_SHOP, personalShop } from './modes.js';
 import { openGarage } from './garage.js';
 import { openSettings, closeSettings, initSettings } from './settings.js';
 import { kn } from './keys.js';
@@ -13,7 +14,6 @@ import { talking } from './voice.js';
 import { openOnline } from './lobby.js';
 
 const $ = id => document.getElementById(id);
-const THROTTLE = ['Reverse', 'Stop', 'Slow', 'Half', 'Full'];
 const SCREENS = ['menu', 'sandbox', 'ffa', 'camp', 'online', 'garage', 'settings', 'pause', 'results'];
 const SUB = new Set(['garage', 'settings']);
 let back = 'menu', current = null, H = null;
@@ -28,6 +28,7 @@ export function show(id) {
   if (id !== current) sfx.whoosh?.();
   current = id;
 }
+export const currentScreen = () => current;
 export const hideScreens = () => { if (current === 'settings') closeSettings(); for (const s of SCREENS) $(s).classList.add('hidden'); current = null; };
 
 export function toast(text, kind = '') {
@@ -54,12 +55,14 @@ const segVal = id => $(id).dataset.value;
 
 export function buildHelp() {
   $('help').innerHTML = `<h3>Controls</h3>
-    <p><b>${kn('forward')}${kn('left')}${kn('back')}${kn('right')}</b> move · <b>${kn('sprint')}</b> sprint · <b>${kn('jump')}</b> jump / swim up · <b>${kn('dive')}</b> dive</p>
-    <p><b>${kn('use')}</b> use (helm, deck gun, planks, items, crates) · <b>${kn('drop')}</b> drop</p>
+    <p><b>${kn('forward')}${kn('left')}${kn('back')}${kn('right')}</b> move · <b>${kn('sprint')}</b> sprint · <b>${kn('jump')}</b> jump / swim up · <b>${kn('dive')}</b> dive · walk into a ladder to climb it</p>
+    <p><b>${kn('use')}</b> use (helm, deck gun, crane, planks, items, crates) · <b>${kn('drop')}</b> drop</p>
     <p><b>LMB</b> shoot · <b>RMB</b> aim · <b>${kn('reload')}</b> reload · <b>${kn('slot1')}–${kn('slot4')}</b> weapons · <b>${kn('detonate')}</b> detonate C4</p>
-    <p><b>Helm:</b> ${kn('forward')}/${kn('back')} speed · ${kn('left')}/${kn('right')} steer · ${kn('crane')} crane · ${kn('use')} let go</p>
-    <p><b>Crane:</b> ${kn('left')}/${kn('right')} turn · ${kn('forward')}/${kn('back')} reach · ${kn('craneDown')} lower · ${kn('craneUp')} raise · ${kn('grab')} grab</p>
-    <p><b>Holes:</b> plank from the storage (stern hold) fixes ~90 %. <b>Water:</b> bucket in the flood water, throw it over the railing. <b>Fire:</b> full bucket on it.</p>
+    <p><b>Tools:</b> ${kn('slot5')} bucket · ${kn('slot6')} hammer (one block at a time, free) · ${kn('slot7')} wrench (the engine in the stern hold)</p>
+    <p><b>Helm:</b> ${kn('forward')}/${kn('back')} throttle (tap or hold) · ${kn('left')}/${kn('right')} rudder · ${kn('anchor')} anchor · ${kn('view')} camera · ${kn('use')} let go</p>
+    <p><b>Deck gun:</b> mouse aims the barrel · LMB fire · RMB zoom</p>
+    <p><b>Crane</b> (at the stern): mouse / ${kn('left')}${kn('right')} turn · ${kn('forward')}/${kn('back')} boom · ${kn('craneDown')}/${kn('craneUp')} or wheel: hook · ${kn('grab')} grab</p>
+    <p><b>Holes:</b> plank from the storage (stern hold) patches a hole. <b>Water:</b> bucket in the flood water, throw it over the railing. <b>Fire:</b> full bucket on it.</p>
     <p><b>${kn('admin')}</b> admin (sandbox) · <b>${kn('help')}</b> this card · <b>${kn('ptt')}</b> push to talk · <b>Esc</b> pause</p>`;
 }
 
@@ -180,7 +183,7 @@ export function campaignShop(game, hostUI) {
     const me = G.me, ft = prog('camp').ft;
     const ship = SHIP_SHOP.map(it => ({ ...it, ship: true, ok: () => true }));
     const items = [...ship, ...personalShop(me)];
-    ov.innerHTML = `<div class="ov-box shop"><h2>🛒 Harbour shop</h2>
+    ov.innerHTML = `<div class="ov-box shopbox"><h2>🛒 Harbour shop</h2>
       <p class="note">Your campaign FT: <b>${ft}</b> · ❤️ ${Math.ceil(me.hp)}. Ship items help the whole crew; anyone can pay.</p>
       <div class="shop-list">${items.map((it, n) => `<div class="shop-item"><span>${it.name}</span><button data-n="${n}" ${!it.ok() || ft < it.price ? 'disabled' : ''}>${it.price ? it.price + ' FT' : 'Free'}</button></div>`).join('')}</div>
       <div class="row">${hostUI ? '<button id="shop-leave" class="primary">⛵ Set sail</button>' : '<span class="note">Waiting for the host to set sail…</span>'}</div></div>`;
@@ -194,6 +197,29 @@ export function campaignShop(game, hostUI) {
       draw();
     });
     const l = $('shop-leave'); if (l) l.onclick = () => game.leaveShop();
+  };
+  draw();
+}
+// after a fight: a small dock. 2 free planks, a cheap repair. Host: real game object; guests: through the host.
+export function campaignDock(game, hostUI) {
+  const ov = $('overlay');
+  ov.classList.remove('hidden');
+  let bought = false;
+  const draw = () => {
+    const ft = prog('camp').ft, s = G.me?.home || G.ships.find(x => x.team === 'player' && !x.sunk);
+    const st = s?.stats();
+    ov.innerHTML = `<div class="ov-box shopbox"><h2>⚓ Back at the dock</h2>
+      <p class="note">The harbour master threw in <b>2 free planks</b>. Your campaign FT: <b>${ft}</b>${st ? ` · Hull ${Math.round(st.hull * 100)}% · Water ${Math.round(st.flood * 100)}% · Engine ${Math.round(st.engine)}%` : ''}</p>
+      <div class="shop-list">${DOCK_SHOP.map((it, n) => `<div class="shop-item"><span>🔧 ${it.name}</span><button data-n="${n}" ${bought || ft < it.price ? 'disabled' : ''}>${bought ? 'Done' : it.price + ' FT'}</button></div>`).join('')}</div>
+      <div class="row">${hostUI ? '<button id="dock-leave" class="primary">🧭 To the map</button>' : '<span class="note">Waiting for the host…</span>'}</div></div>`;
+    ov.querySelectorAll('[data-n]').forEach(b => b.onclick = async () => {
+      const it = DOCK_SHOP[+b.dataset.n], p = prog('camp');
+      if (p.ft < it.price || bought) return;
+      const ok = hostUI ? G.game.shipBuy(it.id) : await G.netAct('shopShip', it.id);
+      if (ok) { p.ft -= it.price; saveProfile(); sfx.coin(); bought = true; toast('🔧 The dock crew patched you up.', 'good'); } else { bought = true; toast('Someone already paid for the repair.'); }
+      draw();
+    });
+    const l = $('dock-leave'); if (l) l.onclick = () => game.leaveDock();
   };
   draw();
 }
@@ -211,22 +237,42 @@ export function updateHUD(dt) {
   const s = me.inv[me.slot], def = s && WEAPONS[s.id];
   let w = '';
   if (me.holding) w = `<b>${me.holding.def.name}</b>`;
+  else if (def?.tool) w = `<b>${def.name}</b>` + (s.id === 'bucket' ? ` <span class="small">${s.amount > 0.05 ? Math.round(s.amount / s.cap * 100) + '% full' : 'empty'}</span>` : '');
   else if (def) w = `<b>${def.name}</b> ` + (s.mag != null ? `<span>${s.mag}</span> / ${G.admin.infAmmo ? '∞' : s.reserve}${me.gun.reload > 0 ? ' <em>reloading…</em>' : ''}` : `× ${s.count}`);
-  const slots = ['primary', 'secondary', 'gadget', 'special'].map((k, i) => me.inv[k] ? `<i class="${me.slot === k ? 'on' : ''}">${i + 1} ${WEAPONS[me.inv[k].id].name}</i>` : '').join('');
-  $('weapon').innerHTML = w + `<div class="slots">${slots}</div>` + (G.c4s.some(c => c.owner === me) ? '<div class="c4">💣 F = detonate C4</div>' : '');
+  const slots = SLOTS.map((k, i) => me.inv[k] ? `<i class="${me.slot === k ? 'on' : ''}${WEAPONS[me.inv[k].id].tool ? ' tool' : ''}">${kn('slot' + (i + 1))} ${WEAPONS[me.inv[k].id].name}</i>` : '').join('');
+  $('weapon').innerHTML = w + `<div class="slots">${slots}</div>` + (G.c4s.some(c => c.owner === me) ? `<div class="c4">💣 ${kn('detonate')} = detonate C4</div>` : '');
   const ship = me.stationShip();
   const sp = $('ship-panel');
   sp.classList.toggle('hidden', !ship);
   if (ship) {
     const st = ship.stats();
     const comps = ship.comps.map(c => `<div class="comp${ship.leakComps?.[c.i] ? ' leaking' : ''}" title="${c.name}${ship.leakComps?.[c.i] ? ' (leaking!)' : ''}"><div style="height:${Math.min(100, c.vol / c.cap * 100)}%"></div></div>`).join('');
+    // engine telegraph: astern .. stop .. full, the needle is the throttle, the rudder below
+    const tPos = (st.throttle + 1) / 4 * 100, rPos = 50 + ship.rudder * 45;
     sp.innerHTML = `<b>${ship.name}</b>${ship.sinking ? ' <em class="bad">SINKING!</em>' : ''}
       <div class="bar"><span>Hull</span><div class="track"><div class="fill hull" style="width:${st.hull * 100}%"></div></div><small>${Math.round(st.hull * 100)}%</small></div>
       <div class="bar"><span>Water</span><div class="track"><div class="fill water" style="width:${st.flood * 100}%"></div></div><small>${Math.round(st.flood * 100)}%</small></div>
+      <div class="bar"><span>Engine</span><div class="track"><div class="fill eng${st.engine <= 0 ? ' dead' : ''}" style="width:${st.engine}%"></div></div><small>${st.engine <= 0 ? 'DOWN' : Math.round(st.engine) + '%'}</small></div>
       <div class="comps">${comps}<small>stern · mid · bow</small></div>
+      ${st.engine <= 0 ? `<div class="fire">⚙️ Engine down! Wrench (${kn('slot7')}) in the stern hold</div>` : ''}
       ${st.leak > 0.05 ? `<div class="leak">💧 Leaking ${st.leak.toFixed(1)} m³/s</div>` : ''}
       ${st.fires ? `<div class="fire">🔥 ${st.fires} fire${st.fires > 1 ? 's' : ''} on board! (bucket)</div>` : ''}
-      <div class="sp">⚓ ${THROTTLE[st.throttle + 1]} · ${(Math.abs(st.speed) * 1.94).toFixed(0)} kn · 🪵 ${ship.storage?.planks ?? 0} · 💥 ${ship.guns}/side</div>`;
+      <div class="telegraph"><div class="tg-scale"><span>ASTERN</span><span>STOP</span><span>SLOW</span><span>HALF</span><span>FULL</span></div><div class="tg-track"><i style="left:${tPos}%"></i></div><div class="tg-rudder"><i style="left:${rPos}%"></i></div></div>
+      <div class="sp">${THROTTLE_NAME(st.throttle)} · ${(Math.abs(st.speed) * 1.94).toFixed(0)} kn${st.anchor !== 'up' ? ` · ⚓ ${st.anchor === 'down' ? 'anchored' : st.anchor}` : ''} · 🪵 ${ship.storage?.planks ?? 0} · 💥 ${ship.guns} pairs</div>`;
+  }
+  // deck gun sight
+  const gs = $('gunsight');
+  gs.classList.toggle('hidden', me.mode !== 'cannon' || !me.alive);
+  if (me.mode === 'cannon') {
+    const c = me.station.c, T = cannonOf(c);
+    const ready = c.over ? 0 : 1 - Math.min(1, c.cd / (T.reload || 1));
+    $('gs-name').textContent = T.name.toUpperCase();
+    $('gs-reload').style.width = (ready * 100) + '%';
+    $('gs-reload').classList.toggle('ok', ready >= 1);
+    $('gs-heat').parentElement.classList.toggle('hidden', !T.heat);
+    if (T.heat) { $('gs-heat').style.width = Math.min(100, (c.heat || 0) / T.heat * 100) + '%'; $('gs-heat').classList.toggle('over', !!c.over); }
+    $('gs-state').textContent = c.over ? 'OVERHEATED' : ready >= 1 ? 'READY' : 'RELOADING';
+    $('gs-zoom').textContent = me.gunZoom > 1.3 ? `ZOOM ${me.gunZoom.toFixed(1)}×` : '';
   }
   const mh = G.game?.hud?.() || '';
   $('mode-hud').innerHTML = mh; $('mode-hud').classList.toggle('hidden', !mh);
@@ -234,7 +280,7 @@ export function updateHUD(dt) {
   $('prompt').classList.toggle('hidden', !me.prompt || !me.alive);
   // crosshair with spread
   const cross = $('cross');
-  cross.classList.toggle('hidden', me.mode !== 'walk' || me.scoped || !me.alive || !!me.holding || me.gun.ads > 0.8);
+  cross.classList.toggle('hidden', (me.mode !== 'walk' && me.mode !== 'ladder') || me.scoped || !me.alive || me.gun.ads > 0.8);
   const px = innerHeight / (2 * Math.tan(G.camera.fov * Math.PI / 360));
   cross.style.setProperty('--gap', (6 + me.gun.spread * px) + 'px');
   $('scope').classList.toggle('hidden', !me.scoped);

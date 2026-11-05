@@ -7,6 +7,7 @@ import { FX } from './fx.js';
 import { sfx } from './sfx.js';
 import { IN } from './input.js';
 import { hit } from './keys.js';
+import { CANNONS, cannonOf } from './cannons.js';
 
 // att = attachment slots the gun accepts
 export const WEAPONS = {
@@ -21,7 +22,12 @@ export const WEAPONS = {
   c4: { name: 'C4', slot: 'gadget', count: 3 },
   flare: { name: 'Airstrike flare', slot: 'special' },
   nuke: { name: 'Nuke remote', slot: 'special' },
+  // tools: always with you
+  bucket: { name: 'Bucket', slot: 'bucket', tool: true },
+  hammer: { name: 'Hammer', slot: 'hammer', tool: true },
+  wrench: { name: 'Wrench', slot: 'wrench', tool: true },
 };
+export const TOOLS = ['bucket', 'hammer', 'wrench'];
 export const PRIMARIES = ['smg', 'ak', 'lmg', 'shotgun', 'sniper'];
 export const SECONDARIES = ['pistol', 'revolver'];
 export const GADGETS = ['grenade', 'c4'];
@@ -109,10 +115,11 @@ export function explode(pos, { r = 2, power = 6, dmg = 100, owner = null, sound 
       if (t.isShark) t.stun(8, pos);
       else if (!(t.isPlayer && owner?.isPlayer && owner !== t && !G.ff)) t.hurt(dmg * (1 - d / R), owner, 'boom', pos);
     }
-    if (isHost() && !fromProj) G.netFx?.({ k: 'boom', p: [pos.x, pos.y, pos.z], r });
+    if (isHost() && !fromProj) G.netFx?.({ k: 'boom', p: [pos.x, pos.y, pos.z], r, s: sound === 'c4' ? 'c4' : undefined });
   }
   FX.explosion(pos.x, pos.y, pos.z, r);
-  if (sound) sfx.boom(pos, r / 2);
+  if (sound === 'c4') sfx.c4(pos);
+  else if (sound) sfx.boom(pos, r / 2);
 }
 
 // ---------- projectiles ----------
@@ -124,69 +131,129 @@ const bombMat = new THREE.MeshStandardMaterial({ color: '#4a5240', metalness: 0.
 const nadeMat = new THREE.MeshStandardMaterial({ color: '#3f4a2c', roughness: 0.6 });
 const shellMat = new THREE.MeshStandardMaterial({ color: '#c9a03c', metalness: 0.8, roughness: 0.3 });
 
+// what each projectile does: gravity, the blast (r = radius, power = block damage, dmg = damage to people,
+// hit = extra damage on a direct hit), fire chance
+export const PSPEC = {
+  ball: { grav: 9.8, r: 1.3, power: 8, dmg: 70, hit: 90, fire: 0.25, near: 5 },
+  ac: { grav: 6, r: 0.55, power: 5, dmg: 22, hit: 28, fire: 0.05, small: true },
+  mortar: { grav: 9.8, r: 2.3, power: 11, dmg: 120, hit: 110, fire: 0.5, near: 7 },
+  rocket: { grav: 1.5, r: 1.15, power: 7, dmg: 65, hit: 70, fire: 0.35 },
+  torpedo: { grav: 9.8, r: 2.1, power: 13, dmg: 150, hit: 0, fire: 0, run: 24 },
+  bomb: { grav: 4, r: 2.6, power: 10, dmg: 150, fire: 0.6 },
+  flare: { grav: 9.8 }, grenade: { grav: 9.8 },
+};
+const acMat = new THREE.MeshBasicMaterial({ color: '#ffd27a' });
+const rocketMat = new THREE.MeshStandardMaterial({ color: '#d8d4c8', metalness: 0.4, roughness: 0.5 });
+const torpMat = new THREE.MeshStandardMaterial({ color: '#3a4046', metalness: 0.6, roughness: 0.4 });
+
 export function fireCannon(ship, c, owner, reloadMul = 1) {
-  if (c.cd > 0) return false;
+  const T = cannonOf(c);
+  if (c.cd > 0 || c.over) return false;
+  const heat = () => { if (T.heat) { c.heat = (c.heat || 0) + 1; if (c.heat >= T.heat) c.over = true; } };
   if (isGuest()) {       // the host fires it; we only predict the reload
-    c.cd = 2.6 * reloadMul;
+    c.cd = T.reload * reloadMul; heat();
     G.netAct?.('fireCannon', ship.id, ship.cannons.indexOf(c), c.yaw, c.pitch, reloadMul);
     return true;
   }
-  c.cd = (owner?.isBot ? 4.5 : 2.6) * reloadMul;
+  c.cd = T.reload * reloadMul * (owner?.isBot ? (T.heat ? 1.6 : 1.7) : 1);
+  heat();
   const [pos, dir] = ship.cannonMuzzle(c);
-  const vel = dir.clone().multiplyScalar(62).add(ship.velocity(tmp));
-  vel.y -= ship.vy;
-  addProjectile('ball', pos, vel, owner);
-  for (let i = 0; i < 8; i++) FX.smoke(pos.x + dir.x * i * 0.3, pos.y, pos.z + dir.z * i * 0.3, 1.1);
-  FX.flash(pos.x, pos.y, pos.z, 14);
-  sfx.cannon(pos);
-  G.netFx?.({ k: 'cannon', p: [pos.x, pos.y, pos.z], d: [dir.x, dir.y, dir.z] });
-  if (G.me && G.camera.position.distanceTo(pos) < 6) G.shake = Math.max(G.shake || 0, 0.5);
+  const base = ship.velocity(tmp).clone(); base.y = 0;
+  const n = T.salvo || 1;
+  for (let i = 0; i < n; i++) {
+    const d = dir.clone();
+    if (n > 1) { d.x += rand(-0.02, 0.02); d.y += rand(-0.012, 0.02); d.z += rand(-0.02, 0.02); d.normalize(); }
+    if (T.proj === 'ac') { d.x += rand(-0.006, 0.006); d.y += rand(-0.006, 0.006); d.normalize(); }
+    const fire = () => addProjectile(T.proj, pos.clone().addScaledVector(d, i * 0.1), d.clone().multiplyScalar(T.speed).add(base), owner, { from: ship });
+    if (i === 0) fire(); else setTimeout(fire, i * 110);
+  }
+  const big = T.proj === 'ac' ? 0.35 : T.proj === 'torpedo' ? 0.5 : 1;
+  for (let i = 0; i < 8 * big; i++) FX.smoke(pos.x + dir.x * i * 0.3, pos.y, pos.z + dir.z * i * 0.3, 1.1 * big);
+  FX.flash(pos.x, pos.y, pos.z, 14 * big);
+  sfx.cannon(pos, T.proj);
+  G.netFx?.({ k: 'cannon', p: [pos.x, pos.y, pos.z], d: [dir.x, dir.y, dir.z], t: T.proj });
+  if (G.me && G.camera.position.distanceTo(pos) < 6) G.shake = Math.max(G.shake || 0, 0.5 * big);
   return true;
 }
 export function addProjectile(kind, pos, vel, owner, extra = {}) {
-  const geo = kind === 'bomb' ? new THREE.CylinderGeometry(0.25, 0.25, 1.4, 8) : kind === 'grenade' ? new THREE.SphereGeometry(0.07, 8, 6) : ballGeo;
-  const mesh = new THREE.Mesh(geo, kind === 'flare' ? flareMat : kind === 'bomb' ? bombMat : kind === 'grenade' ? nadeMat : kind === 'ball' ? shellMat : ballMat);
+  let geo = ballGeo, mat = ballMat;
+  if (kind === 'bomb') { geo = new THREE.CylinderGeometry(0.25, 0.25, 1.4, 8); mat = bombMat; }
+  else if (kind === 'grenade') { geo = new THREE.SphereGeometry(0.07, 8, 6); mat = nadeMat; }
+  else if (kind === 'flare') mat = flareMat;
+  else if (kind === 'ball') mat = shellMat;
+  else if (kind === 'ac') mat = acMat;
+  else if (kind === 'mortar') mat = bombMat;
+  else if (kind === 'rocket') { geo = new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8); mat = rocketMat; }
+  else if (kind === 'torpedo') { geo = new THREE.CapsuleGeometry(0.22, 1.6, 4, 10); mat = torpMat; }
+  const mesh = new THREE.Mesh(geo, mat);
   if (kind === 'flare') mesh.scale.setScalar(0.5);
   if (kind === 'ball') mesh.scale.set(0.6, 0.6, 1.4);
+  if (kind === 'ac') mesh.scale.set(0.25, 0.25, 1.2);
+  if (kind === 'mortar') mesh.scale.setScalar(1.25);
   mesh.position.copy(pos); mesh.castShadow = true;
   G.scene.add(mesh);
-  PROJ.push({ kind, pos: pos.clone(), vel: vel.clone(), owner, mesh, life: kind === 'grenade' ? 2.6 : 12, ...extra });
+  PROJ.push({ kind, spec: PSPEC[kind] || PSPEC.ball, pos: pos.clone(), vel: vel.clone(), owner, mesh, life: kind === 'grenade' ? 2.6 : kind === 'torpedo' ? 16 : 12, ...extra });
   if (isHost()) G.netFx?.({ k: 'proj', kind, p: [pos.x, pos.y, pos.z], v: [vel.x, vel.y, vel.z] });
 }
-export function arcPoints(pos, vel, n = 60) {
+// the flight path of a shot (for the dashed aiming line); `grav` per gun type
+export function arcPoints(pos, vel, grav = 9.8, n = 70) {
   const pts = [], p = pos.clone(), v = vel.clone();
   for (let i = 0; i < n; i++) {
     pts.push(p.clone());
-    v.y -= 9.8 * 0.08; p.addScaledVector(v, 0.08);
+    v.y -= grav * 0.08; p.addScaledVector(v, 0.08);
     if (p.y < waveHeight(p.x, p.z)) { pts.push(p.clone()); break; }
   }
   return pts;
 }
 export function updateProjectiles(dt) {
   for (let i = PROJ.length - 1; i >= 0; i--) {
-    const pr = PROJ[i];
+    const pr = PROJ[i], sp = pr.spec;
     const vis = pr.visual || isGuest();
     pr.life -= dt;
     if (pr.kind === 'grenade' && pr.life <= 0) { explode(pr.pos, { r: 1.6, power: 6, dmg: 120, owner: pr.owner, fire: 0.15, fromProj: true, visualOnly: vis }); G.scene.remove(pr.mesh); PROJ.splice(i, 1); continue; }
     const prev = pr.pos.clone();
-    pr.vel.y -= (pr.kind === 'bomb' ? 4 : 9.8) * dt;
+    const boom = (p, o) => explode(p, { ...o, owner: pr.owner, fromProj: true, visualOnly: vis });
+    // torpedoes run just under the surface once they are in the water
+    if (pr.kind === 'torpedo' && pr.running) {
+      const sea = waveHeight(pr.pos.x, pr.pos.z);
+      pr.pos.addScaledVector(pr.vel, dt); pr.pos.y = sea - 0.75;
+      const seg = tmp.copy(pr.pos).sub(prev), len = seg.length(), dir = seg.clone().divideScalar(len || 1);
+      let hit = null;
+      for (const s of G.ships) {
+        if (s.gone || s === pr.from || Math.hypot(s.x - prev.x, s.z - prev.z) > s.hl + len + 3) continue;
+        const h = s.raycast(prev, dir, len + 0.3);
+        if (h && (!hit || h.dist < hit.dist)) hit = h;
+      }
+      if (Math.random() < dt * 18) FX.foam(pr.pos.x, sea, pr.pos.z, 0.5);
+      if (Math.random() < dt * 8) FX.bubbles?.(pr.pos.x, pr.pos.y, pr.pos.z, 2);
+      if (hit || groundHeight(pr.pos.x, pr.pos.z) > pr.pos.y || pr.life <= 0) {
+        if (hit || pr.life > 0) { boom(hit ? hit.point : pr.pos, sp); FX.splash(pr.pos.x, sea, pr.pos.z, 3); sfx.splash(pr.pos, 3); }
+        G.scene.remove(pr.mesh); PROJ.splice(i, 1); continue;
+      }
+      pr.mesh.position.copy(pr.pos); pr.mesh.lookAt(tmp.copy(pr.pos).add(pr.vel)); pr.mesh.rotateX(Math.PI / 2);
+      continue;
+    }
+    pr.vel.y -= (sp.grav ?? 9.8) * dt;
     pr.pos.addScaledVector(pr.vel, dt);
     const seg = tmp.copy(pr.pos).sub(prev), len = seg.length();
     const dir = seg.clone().divideScalar(len || 1);
     let hit = null;
     for (const s of G.ships) {
       if (s.gone || Math.hypot(s.x - prev.x, s.z - prev.z) > s.hl + len + 3) continue;
+      if (pr.kind === 'torpedo' && pr.life > 15.6 && s === pr.from) continue;
       const h = s.raycast(prev, dir, len);
       if (h && (!hit || h.dist < hit.dist)) hit = h;
     }
-    if (pr.kind === 'ball' && !vis) for (const t of targets()) {
+    if (sp.hit && !vis) for (const t of targets()) {
       if (t.isShark) continue;
       const d = t.hitTest(prev, dir, hit ? hit.dist : len);
       if (d) hit = { dist: d.dist, point: prev.clone().addScaledVector(dir, d.dist), target: t };
     }
     if (pr.kind === 'flare') FX.fire(pr.pos.x, pr.pos.y, pr.pos.z, 0.5);
     if (pr.kind === 'bomb') FX.smoke(pr.pos.x, pr.pos.y + 0.8, pr.pos.z, 0.3);
-    if (pr.kind === 'ball' && Math.random() < 0.6) FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.25);
+    if ((pr.kind === 'ball' || pr.kind === 'mortar') && Math.random() < 0.6) FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.25);
+    if (pr.kind === 'rocket') { FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.45); if (Math.random() < 0.7) FX.fire(pr.pos.x - dir.x * 0.5, pr.pos.y - dir.y * 0.5, pr.pos.z - dir.z * 0.5, 0.35); }
+    if (pr.kind === 'ac' && Math.random() < 0.5) FX.spark(pr.pos.x, pr.pos.y, pr.pos.z);
     const sea = waveHeight(pr.pos.x, pr.pos.z);
     const gr = groundHeight(pr.pos.x, pr.pos.z);
     let done = false;
@@ -197,33 +264,42 @@ export function updateProjectiles(dt) {
       pr.mesh.position.copy(pr.pos);
       continue;
     }
-    const boom = (p, o) => explode(p, { ...o, owner: pr.owner, fromProj: true, visualOnly: vis });
     if (hit) {
       const p = hit.point;
-      if (pr.kind === 'ball') { if (hit.target && !vis) hit.target.hurt(90, pr.owner, 'cannon'); boom(p, { r: 1.3, power: 8, dmg: 70, fire: 0.25 }); }
-      else if (pr.kind === 'bomb') boom(p, { r: 2.6, power: 10, dmg: 150, fire: 0.6 });
-      else if (pr.kind === 'flare' && !vis) landFlare(p, hit.ship, pr.owner);
+      if (pr.kind === 'flare') { if (!vis) landFlare(p, hit.ship, pr.owner); }
+      else if (pr.kind === 'torpedo') boom(p, { ...sp, r: 1.2, power: 6 });         // dropped onto a deck: a dud-ish blast
+      else { if (hit.target && !vis) hit.target.hurt(sp.hit, pr.owner, 'cannon'); boom(p, sp); }
       done = true;
     } else if (pr.pos.y < sea && !insideAnyHull(pr.pos)) {
-      if (pr.kind === 'bomb') boom(pr.pos, { r: 2.6, power: 10, dmg: 150 });
+      if (pr.kind === 'torpedo') {         // splash in, then run
+        pr.running = true; FX.splash(pr.pos.x, sea, pr.pos.z, 1.4); sfx.splash(pr.pos, 1.5);
+        const h = Math.hypot(pr.vel.x, pr.vel.z) || 1; pr.vel.set(pr.vel.x / h * sp.run, 0, pr.vel.z / h * sp.run);
+        pr.mesh.position.copy(pr.pos);
+        continue;
+      }
+      if (pr.kind === 'bomb') boom(pr.pos, sp);
       else if (pr.kind === 'flare') { if (!vis) landFlare(pr.pos, null, pr.owner); }
-      else { FX.splash(pr.pos.x, sea, pr.pos.z, 2.4); sfx.splash(pr.pos, 2); if (!vis) nearMissDamage(pr); }
+      else {
+        const s = sp.small ? 0.7 : pr.kind === 'mortar' ? 3.2 : 2.4;
+        FX.splash(pr.pos.x, sea, pr.pos.z, s); sfx.splash(pr.pos, s * 0.8);
+        if (!vis && sp.near) nearMissDamage(pr, sp.near);
+      }
       done = true;
     } else if (gr > pr.pos.y) {
       if (pr.kind === 'flare') { if (!vis) landFlare(pr.pos, null, pr.owner); }
-      else boom(pr.pos, { r: pr.kind === 'bomb' ? 2.6 : 1.1, power: 1, dmg: pr.kind === 'bomb' ? 150 : 70 });
+      else boom(pr.pos, { ...sp, power: 1 });
       done = true;
     }
     if (done || pr.life <= 0) { G.scene.remove(pr.mesh); PROJ.splice(i, 1); continue; }
     pr.mesh.position.copy(pr.pos);
-    if (pr.kind === 'bomb' || pr.kind === 'ball') { pr.mesh.lookAt(tmp.copy(pr.pos).add(pr.vel)); if (pr.kind === 'bomb') pr.mesh.rotateX(Math.PI / 2); }
+    if (pr.kind !== 'grenade' && pr.kind !== 'flare') { pr.mesh.lookAt(tmp.copy(pr.pos).add(pr.vel)); if (pr.kind === 'bomb' || pr.kind === 'rocket' || pr.kind === 'torpedo') pr.mesh.rotateX(Math.PI / 2); }
   }
 }
-function nearMissDamage(pr) {
+function nearMissDamage(pr, power = 5) {
   for (const s of G.ships) {
     if (s.gone) continue;
     const lp = s.toLocal(tmp2.copy(pr.pos));
-    if (s.inBox(lp, 0.8)) s.damageSphere(pr.pos, 1.0, 5, pr.owner);
+    if (s.inBox(lp, 0.8)) s.damageSphere(pr.pos, 1.0, power, pr.owner);
   }
 }
 export function clearProjectiles() { for (const p of PROJ) G.scene.remove(p.mesh); PROJ.length = 0; }
@@ -414,7 +490,7 @@ export function detonateC4(owner) {
     const p = c.ship ? c.ship.toWorld(c.lp.clone()) : c.wp;
     c.mesh.parent?.remove(c.mesh);
     G.netHook?.('despawn', 'c4', c);
-    explode(p, { r: 2.2, power: 10, dmg: 140, owner, fire: 0.5 });
+    explode(p, { r: 2.2, power: 10, dmg: 140, owner, fire: 0.5, sound: 'c4' });
   }, i * 120));
   G.c4s = G.c4s.filter(c => c.owner !== owner);
   return true;
@@ -443,6 +519,7 @@ export function makeInventory(kit) {
     primary: gunState(lo.primary, att[lo.primary]), secondary: gunState(lo.secondary, att[lo.secondary]),
     gadget: lo.gadget && WEAPONS[lo.gadget] ? { id: lo.gadget, count: WEAPONS[lo.gadget].count } : null,
     special: null,
+    bucket: { id: 'bucket', amount: 0, cap: 3 }, hammer: { id: 'hammer' }, wrench: { id: 'wrench' },
   };
 }
 // a gun's numbers after its attachments
@@ -546,6 +623,25 @@ function buildGun(id, att = {}) {
     muzzle = new THREE.Vector3(0, 0, -0.1); fore = null;
   } else if (id === 'flare') {
     part(g, CYL(0.018, 0.24), new THREE.MeshStandardMaterial({ color: '#d8261c' }), 0, 0, -0.06); muzzle = new THREE.Vector3(0, 0, -0.2); fore = null;
+  } else if (id === 'bucket') {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.1, 0.24, 12, 1, true), M.steel); b.material = b.material.clone(); b.material.side = THREE.DoubleSide;
+    b.position.set(-0.05, -0.05, -0.12); g.add(b);
+    part(g, new THREE.CircleGeometry(0.1, 12).rotateX(-Math.PI / 2), M.steel, -0.05, -0.17, -0.12);
+    const w = part(g, new THREE.CircleGeometry(0.13, 12).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#2f6f6a', roughness: 0.1, transparent: true, opacity: 0.9 }), -0.05, 0.03, -0.12);
+    w.visible = false; g.userData.water = w;
+    const h = part(g, new THREE.TorusGeometry(0.14, 0.008, 4, 12, Math.PI), M.steel, -0.05, 0.07, -0.12); h.rotation.y = Math.PI / 2;
+    muzzle = new THREE.Vector3(0, 0, -0.2); fore = null;
+  } else if (id === 'hammer') {
+    part(g, B(0.03, 0.03, 0.34), M.wood, 0, 0, -0.05);
+    part(g, B(0.05, 0.05, 0.13), M.steel, 0, 0.0, -0.22, 0, Math.PI / 2, 0);
+    part(g, B(0.02, 0.05, 0.06), M.steel, -0.07, 0.0, -0.22);
+    muzzle = new THREE.Vector3(0, 0, -0.25); fore = null;
+  } else if (id === 'wrench') {
+    const red = new THREE.MeshStandardMaterial({ color: '#b8281c', roughness: 0.5 });
+    part(g, B(0.03, 0.02, 0.3), red, 0, 0, -0.05);
+    part(g, B(0.035, 0.022, 0.12), M.steel, 0, 0, -0.24);
+    part(g, B(0.075, 0.022, 0.03), M.steel, 0, 0, -0.31); part(g, B(0.02, 0.022, 0.05), M.steel, 0.03, 0, -0.34);
+    muzzle = new THREE.Vector3(0, 0, -0.33); fore = null;
   } else {
     part(g, B(0.1, 0.04, 0.16), new THREE.MeshStandardMaterial({ color: '#e3c228' }), 0, -0.02, -0.05); part(g, CYL(0.022, 0.02), M.red, 0, 0.01, -0.07).rotation.x = 0; muzzle = new THREE.Vector3(0, 0, -0.1); fore = null;
   }
@@ -592,7 +688,7 @@ function muzzleFlash() {
   return g;
 }
 
-const SLOTS = ['primary', 'secondary', 'gadget', 'special'];
+export const SLOTS = ['primary', 'secondary', 'gadget', 'special', 'bucket', 'hammer', 'wrench'];
 export class Gunner {
   constructor(player) {
     this.p = player;
@@ -655,7 +751,7 @@ export class Gunner {
     this.equip = Math.max(0, this.equip - dt * 4);
     this.sprint = damp(this.sprint, sprinting && !this.wantAds ? 1 : 0, 10, dt);
     if (!active) { this.wantAds = false; this.ads = damp(this.ads, 0, 14, dt); this.show(false); return; }
-    for (let i = 0; i < 4; i++) if (hit('slot' + (i + 1))) this.switchTo(SLOTS[i]);
+    for (let i = 0; i < SLOTS.length; i++) if (hit('slot' + (i + 1))) this.switchTo(SLOTS[i]);
     if (IN.wheel) {
       const have = SLOTS.filter(s => p.inv[s]);
       const i = have.indexOf(p.slot);
@@ -666,6 +762,16 @@ export class Gunner {
     this.show(true);
     if (!s) return;
     const def = WEAPONS[s.id];
+    if (def.tool) {        // tools are run by the player; here they only sway and swing
+      this.wantAds = false; this.ads = damp(this.ads, 0, 14, dt);
+      this.animate(dt, s, null, moving);
+      const sw = this.swing || 0;
+      this.swing = Math.max(0, sw - dt * 3.5);
+      this.holder.rotation.x += -Math.sin(Math.min(1, sw) * Math.PI) * 0.9;
+      this.holder.position.z += -Math.sin(Math.min(1, sw) * Math.PI) * 0.08;
+      if (s.id === 'bucket' && this.shown?.g.userData.water) { const w = this.shown.g.userData.water, f = (s.amount || 0) / (s.cap || 3); w.visible = f > 0.02; w.position.y = -0.15 + 0.17 * f; w.scale.setScalar(0.8 + 0.2 * f); }
+      return;
+    }
     const isGun = s.mag != null;
     const st = isGun ? gunStats(s) : null;
     this.wantAds = isGun && IN.rmb && this.reload <= 0;

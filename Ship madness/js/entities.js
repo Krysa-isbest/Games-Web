@@ -20,9 +20,16 @@ export const ITEMS = {
   chair: { name: 'Chair', fix: 3 },
   table: { name: 'Table', fix: 6 },
   box: { name: 'Wooden box', fix: 4 },
+  bed: { name: 'Bunk bed', fix: 6 },
+  locker: { name: 'Locker', fix: 5 },
+  sofa: { name: 'Sofa', fix: 6 },
+  shelf: { name: 'Shelf', fix: 5 },
+  bench: { name: 'Workbench', fix: 6 },
 };
+export const HEAVY = new Set(['barrel', 'table', 'box', 'chair', 'bed', 'locker', 'sofa', 'shelf', 'bench']);
 const woodM = std('#8a6038'), darkWood = std('#5c3d22'), metalM = std('#4a4d52', { metalness: 0.6, roughness: 0.4 });
 const bucketWater = new THREE.MeshStandardMaterial({ color: '#2f7f95', roughness: 0.1 });
+const sheetM = std('#d9dde2'), blanketM = std('#3d5f8a'), lockerM = std('#6f7f86', { metalness: 0.5, roughness: 0.45 }), fabricM = std('#8a3b33'), cushionM = std('#a8564c');
 
 function itemMesh(kind) {
   const g = new THREE.Group();
@@ -37,12 +44,33 @@ function itemMesh(kind) {
   else if (kind === 'barrel') { add(new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12), darkWood, 0, 0.4, 0); add(new THREE.TorusGeometry(0.31, 0.02, 4, 14).rotateX(Math.PI / 2), metalM, 0, 0.2, 0); add(new THREE.TorusGeometry(0.31, 0.02, 4, 14).rotateX(Math.PI / 2), metalM, 0, 0.6, 0); }
   else if (kind === 'chair') { add(new THREE.BoxGeometry(0.45, 0.05, 0.45), woodM, 0, 0.45, 0); add(new THREE.BoxGeometry(0.45, 0.5, 0.05), woodM, 0, 0.72, -0.2); for (const [x, z] of [[-0.19, -0.19], [0.19, -0.19], [-0.19, 0.19], [0.19, 0.19]]) add(new THREE.BoxGeometry(0.05, 0.45, 0.05), woodM, x, 0.22, z); }
   else if (kind === 'table') { add(new THREE.BoxGeometry(1.2, 0.07, 0.8), woodM, 0, 0.75, 0); for (const [x, z] of [[-0.5, -0.32], [0.5, -0.32], [-0.5, 0.32], [0.5, 0.32]]) add(new THREE.BoxGeometry(0.07, 0.75, 0.07), woodM, x, 0.37, z); }
+  else if (kind === 'bed') {      // bunk bed: two berths, a ladder
+    for (const y of [0.25, 1.15]) { add(new THREE.BoxGeometry(0.9, 0.12, 2.0), darkWood, 0, y, 0); add(new THREE.BoxGeometry(0.82, 0.12, 1.9), sheetM, 0, y + 0.12, 0); add(new THREE.BoxGeometry(0.84, 0.05, 1.2), blanketM, 0, y + 0.2, 0.3); add(new THREE.BoxGeometry(0.5, 0.1, 0.3), sheetM, 0, y + 0.22, -0.75); }
+    for (const [x, z] of [[-0.42, -0.95], [0.42, -0.95], [-0.42, 0.95], [0.42, 0.95]]) add(new THREE.BoxGeometry(0.06, 1.55, 0.06), darkWood, x, 0.77, z);
+  } else if (kind === 'locker') {
+    add(new THREE.BoxGeometry(0.6, 1.75, 0.5), lockerM, 0, 0.88, 0);
+    add(new THREE.BoxGeometry(0.01, 1.6, 0.02), metalM, 0, 0.88, 0.255);
+    for (const x of [-0.12, 0.12]) { add(new THREE.BoxGeometry(0.2, 0.02, 0.01), metalM, x, 1.55, 0.255); add(new THREE.BoxGeometry(0.03, 0.12, 0.02), metalM, x * 0.4, 0.95, 0.26); }
+  } else if (kind === 'sofa') {
+    add(new THREE.BoxGeometry(1.6, 0.4, 0.8), fabricM, 0, 0.2, 0); add(new THREE.BoxGeometry(1.6, 0.5, 0.2), fabricM, 0, 0.6, -0.3);
+    for (const x of [-0.72, 0.72]) add(new THREE.BoxGeometry(0.16, 0.6, 0.8), fabricM, x, 0.3, 0);
+    for (const x of [-0.36, 0.36]) add(new THREE.BoxGeometry(0.66, 0.12, 0.6), cushionM, x, 0.46, 0.05);
+  } else if (kind === 'shelf') {
+    for (const x of [-0.48, 0.48]) add(new THREE.BoxGeometry(0.05, 1.6, 0.4), darkWood, x, 0.8, 0);
+    for (const y of [0.1, 0.6, 1.1, 1.58]) add(new THREE.BoxGeometry(1.0, 0.04, 0.4), woodM, 0, y, 0);
+    for (const [x, y, s] of [[-0.25, 0.25, 0.22], [0.2, 0.24, 0.2], [-0.1, 0.75, 0.24], [0.3, 1.24, 0.18]]) add(new THREE.BoxGeometry(s, s, s), std(['#b39b6e', '#6a7a3a', '#9a4a2a', '#c9b98d'][Math.round(x * 10 + 5) % 4]), x, y + s / 2, 0);
+  } else if (kind === 'bench') {
+    add(new THREE.BoxGeometry(1.4, 0.08, 0.6), woodM, 0, 0.85, 0);
+    for (const [x, z] of [[-0.62, -0.24], [0.62, -0.24], [-0.62, 0.24], [0.62, 0.24]]) add(new THREE.BoxGeometry(0.07, 0.85, 0.07), darkWood, x, 0.42, z);
+    add(new THREE.BoxGeometry(1.3, 0.05, 0.5), darkWood, 0, 0.25, 0);
+    add(new THREE.BoxGeometry(0.16, 0.14, 0.14), metalM, 0.5, 0.96, 0.15); add(new THREE.BoxGeometry(0.3, 0.04, 0.06), metalM, -0.3, 0.9, 0.1);
+  }
   else add(new THREE.BoxGeometry(0.6, 0.5, 0.6), woodM, 0, 0.25, 0);
   return g;
 }
 
-export function makeItem(kind, ship, p, id = null) {
-  const it = { id: id ?? nextId(), kind, def: ITEMS[kind], ship, lp: ship ? p.clone() : null, wp: ship ? null : p.clone(), mesh: itemMesh(kind), full: false, holder: null };
+export function makeItem(kind, ship, p, id = null, rot = null) {
+  const it = { id: id ?? nextId(), kind, def: ITEMS[kind], ship, lp: ship ? p.clone() : null, wp: ship ? null : p.clone(), mesh: itemMesh(kind), full: false, holder: null, rotY: rot ?? undefined };
   bumpId(it.id);
   placeMesh(it);
   G.items.push(it);
@@ -60,7 +88,8 @@ export function itemWorld(it, out = new THREE.Vector3()) {
   if (it.holder) return it.holder.eyeWorld(out);
   return it.ship ? it.ship.toWorld(out.copy(it.lp)) : out.copy(it.wp);
 }
-const HOLD_OFF = { bucket: [0.32, -0.55, -0.7], plank: [0.3, -0.4, -0.9], barrel: [0, -0.95, -1.1], chair: [0, -1.0, -1.0], table: [0, -1.25, -1.4], box: [0, -0.75, -1.0] };
+const HOLD_OFF = { bucket: [0.32, -0.55, -0.7], plank: [0.3, -0.4, -0.9], barrel: [0, -0.95, -1.1], chair: [0, -1.0, -1.0], table: [0, -1.25, -1.4], box: [0, -0.75, -1.0],
+  bed: [0, -1.4, -1.9], locker: [0, -1.5, -1.0], sofa: [0, -1.05, -1.5], shelf: [0, -1.4, -1.2], bench: [0, -1.25, -1.4] };
 export function holdItem(it, player) {
   it.holder = player;
   it.mesh.parent?.remove(it.mesh);
@@ -114,10 +143,38 @@ export function updateItems(dt) {
   }
 }
 
-// every ship comes with planks in storage, two buckets and some furniture (items: host / solo only)
+// furniture that makes sense for the rooms: bunks and lockers for the crew, sofas and tables in lounges,
+// shelves, workbenches and cargo in the holds. All of it can be carried off to patch holes.
+// [length along the wall, depth from the wall, built along x (so it gets turned to lie along the wall)]
+const FURN = { bed: [2.0, 0.9, false], locker: [0.6, 0.5, true], sofa: [1.6, 0.8, true], shelf: [1.0, 0.4, true], bench: [1.4, 0.6, true], box: [0.6, 0.6, false], barrel: [0.6, 0.6, false], table: [1.2, 0.8, true], chair: [0.45, 0.45, false] };
+const ROOMS = {
+  tug: { L: ['bed', 'locker'], R: ['bench'], mid: 0 },
+  yacht: { L: ['sofa', 'sofa'], R: ['bed', 'locker'], mid: 1 },
+  trawler: { L: ['bed', 'locker'], R: ['bed', 'shelf'], mid: 1 },
+  ferry: { L: ['sofa', 'sofa', 'sofa', 'sofa', 'sofa'], R: ['sofa', 'sofa', 'sofa', 'sofa', 'locker'], mid: 3 },
+  cargo: { L: ['bed', 'locker'], R: ['shelf', 'locker'], mid: 1 },
+  cruise: { L: ['sofa', 'sofa', 'sofa', 'sofa', 'sofa', 'sofa'], R: ['sofa', 'sofa', 'sofa', 'sofa', 'sofa', 'shelf'], mid: 4 },
+};
+const HOLDS = [
+  { L: ['barrel', 'barrel'], R: ['box'] },                                    // stern: next to the plank storage and the engine
+  { L: ['bed', 'bed', 'locker', 'bed'], R: ['shelf', 'bed', 'box', 'bed'] },  // middle: crew quarters
+  { L: ['box', 'box', 'barrel', 'box'], R: ['bench', 'barrel', 'box'] },     // bow: stores
+];
+function lineWall(s, list, side, y, z0, z1, wallX, skip = () => false) {
+  let z = z0;
+  for (const kind of list) {
+    const [len, dep, alongX] = FURN[kind];
+    while (z + len <= z1 && skip(z, z + len)) z += 0.3;
+    if (z + len > z1) break;
+    const wx = typeof wallX === 'function' ? wallX(z + len / 2) : wallX;
+    makeItem(kind, s, new THREE.Vector3(side * (wx - dep / 2), y, z + len / 2), null, alongX ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (kind === 'bed' ? 0 : rand(0, 6)));
+    z += len + 0.3;
+  }
+}
+// every ship comes with planks in storage and furniture (items: host / solo only)
 export function populateShip(s) {
-  const fl = VS, dt = s.deckTop, [b0, b1] = s.bulks;
-  s.storage = { lp: new THREE.Vector3(-1.0, fl, s.zAt(2.2)), planks: s.startPlanks ?? 6 };
+  const fl = VS, dt = s.deckTop, [b0] = s.bulks;
+  s.storage = { lp: new THREE.Vector3(-1.0, fl, s.zAt(1.9)), planks: s.startPlanks ?? 6 };
   const st = new THREE.Group();
   const crate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 1.8), darkWood); crate.position.y = 0.25; crate.castShadow = true;
   st.add(crate);
@@ -131,21 +188,31 @@ export function populateShip(s) {
   s.group.add(st);
   updateStorage(s);
   if (isGuest()) return;
-  makeItem('bucket', s, new THREE.Vector3(1.2, fl, s.zOf(b0 + 4)));
-  makeItem('bucket', s, new THREE.Vector3(-0.9, dt, s.cabinFront + 1.0));
-  const t0 = s.tiers[0], fx = t0.half * VS * 0.55, fz = s.zOf(t0.k0 + 4);
-  if (t0.half * VS > 1.8) {
-    makeItem('table', s, new THREE.Vector3(fx, dt, fz + 0.4));
-    makeItem('chair', s, new THREE.Vector3(fx, dt, fz - 0.6));
-    makeItem('chair', s, new THREE.Vector3(fx, dt, fz + 1.4));
-  } else {
-    makeItem('chair', s, new THREE.Vector3(0.5, dt, fz));
-    makeItem('chair', s, new THREE.Vector3(-0.5, dt, fz));
+  void b0;
+  // the room in the first deck of the superstructure (behind the stairs down)
+  const t0 = s.tiers[0], room = ROOMS[s.key] || ROOMS.tug;
+  const rz0 = s.zOf(t0.k0) + 0.5, rz1 = s.zOf(s.stair.k0) - 0.5, wallX = t0.half * VS - VS - 0.05;
+  if (rz1 - rz0 > 1.2 && wallX > 0.9) {
+    lineWall(s, room.L, -1, dt, rz0, rz1, wallX);
+    lineWall(s, room.R, 1, dt, rz0, rz1, wallX);
+    // tables with chairs down the middle when the room is wide enough
+    if (wallX > 1.9) for (let n = 0; n < room.mid; n++) {
+      const z = rz0 + 1.2 + n * 2.6;
+      if (z + 1 > rz1) break;
+      makeItem('table', s, new THREE.Vector3(0, dt, z), null, Math.PI / 2);
+      makeItem('chair', s, new THREE.Vector3(0.8, dt, z), null, -Math.PI / 2);
+      makeItem('chair', s, new THREE.Vector3(-0.8, dt, z), null, Math.PI / 2);
+    }
   }
-  makeItem('barrel', s, new THREE.Vector3(1.0, fl, s.zAt(2.6)));
-  makeItem('barrel', s, new THREE.Vector3(1.0, fl, s.zAt(3.6)));
-  makeItem('box', s, new THREE.Vector3(0.9, fl, s.zOf(b1 + 8)));
-  makeItem('box', s, new THREE.Vector3(-0.9, fl, s.zOf(b1 + 14)));
+  // the holds, along the hull sides
+  const stw = s.stair, sz0 = s.zOf(stw.k0) - 0.4, sz1 = s.zOf(stw.k1) + 0.6;
+  s.comps.forEach((c, ci) => {
+    const z0 = s.zOf(c.k0) + 0.5 + (ci === 0 ? 2.5 : 0), z1 = s.zOf(c.k1) - 0.5;      // the plank storage sits at the very stern
+    const wx = z => Math.max(0.9, s.halfAt(0.9 / s.deckTop, z / s.hl) - VS - 0.1);
+    const eng = s.engineLp, skip = (a, b) => (ci === 0 && b > eng.z - 1.0 && a < eng.z + 1.0) || (b > sz0 && a < sz1 && stw.wide);
+    lineWall(s, HOLDS[ci].L, -1, fl, z0, z1, wx, skip);
+    lineWall(s, HOLDS[ci].R, 1, fl, z0, z1, wx, skip);
+  });
 }
 export function updateStorage(s) { s.storage?.stack.forEach((m, i) => { m.visible = i < s.storage.planks; }); }
 

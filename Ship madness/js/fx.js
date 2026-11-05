@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { G, rand } from './state.js';
 import { waveHeightFast } from './ocean.js';
 
-export const VOXEL = 0.25;
+export const VOXEL = 0.2;
 
 // shared "voxel" look: darkened edges on every cube, so blocks read as blocks
 export function voxelMaterial(opts = {}) {

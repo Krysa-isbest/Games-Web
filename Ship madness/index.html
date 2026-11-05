@@ -6,7 +6,7 @@
 <title>Ship Madness</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Barlow:wght@500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -26,6 +26,11 @@
 <!-- HUD -->
 <div id="hud" class="hidden">
   <div id="cross"><i></i><i></i><i></i><i></i></div>
+  <div id="gunsight" class="hidden">
+    <div class="gs-ring"></div><div class="gs-h"></div><div class="gs-v"></div>
+    <div class="gs-ticks"><i></i><i></i><i></i><i></i></div>
+    <div class="gs-info"><b id="gs-name"></b><span id="gs-state"></span><div class="gs-meter"><i id="gs-reload"></i></div><div class="gs-meter heat"><i id="gs-heat"></i></div><small id="gs-zoom"></small></div>
+  </div>
   <div id="hitmark">✕</div>
   <div id="mode-hud" class="card hidden"></div>
   <div id="vitals" class="card">
@@ -92,6 +97,22 @@
   <section id="tab-news" class="menu-main hidden">
     <h2 class="section-title">What's new</h2>
     <div class="news card-glass">
+      <h3>v0.6</h3>
+      <ul>
+        <li>Deck guns: you look straight down the barrel with a gunsight, and the mouse moves the gun. RMB zooms, a ring shows where the shot lands.</li>
+        <li>Five deck gun types: deck gun, autocannon, mortar, rocket pod and torpedo tube. In the Garage, click a gun mount on your ship to change it.</li>
+        <li>A new Garage: your ship turns on the water (drag it), with readable panels for ship, armament, upgrades, loadout, skills and paint. Settings are new and easier to read too.</li>
+        <li>New driving: hold W/S to move the throttle (it stops at STOP first), A/D move the rudder. Ships have momentum, slide in turns and need water past the rudder. R drops the anchor.</li>
+        <li>An engine room in the stern hold. If it gets hit, the ship can't move until someone fixes it with the wrench.</li>
+        <li>Tools you always carry: 5 bucket, 6 hammer (puts single blocks back, free but slow), 7 wrench.</li>
+        <li>The crane is at the stern now, with its own controls: walk up to it, no need to drive.</li>
+        <li>Ladders work: walk into one from the water to climb, or climb down from the deck. Jumping works every time.</li>
+        <li>Smaller blocks (0.2 m), redesigned ships (bridge wings, hull windows, a raised bow, a towing arch) and furniture in the rooms: bunks, lockers, sofas, shelves, workbenches.</li>
+        <li>Flood water in the hold sloshes and ripples, and you wade through it.</li>
+        <li>Campaign: after every fight the dock gives 2 free planks and a repair for 10 FT. Harder difficulties pay much more FT.</li>
+        <li>You keep picked-up weapons, airstrikes and nukes when you die. Online players no longer spawn inside walls.</li>
+        <li>Main menu music (with its own volume slider), random cannon sounds and a C4 sound.</li>
+      </ul>
       <h3>v0.5</h3>
       <ul>
         <li>Real ship collisions: hulls collide by their shape, heavy ships shove light ones aside, and damage is torn out where they touch (bows are tougher). Hit an island and you run aground: you have to back off.</li>
@@ -138,8 +159,8 @@
 
 <div id="camp" class="screen hidden"><div class="panel">
   <div class="panel-head"><button class="back" data-go="menu">‹</button><h2>🧭 Campaign</h2></div>
-  <p class="note">A route of 7 stops: battles, wrecks, storms, shops and calm coves, then the Ferryman's ghost liner. Damage stays between stops. If your ship sinks, the run is over.</p>
-  <div class="opt"><span>Difficulty</span><div class="seg" id="camp-diff" data-value="normal"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="hard">Hard</button><button data-v="ferryman">Ferryman</button></div></div>
+  <p class="note">A route of 7 stops: battles, wrecks, storms, shops and calm coves, then the Ferryman's ghost liner. Damage stays between stops; after every fight the dock gives you 2 planks and a 10 FT repair. If your ship sinks, the run is over. Harder runs pay much more FT.</p>
+  <div class="opt"><span>Difficulty</span><div class="seg" id="camp-diff" data-value="normal"><button data-v="easy">Easy · ×0.6 FT</button><button data-v="normal">Normal · ×1 FT</button><button data-v="hard">Hard · ×1.6 FT</button><button data-v="ferryman">Ferryman · ×2.4 FT</button></div></div>
   <div class="panel-foot"><button data-go="garage" data-mode="camp">🛠 Campaign Garage</button><button id="camp-start" class="primary">SET SAIL ▶</button></div>
 </div></div>
 
@@ -174,7 +195,7 @@
         <div class="opt"><span>Extra AI captains</span><div class="seg" id="lb-ffa-ai" data-value="1"><button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button></div></div>
         <div class="opt"><span>Ships</span><div class="seg" id="lb-ffa-layout" data-value="own"><button data-v="own">Everyone has a ship</button><button data-v="one">All on one ship</button></div></div>
       </div>
-      <div id="lb-o-camp" class="hidden"><div class="opt"><span>Difficulty</span><div class="seg" id="lb-diff" data-value="normal"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="hard">Hard</button><button data-v="ferryman">Ferryman</button></div></div></div>
+      <div id="lb-o-camp" class="hidden"><div class="opt"><span>Difficulty</span><div class="seg" id="lb-diff" data-value="normal"><button data-v="easy">Easy ×0.6</button><button data-v="normal">Normal ×1</button><button data-v="hard">Hard ×1.6</button><button data-v="ferryman">Ferryman ×2.4</button></div></div></div>
       <div id="lb-o-sand" class="hidden"><div class="opt"><span>Friendly fire</span><div class="seg" id="lb-ff" data-value="0"><button data-v="0">Off</button><button data-v="1">On</button></div></div></div>
       <div class="opt"><span>Sea</span><div class="seg" id="lb-sea" data-value="1"><button data-v="0.5">Calm</button><button data-v="1">Normal</button><button data-v="1.8">Rough</button></div></div>
       <div class="panel-foot"><button id="lb-start" class="primary">START ▶</button></div>
@@ -184,13 +205,17 @@
   <div class="panel-foot"><span id="lb-status" class="note"></span><button id="lb-leave">Leave</button></div>
 </div></div>
 
-<div id="garage" class="screen hidden"><div class="panel wide">
-  <div class="panel-head"><button class="back" data-go="back">‹</button><h2>🛠 Garage</h2></div>
-  <div id="g-body"></div>
-</div></div>
+<div id="garage" class="screen dock hidden">
+  <div id="g-mounts"></div>
+  <div id="g-info" class="g2-plate"></div>
+  <div class="g2-panel">
+    <div class="g2-head"><button class="back" data-go="back">‹</button><h2>GARAGE</h2></div>
+    <div id="g-body"></div>
+  </div>
+</div>
 
-<div id="settings" class="screen hidden"><div class="panel wide">
-  <div class="panel-head"><button class="back" data-go="back">‹</button><h2>⚙ Settings</h2></div>
+<div id="settings" class="screen hidden"><div class="panel s2-panel">
+  <div class="g2-head"><button class="back" data-go="back">‹</button><h2>SETTINGS</h2></div>
   <div id="settings-body"></div>
 </div></div>
 

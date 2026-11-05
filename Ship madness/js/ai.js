@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { G, rand, clamp, angDiff, isGuest, nextId, bumpId } from './state.js';
 import { groundHeight } from './islands.js';
 import { fireCannon, hitscan } from './weapons.js';
+import { cannonOf } from './cannons.js';
 import { raySphere } from './entities.js';
 import { FX } from './fx.js';
 import { sfx } from './sfx.js';
@@ -89,22 +90,28 @@ export function updateAI(dt) {
   for (const b of G.bots) if (b.gone) G.netHook?.('despawn', 'bot', b);
   G.bots = G.bots.filter(b => !b.gone);
 }
+// every gun type aims its own way: mortars lob high, torpedoes run flat, rockets barely drop
 function fireBroadside(s, target, dist) {
-  if (dist > 170) return;
+  if (dist > 200) return;
   const lead = s.velocity(v3).clone(), tv = target.velocity(v2);
-  const flight = dist / 55;
-  const aimX = target.x + tv.x * flight - lead.x * flight * 0.3, aimZ = target.z + tv.z * flight - lead.z * flight * 0.3;
   const err = DIFF.aim * (s.ghost ? 0.6 : 1);
   for (const c of s.cannons) {
-    if (c.cd > 0) continue;
+    if (c.cd > 0 || c.over || c.user?.isPlayer) continue;
+    const T = cannonOf(c);
+    const range = T.proj === 'torpedo' ? 170 : T.proj === 'mortar' ? 150 : T.proj === 'ac' ? 120 : 190;
+    if (dist > range) continue;
+    const flight = dist / (T.proj === 'torpedo' ? 22 : T.speed * 0.9);
+    const aimX = target.x + tv.x * flight - lead.x * flight * 0.3, aimZ = target.z + tv.z * flight - lead.z * flight * 0.3;
     const rel = s.toLocal(v1.set(aimX, s.y + s.deckTop, aimZ)).sub(c.lp);
     if (Math.sign(rel.x) !== c.side) continue;
     const yaw = Math.atan2(rel.z, Math.abs(rel.x));
-    if (Math.abs(yaw) > 0.75) continue;
-    const d = Math.hypot(rel.x, rel.z);
+    if (Math.abs(yaw) > T.yaw) continue;
+    const d = Math.hypot(rel.x, rel.z), g = (T.grav || 9.8), v = T.speed;
+    const s2 = clamp(g * d / (v * v), -1, 1);
+    let pitch = T.proj === 'torpedo' ? 0 : T.proj === 'mortar' ? Math.PI / 2 - 0.5 * Math.asin(s2) : 0.5 * Math.asin(s2);
     c.yaw = yaw + rand(-0.04, 0.04) * err;
-    c.pitch = clamp(0.5 * Math.asin(clamp(9.8 * d / (58 * 58), -1, 1)) + rand(-0.03, 0.035) * err, -0.12, 0.5);
-    if (Math.random() < 0.6) fireCannon(s, c, { isBot: true, ship: s }, s.ghost ? 0.7 : 1);
+    c.pitch = clamp(pitch + rand(-0.03, 0.035) * err, T.pmin, T.pmax);
+    if (Math.random() < (T.heat ? 0.9 : 0.6)) fireCannon(s, c, { isBot: true, ship: s }, s.ghost ? 0.7 : 1);
   }
 }
 
