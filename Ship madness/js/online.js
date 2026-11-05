@@ -156,7 +156,7 @@ export function sendMyState(dt) {
   if (psT > 0 || !me) return;
   psT = 1 / 15;
   const ps = { t: 'ps', id: G.net.id, s: me.frame?.id ?? null, p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yaw: r2(me.yaw), pitch: r2(me.pitch), mode: me.mode, alive: me.alive, hp: Math.round(me.hp), sea: me.inSea, uw: me.underwater, sw: me.swimming, talk: talking(), hold: me.holding?.id ?? null };
-  if ((me.mode === 'wheel' || me.mode === 'crane') && me.station) { const s = me.station, c = s.crane; ps.drive = [s.id, s.throttle, s.rudderIn, r2(c.yaw), r2(c.reach), r2(c.drop)]; }
+  if ((me.mode === 'wheel' || me.mode === 'crane') && me.station) { const s = me.station, c = s.crane; ps.drive = [s.id, s.throttle, s.rudderIn, r2(c.yaw), r2(c.reach), r2(c.drop), s.brake ? 1 : 0]; }
   if (me.mode === 'cannon') { const { ship, c } = me.station; ps.gun = [ship.id, ship.cannons.indexOf(c), r2(c.yaw), r2(c.pitch)]; }
   send('*', ps);
 }
@@ -241,6 +241,7 @@ export function installActions() {
     return fix;
   };
   A.bail = (pid, sid, ci, amount, iid) => { const c = byId.ship(sid)?.comps[ci]; if (!c || c.vol < 0.05) return false; c.vol = Math.max(0, c.vol - amount); const it = byId.item(iid); if (it) setBucket(it, true); return true; };
+  A.pour = (pid, sid, ci, amount) => { const c = byId.ship(sid)?.comps[ci]; if (c) c.vol += Math.max(0, Math.min(6, amount)); return true; };
   A.bucket = (pid, iid, full) => { const it = byId.item(iid); if (it) setBucket(it, full); return true; };
   A.extinguish = (pid, sid, p) => byId.ship(sid)?.extinguish(new THREE.Vector3(...p), 2.6) || 0;
   A.throw = (pid, kind, p, vel) => { addProjectile(kind, new THREE.Vector3(...p), new THREE.Vector3(...vel), avatarOf(pid)); return true; };
@@ -357,7 +358,7 @@ export function installSharedHandlers() {
     if (!a || !a.isRemote) return;
     a.apply(m);
     if (isHost()) {     // drivers and gunners steer through their state
-      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; s.crane.yaw = m.drive[3]; s.crane.reach = m.drive[4]; s.crane.drop = m.drive[5]; } }
+      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; s.crane.yaw = m.drive[3]; s.crane.reach = m.drive[4]; s.crane.drop = m.drive[5]; s.brake = !!m.drive[6]; } }
       if (m.gun) { const c = byId.ship(m.gun[0])?.cannons[m.gun[1]]; if (c && c.user === a) { c.yaw = m.gun[2]; c.pitch = m.gun[3]; } }
     }
   });

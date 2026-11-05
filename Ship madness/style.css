@@ -267,3 +267,4 @@ textarea { font: 13px monospace; background: rgba(0, 0, 0, 0.35); color: #cfe; b
 .node .votes { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--gold); color: #1a1408; font-size: 12px; line-height: 18px; }
 .node .votes:empty { display: none; }
 .node.mine { outline: 3px solid #5fd4ff; }
+.comp.leaking { border-color: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; animation: pulse 0.8s infinite; }

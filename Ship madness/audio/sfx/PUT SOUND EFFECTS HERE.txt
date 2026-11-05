@@ -1,0 +1,1 @@
+Put your sound effect files here, then list them in audio/list.json (see audio/README.txt).

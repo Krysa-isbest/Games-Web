@@ -1,0 +1,20 @@
+{
+  "sfx": {
+    "shot": [],
+    "shot_pistol": [], "shot_revolver": [], "shot_smg": [], "shot_ak": [], "shot_lmg": [], "shot_shotgun": [], "shot_sniper": [],
+    "shot_pistol_quiet": [], "shot_smg_quiet": [], "shot_ak_quiet": [],
+    "empty": [], "reload": [], "pump": [],
+    "cannon": [], "boom": [], "nuke": [], "jet": [], "siren": [],
+    "wood": [], "crash": [], "hammer": [], "splash": [], "crackle": [], "bounce": [],
+    "hit": [], "hurt": [], "bite": [],
+    "pickup": [], "coin": [], "levelup": [], "bell": [], "horn": [], "crane": [], "thunder": [],
+    "click": [], "hover": [], "whoosh": [],
+    "ambience": []
+  },
+  "music": {
+    "menu": [],
+    "sail": [],
+    "battle": [],
+    "boss": []
+  }
+}

@@ -89,7 +89,15 @@ export function destroyItem(it) {
   G.items = G.items.filter(o => o !== it);
   hook('despawn', 'item', it);
 }
-export function setBucket(it, full) { it.full = full; it.mesh.userData.water.visible = full; }
+export function setBucket(it, full) { setBucketAmount(it, full ? (it.cap || 3) : 0); }
+// the water inside rises with the amount
+export function setBucketAmount(it, amount) {
+  it.amount = amount; it.full = amount > 0.05;
+  const w = it.mesh.userData.water, f = Math.min(1, amount / (it.cap || 3));
+  w.visible = it.full;
+  w.position.y = 0.04 + 0.24 * f;
+  w.scale.setScalar(0.75 + 0.25 * f);
+}
 
 export function updateItems(dt) {
   if (isGuest()) return;      // positions come from the host

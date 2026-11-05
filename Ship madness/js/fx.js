@@ -188,6 +188,9 @@ export const FX = {
   bubbles(x, y, z, n = 4) {
     for (let i = 0; i < n; i++) soft.spawn({ x: x + rand(-0.15, 0.15), y: y + rand(-0.1, 0.1), z: z + rand(-0.15, 0.15), vx: rand(-0.2, 0.2), vy: rand(0.6, 1.2), vz: rand(-0.2, 0.2), life: rand(1.5, 3), size: rand(0.03, 0.08), g: -2.5, drag: 1.5, color: FOAM, alpha: 0.8, fadePow: 4 });
   },
+  ash(x, y, z) {
+    soft.spawn({ x, y, z, vx: rand(-0.4, 0.4), vy: -rand(0.6, 1.2), vz: rand(-0.4, 0.4), life: rand(5, 9), size: rand(0.05, 0.12), g: 0, drag: 0.2, color: Math.random() < 0.5 ? SMOKE : STEAM, alpha: 0.8, die: true });
+  },
   blood(x, y, z) { for (let i = 0; i < 8; i++) soft.spawn({ x, y, z, vx: rand(-1.5, 1.5), vy: rand(0, 2), vz: rand(-1.5, 1.5), life: 0.6, size: rand(0.1, 0.25), color: BLOOD, alpha: 0.9 }); },
   spark(x, y, z) { for (let i = 0; i < 5; i++) glow.spawn({ x, y, z, vx: rand(-3, 3), vy: rand(0, 3), vz: rand(-3, 3), life: 0.2, size: 0.06, color: FIRE[0] }); },
   dust(x, y, z, color) { for (let i = 0; i < 3; i++) soft.spawn({ x, y, z, vx: rand(-0.6, 0.6), vy: rand(0, 0.8), vz: rand(-0.6, 0.6), life: 0.6, size: rand(0.15, 0.3), g: 0, color, alpha: 0.6, grow: 1.5 }); },

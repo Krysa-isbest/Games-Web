@@ -21,6 +21,7 @@ import { NET, leaveNet } from './net.js';
 import { Avatar, installHooks, installActions, installGuestHandlers, installSharedHandlers, hostTick, sendMyState, sendChat, startVoice, voiceTick, stopVoice, byId } from './online.js';
 import { initLobby, lobbyBack, renderPlayers } from './lobby.js';
 import { Player } from './player.js';
+import { initMusic, musicTick } from './music.js';
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: S.aa, powerPreference: 'high-performance' });
@@ -227,7 +228,7 @@ initUI();
 function initUI() {
   UI.initUI({
     start,
-    firstClick: () => initAudio(),
+    firstClick: () => { initAudio(); initMusic(); },
     resume: () => { G.paused = false; UI.hideScreens(); lock(); },
     quit: quitToMenu,
     again: () => { if (lastStart) start(...lastStart); },
@@ -327,9 +328,11 @@ function frame() {
   if (me?.alive && me.mode === 'walk' && me.underKind) { kind = me.underKind; depth = me.underDepth; }
   else { const sea = waveHeight(cp.x, cp.z); if (cp.y < sea - 0.05 && !insideAnyHull(tmp.copy(cp))) { kind = 'sea'; depth = sea - cp.y; } }
   audioTick(!!kind);
+  musicTick(dt);
   UI.updateHUD(dt);
   renderWorld(renderer, scene, camera, kind, depth, airFog);
-  fpsN++; fpsT += dt;
+  // count real frames per real second (dt above is capped, so it can't be used here)
+  const now = performance.now(); fpsN++; fpsT += Math.min(1, (now - (G.lastFrame || now)) / 1000); G.lastFrame = now;
   if (fpsT >= 0.5) { document.getElementById('fps').textContent = `${Math.round(fpsN / fpsT)} FPS${isOnline() ? ` · ${NET.conns.size} link${NET.conns.size === 1 ? '' : 's'}` : ''}`; fpsN = 0; fpsT = 0; }
   endFrame();
 }

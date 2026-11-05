@@ -37,7 +37,7 @@ export const T = { EMPTY: 0, HULL: 1, DECK: 2, BULK: 3, STAIR: 4, CABIN: 5, RAIL
 const BASE_HP = [0, 4, 3, 3, 2, 3, 2, 4, 3, 2, 3];
 const ARMORED = new Set([T.HULL, T.PAINT]);
 const LEAK = 0.07;
-const SPEEDS = [-2.5, 0, 4, 7.5, 11];
+const SPEEDS = [-5.5, 0, 4, 7.5, 11];   // reverse is half of full ahead
 const CONT_COLS = ['#b8382b', '#2f6db3', '#e0a02a', '#3d8a4a', '#8a8f96', '#c8642a', '#5a3d8a', '#d8d4c8'];
 
 export const TEAM_COLORS = {
@@ -91,7 +91,7 @@ const yellow = new THREE.MeshStandardMaterial({ color: '#e0a82a', roughness: 0.5
 const gunGrey = new THREE.MeshStandardMaterial({ color: '#7d858c', roughness: 0.5, metalness: 0.6 });
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), m4 = new THREE.Matrix4();
-let uid = 0;
+let uid = 0, signTex = null;
 
 export class Ship {
   constructor(key, o = {}) {
@@ -195,10 +195,14 @@ export class Ship {
     const t0 = this.tiers[0];
     this.cab = t0.k1; this.cabinFront = this.zOf(t0.k1) + VS / 2;
     // stairs down to the hold, inside the first tier just behind its front door
-    const stairI = [mid - 2, mid - 1, mid, mid + 1], sk = t0.k1 - 1 - H;
-    this.stair = { k0: sk, k1: sk + H - 1 };
+    // wider stairs and a gentler slope (2 blocks forward per step) when the first deck is long enough
+    const wide = t0.half >= 9, sw2 = wide ? 3 : 2;
+    const stairI = Array.from({ length: sw2 * 2 }, (_, n) => mid - sw2 + n);
+    const run = clamp(Math.floor((t0.k1 - t0.k0 - 4) / H), 1, 2), SL = run * H;
+    const sk = t0.k1 - 1 - SL;
+    this.stair = { k0: sk, k1: sk + SL - 1, run, wide, i0: stairI[0], i1: stairI.at(-1) };
     // bulkheads (kept clear of the stairs)
-    const fixB = b => (b >= sk - 2 && b <= sk + H + 1) ? (sk - 3 > 6 ? sk - 3 : sk + H + 2) : b;
+    const fixB = b => (b >= sk - 2 && b <= sk + SL + 1) ? (sk - 3 > 6 ? sk - 3 : sk + SL + 2) : b;
     let b0 = fixB(Math.round(nz * 0.32)), b1 = fixB(Math.round(nz * 0.66));
     if (b1 - b0 < 8) b1 = Math.min(nz - 6, b0 + 10);
     this.bulks = [b0, b1];
@@ -214,12 +218,12 @@ export class Ship {
       const side = !In(i - 1, j, k) || !In(i + 1, j, k);
       const edge = j === 0 || side || !In(i, j, k - 1) || !In(i, j, k + 1) || !In(i, j - 1, k);
       if (j === H) {
-        if (stairI.includes(i) && k >= sk && k < sk + H) continue;
+        if (stairI.includes(i) && k >= sk && k < sk + SL) continue;
         set(i, j, k, T.DECK); this.shell[n] = 1; continue;
       }
       if (edge) { set(i, j, k, j < jd ? T.PAINT : T.HULL); this.shell[n] = 1; continue; }
       if (k === b0 || k === b1) { if (!(stairI.includes(i) && j <= 8)) set(i, j, k, T.BULK); continue; }
-      if (stairI.includes(i)) { const s = k - sk; if (s >= 1 && s < H && j <= s) set(i, j, k, T.STAIR); }
+      if (stairI.includes(i)) { const s = Math.floor((k - sk) / run); if (k >= sk && k < sk + SL && s >= 1 && j <= s) set(i, j, k, T.STAIR); }
     }
     // containers
     if (def.containers) {
@@ -258,6 +262,12 @@ export class Ship {
       const solid = zN > 0.7, post = side ? k % 6 === 0 : i % 6 === 0;
       for (let j = H + 1; j <= H + 4; j++) if (solid || post || j === H + 4) set(i, j, k, T.RAIL);
     }
+    // a railing around the stairwell (open only at the top, where you step on)
+    for (let k = sk - 1; k < sk + SL - 1; k++) for (const i of [stairI[0] - 1, stairI.at(-1) + 1]) {
+      if (!In(i, H, k)) continue;
+      for (let j = H + 1; j <= H + 4; j++) if (j === H + 4 || k % 4 === 0 || k === sk - 1) set(i, j, k, T.RAIL);
+    }
+    for (const i of stairI) for (let j = H + 1; j <= H + 4; j++) set(i, j, sk - 1, T.RAIL);
     // superstructure walls, windows, doors, roofs
     this.tiers.forEach((tr, t) => {
       const last = t === this.tiers.length - 1;
@@ -337,7 +347,7 @@ export class Ship {
       return { i: ci, k0, k1, cz, rows, cap, vol: 0, level: VS, water, row: 0, name: ['Stern', 'Middle', 'Bow'][ci] };
     });
     this.cap = this.comps.reduce((s, c) => s + c.cap, 0);
-    const smid = sk + Math.floor(H / 2);
+    const smid = sk + Math.floor(SL / 2);
     this.openings = [{ lp: new THREE.Vector3(0, this.deckTop - 0.1, this.zOf(smid)), comp: this.compOfK(smid), size: 40 }];
   }
 
@@ -424,6 +434,18 @@ export class Ship {
     // bow light + anchor
     add(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffe9b0', emissiveIntensity: 2 }), 0, dt + 1.2, this.hl - 0.6);
     this.lampLp = new THREE.Vector3(0, this.deckTop - 0.6, this.zOf(this.stair.k0 + 3));
+    // a sign over the stairwell and a lamp bulb you can actually see
+    if (!signTex) {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+      const x = c.getContext('2d');
+      x.fillStyle = '#e0a82a'; x.fillRect(0, 0, 256, 64); x.fillStyle = '#1d1f22'; x.fillRect(6, 6, 244, 52);
+      x.fillStyle = '#e0a82a'; x.font = 'bold 36px sans-serif'; x.textAlign = 'center'; x.fillText('⬇ HOLD', 128, 45);
+      signTex = new THREE.CanvasTexture(c);
+    }
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.25), new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide }));
+    sign.position.set(0, dt + 2.1, this.zOf(this.stair.k1) + 0.3);
+    this.group.add(sign);
+    add(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffd9a0', emissiveIntensity: 3 }), 0, this.deckTop - 0.35, this.zOf(this.stair.k0 + 3));
 
     // helm console in front of the superstructure
     const t0 = this.tiers[0];
@@ -653,6 +675,20 @@ export class Ship {
     }
     return fixed;
   }
+  // the blocks a repair at this point would restore (for the green preview)
+  repairPreview(wp, radius, max) {
+    const lp = this.toLocal(v2.copy(wp));
+    const [ci, cj, ck] = this.cellOf(lp.x, lp.y, lp.z), rc = Math.ceil(radius / VS);
+    const list = [];
+    for (let k = ck - rc; k <= ck + rc; k++) for (let j = cj - rc; j <= cj + rc; j++) for (let i = ci - rc; i <= ci + rc; i++) {
+      if (i < 0 || j < 0 || k < 0 || i >= this.nx || j >= this.ny || k >= this.nz) continue;
+      const n = this.idx(i, j, k);
+      if (!this.orig[n] || this.cells[n]) continue;
+      const d = Math.hypot(this.xOf(i) - lp.x, this.yOf(j) - lp.y, this.zOf(k) - lp.z);
+      if (d <= radius) list.push([d, n]);
+    }
+    return list.sort((a, b) => a[0] - b[0]).slice(0, max).map(x => x[1]);
+  }
   missingNear(wp, radius) {
     const lp = this.toLocal(v2.copy(wp));
     const [ci, cj, ck] = this.cellOf(lp.x, lp.y, lp.z), rc = Math.ceil(radius / VS);
@@ -825,13 +861,20 @@ export class Ship {
       for (const c of this.comps) c.vol = Math.min(c.cap, c.vol + c.cap * 0.1 * dt);
       this.throttle = 0;
     }
-    const target = this.sinking ? 0 : SPEEDS[this.throttle + 1] * def.speed * (1 + this.engine * 0.08) * (1 - this.flood * 0.7);
-    this.speed = damp(this.speed, target, target === 0 ? 0.6 : 0.35, dt);
+    let target = this.sinking ? 0 : SPEEDS[this.throttle + 1] * def.speed * (1 + this.engine * 0.08) * (1 - this.flood * 0.7);
+    if (this.aground > 0 && target > 0) target = 0;            // stuck on the sand: only reverse gets you off
+    // slowing down (or braking with S) is much stronger than speeding up; big ships are heavier
+    const heavy = clamp(this.hl / 12, 1, 2.2);
+    const slowing = Math.abs(target) < Math.abs(this.speed) - 0.05 || Math.sign(target) * Math.sign(this.speed) < 0;
+    const rate = (this.brake ? 1.6 : slowing ? 0.9 : 0.4) / Math.sqrt(heavy);
+    this.speed = damp(this.speed, this.brake ? Math.min(0, target) : target, rate, dt);
     this.rudder = damp(this.rudder, this.rudderIn, 2.5, dt);
     const sp = this.speed;
-    this.yaw -= this.rudder * 0.3 * def.turn * clamp(Math.abs(sp) / 5, 0.15, 1) * Math.sign(sp || 1) * dt;
-    this.x += Math.sin(this.yaw) * sp * dt;
-    this.z += Math.cos(this.yaw) * sp * dt;
+    this.yaw -= this.rudder * 0.3 * def.turn * (this.ai ? 0.75 : 1) * clamp(Math.abs(sp) / 5, 0.15, 1) * Math.sign(sp || 1) * dt;
+    // knockback from collisions and blasts drifts off
+    this.kx = (this.kx || 0) * Math.exp(-0.8 * dt); this.kz = (this.kz || 0) * Math.exp(-0.8 * dt);
+    this.x += (Math.sin(this.yaw) * sp + this.kx) * dt;
+    this.z += (Math.cos(this.yaw) * sp + this.kz) * dt;
     for (const ax of ['x', 'z']) if (Math.abs(this[ax]) > MAP_HALF) { this[ax] = Math.sign(this[ax]) * MAP_HALF; this.speed *= 0.9; }
 
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -857,7 +900,22 @@ export class Ship {
     this.updateVisuals(dt);
   }
 
+  // which holes are under the sea right now (for the red leak markers and the ship panel)
+  updateLeaks() {
+    const m = this.group.matrixWorld;
+    this.leakCells = []; this.leakComps = [false, false, false];
+    for (const n of this.holes) {
+      const [i, j, k] = this.ijk(n);
+      if (j >= this.H) continue;
+      v1.set(this.xOf(i), this.yOf(j), this.zOf(k)).applyMatrix4(m);
+      if (v1.y > waveHeight(v1.x, v1.z) + 0.1) continue;
+      this.leakComps[this.compOfK(k)] = true;
+      if (this.leakCells.length < 400) this.leakCells.push(n);
+    }
+  }
   updateVisuals(dt) {
+    this.leakT = (this.leakT ?? Math.random() * 0.3) - dt;
+    if (this.leakT <= 0) { this.leakT = 0.3; this.updateLeaks(); }
     waterMat.uniforms.uTime.value = G.t;
     const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(-this.pitch, 0, this.roll, 'YXZ')).invert();
     for (const c of this.comps) {
@@ -958,55 +1016,100 @@ export class Ship {
 }
 
 // ---------- ship <-> ship and ship <-> island collisions ----------
+// Hulls collide by their real outline. The heavier ship shoves the lighter one, damage is torn out where they
+// touch (scaled by impact speed and mass), bows are tougher than sides. Islands: you run aground.
 const hitCool = new Map();
+const mass = s => s.hl * s.hw * s.def.hold;
+function outline(s) {
+  const pts = [], n = Math.max(6, Math.round(s.hl / 1.5));
+  for (let i = 0; i <= n; i++) {
+    const zN = -0.97 + 1.94 * i / n, z = zN * s.hl, w = s.halfAt(0.6, zN) * 0.97;
+    pts.push([w, z], [-w, z]);
+    if (i === n) pts.push([0, s.hl * 0.99]);
+  }
+  return pts;
+}
+const toWorld2 = (s, lx, lz) => [s.x + Math.cos(s.yaw) * lx + Math.sin(s.yaw) * lz, s.z - Math.sin(s.yaw) * lx + Math.cos(s.yaw) * lz];
+const toLocal2 = (s, wx, wz) => { const dx = wx - s.x, dz = wz - s.z; return [Math.cos(s.yaw) * dx - Math.sin(s.yaw) * dz, Math.sin(s.yaw) * dx + Math.cos(s.yaw) * dz]; };
+function impact(s, wx, wz, rel, by, scale) {
+  const lz = toLocal2(s, wx, wz)[1];
+  const bow = lz / s.hl > 0.75 ? 0.45 : 1;         // the bow is built to take it
+  const r = clamp(0.7 + rel * 0.12, 0.8, 2.6);
+  s.damageSphere(v3.set(wx, s.y + s.draft + 0.2, wz), r, rel * 1.1 * scale * bow, by, 0.08);
+}
 export function shipCollisions(dt) {
   const ships = G.ships.filter(s => !s.sunk);
+  // islands: run aground
   for (const s of ships) {
-    const pts = [[0, s.hl * 0.95], [0, -s.hl * 0.9], [s.hw * 0.9, 0], [-s.hw * 0.9, 0], [s.hw * 0.6, s.hl * 0.5], [-s.hw * 0.6, s.hl * 0.5], [s.hw * 0.8, -s.hl * 0.5], [-s.hw * 0.8, -s.hl * 0.5]];
-    for (const [lx, lz] of pts) {
-      const wx = s.x + Math.cos(s.yaw) * lx + Math.sin(s.yaw) * lz, wz = s.z - Math.sin(s.yaw) * lx + Math.cos(s.yaw) * lz;
-      if (groundHeight(wx, wz) < s.y + 0.3) continue;
+    s.aground = Math.max(0, (s.aground || 0) - dt);
+    for (const [lx, lz] of outline(s)) {
+      const [wx, wz] = toWorld2(s, lx, lz);
+      const g = groundHeight(wx, wz);
+      if (g < s.y + 0.35) continue;
       const isl = ISLANDS.reduce((a, b) => Math.hypot(b.x - wx, b.z - wz) < Math.hypot(a.x - wx, a.z - wz) ? b : a);
-      const nx = s.x - isl.x, nz = s.z - isl.z, d = Math.hypot(nx, nz) || 1;
-      s.x += nx / d * 0.25; s.z += nz / d * 0.25;
-      if (Math.abs(s.speed) > 4 && !hitCool.get(s.id)) {
-        hitCool.set(s.id, 0.8);
-        sfx.crash(v1.set(wx, 0, wz));
-        s.damageSphere(v1.set(wx, s.y + s.draft, wz), 1.0, Math.abs(s.speed) * 0.5, null);
+      let nx = s.x - isl.x, nz = s.z - isl.z; const d = Math.hypot(nx, nz) || 1; nx /= d; nz /= d;
+      const into = -(Math.sin(s.yaw) * s.speed * nx + Math.cos(s.yaw) * s.speed * nz);      // speed towards the island
+      s.x += nx * 0.12; s.z += nz * 0.12;
+      if (into > 2.5 && !hitCool.get(s.id)) {
+        hitCool.set(s.id, 0.7);
+        sfx.crash(v1.set(wx, 0, wz)); G.shake = Math.max(G.shake || 0, Math.min(1, into * 0.08));
+        s.damageSphere(v1.set(wx, s.y + 0.6, wz), 1.2 + into * 0.08, into * 0.9, null);       // the bottom tears open: leaks
+        for (let i = 0; i < 12; i++) FX.debris(wx, s.y + s.draft, wz, new THREE.Color('#c9b07a'), 0.8);
+        FX.splash(wx, s.y + s.draft, wz, 1.5);
+        G.netFx?.({ k: 'splash', p: [wx, s.y + s.draft, wz], s: 1.5 });
       }
-      s.speed *= 0.4;
+      if (into > 0) { s.speed *= 0.2; s.aground = 1.5; }
       break;
     }
   }
+  // ship against ship
   for (let a = 0; a < ships.length; a++) for (let b = a + 1; b < ships.length; b++) {
     const A = ships[a], B = ships[b];
     if (Math.hypot(A.x - B.x, A.z - B.z) > A.hl + B.hl + 2) continue;
-    const segs = s => { const n = Math.max(3, Math.round(s.hl / s.hw)); return Array.from({ length: n }, (_, i) => -0.8 + 1.6 * i / (n - 1)); };
-    for (const za of segs(A)) for (const zb of segs(B)) {
-      const ax = A.x + Math.sin(A.yaw) * za * A.hl, az = A.z + Math.cos(A.yaw) * za * A.hl;
-      const bx = B.x + Math.sin(B.yaw) * zb * B.hl, bz = B.z + Math.cos(B.yaw) * zb * B.hl;
-      const ra = A.hw * 1.05, rb = B.hw * 1.05;
-      let dx = bx - ax, dz = bz - az; const d = Math.hypot(dx, dz);
-      if (d >= ra + rb || d < 1e-3) continue;
-      dx /= d; dz /= d;
-      const ma = A.hl * A.hw, mb = B.hl * B.hw, push = (ra + rb - d);
-      A.x -= dx * push * mb / (ma + mb); A.z -= dz * push * mb / (ma + mb); B.x += dx * push * ma / (ma + mb); B.z += dz * push * ma / (ma + mb);
-      const va = A.velocity(v1), vb = B.velocity(v2);
-      const rel = (va.x - vb.x) * dx + (va.z - vb.z) * dz;
-      const key = A.id * 1000 + B.id;
-      if (rel > 3 && !hitCool.get(key)) {
-        hitCool.set(key, 1);
-        const cx = (ax + bx) / 2, cz = (az + bz) / 2;
-        sfx.crash(v3.set(cx, 0, cz));
-        const p = v3.set(cx, (A.y + B.y) / 2 + A.draft + 0.5, cz);
-        A.damageSphere(p, 1.2, rel * 0.8 * mb / ma, B.driver); B.damageSphere(p, 1.2, rel * 0.8 * ma / mb, A.driver);
-        A.speed *= 0.5; B.speed *= 0.5;
+    let best = null;
+    for (const [P, Q] of [[A, B], [B, A]]) {
+      for (const [lx, lz] of outline(P)) {
+        const [wx, wz] = toWorld2(P, lx, lz);
+        const [qx, qz] = toLocal2(Q, wx, wz);
+        if (Math.abs(qz) >= Q.hl) continue;
+        const w = Q.halfAt(0.6, qz / Q.hl);
+        if (Math.abs(qx) >= w) continue;
+        const depth = Math.min(w - Math.abs(qx), Q.hl - Math.abs(qz));
+        if (!best || depth > best.depth) {
+          // push Q's local normal (sideways, or along its length near the ends) out to the world
+          const side = w - Math.abs(qx) < Q.hl - Math.abs(qz);
+          const lnx = side ? Math.sign(qx) : 0, lnz = side ? 0 : Math.sign(qz);
+          const n = [Math.cos(Q.yaw) * lnx + Math.sin(Q.yaw) * lnz, -Math.sin(Q.yaw) * lnx + Math.cos(Q.yaw) * lnz];  // from Q towards P's point
+          best = { depth, wx, wz, P, Q, n };
+        }
       }
+    }
+    if (!best) continue;
+    const { P, Q, n, depth, wx, wz } = best;
+    const mp = mass(P), mq = mass(Q), tot = mp + mq;
+    // separate: the light one moves more
+    P.x += n[0] * depth * mq / tot; P.z += n[1] * depth * mq / tot;
+    Q.x -= n[0] * depth * mp / tot; Q.z -= n[1] * depth * mp / tot;
+    const vp = P.velocity(v1), vq = Q.velocity(v2);
+    const rel = -((vp.x - vq.x) * n[0] + (vp.z - vq.z) * n[1]);     // closing speed
+    if (rel <= 0) continue;
+    // shove: momentum goes into a sideways drift
+    P.kx = (P.kx || 0) + n[0] * rel * mq / tot; P.kz = (P.kz || 0) + n[1] * rel * mq / tot;
+    Q.kx = (Q.kx || 0) - n[0] * rel * mp / tot; Q.kz = (Q.kz || 0) - n[1] * rel * mp / tot;
+    P.speed *= 1 - 0.6 * mq / tot; Q.speed *= 1 - 0.6 * mp / tot;
+    P.vr += (Math.random() - 0.5) * rel * 0.02 * mq / tot; Q.vr += (Math.random() - 0.5) * rel * 0.02 * mp / tot;
+    const key = Math.min(A.id, B.id) * 100000 + Math.max(A.id, B.id);
+    if (rel > 1.8 && !hitCool.get(key)) {
+      hitCool.set(key, 0.8);
+      sfx.crash(v3.set(wx, 0, wz));
+      G.shake = Math.max(G.shake || 0, Math.min(1.2, rel * 0.1));
+      impact(P, wx, wz, rel, Q.driver, mq / tot * 2);
+      impact(Q, wx, wz, rel, P.driver, mp / tot * 2);
+      for (let i = 0; i < 6 + rel * 2; i++) FX.spark(wx, P.y + P.draft + 0.5, wz);
     }
   }
   for (const [k, t] of hitCool) { if (t - dt <= 0) hitCool.delete(k); else hitCool.set(k, t - dt); }
 }
-
 export function spawnShip(key, opts) { const s = new Ship(key, opts); G.ships.push(s); G.netHook?.('spawn', 'ship', s); return s; }
 export function despawnShip(s) { G.scene.remove(s.group); s.gone = true; G.ships = G.ships.filter(x => x !== s); G.netHook?.('despawn', 'ship', s); }
 export function removeGoneShips() { for (let i = G.ships.length - 1; i >= 0; i--) if (G.ships[i].gone) { G.netHook?.('despawn', 'ship', G.ships[i]); G.ships.splice(i, 1); } }

@@ -9,9 +9,10 @@ import { VS, T } from './ship.js';
 import { IN } from './input.js';
 import { down, hit, kn } from './keys.js';
 import { Gunner, makeInventory, WEAPONS, fireCannon, arcPoints, PRIMARIES, gunState, gunStats } from './weapons.js';
-import { holdItem, dropItem, destroyItem, setBucket, makeItem, itemWorld, crateWorld, removeCrate, hookCrate, releaseCrate, updateStorage, LOOT, raySphere } from './entities.js';
+import { holdItem, dropItem, destroyItem, setBucket, setBucketAmount, makeItem, itemWorld, crateWorld, removeCrate, hookCrate, releaseCrate, updateStorage, LOOT, raySphere } from './entities.js';
 import { FX } from './fx.js';
 import { sfx } from './sfx.js';
+import { showRepair, showLeaks } from './repairfx.js';
 
 const HALF = 0.3, HEIGHT = 1.7, EYE = 1.6;
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
@@ -111,12 +112,34 @@ export class Player {
       else { if (s.driver === this) s.driver = null; s.rudderIn = 0; }
       s.crane.user = null;
     }
+    if (this.mode === 'wheel' || this.mode === 'crane') this.station.brake = false;
     if (this.mode === 'cannon') {
       const { ship, c } = this.station;
       if (isGuest()) act('cannon', ship.id, ship.cannons.indexOf(c), false);
       c.user = null;
+      this.pos.copy(this.freeSpot(ship, this.pos));     // never leave the gun inside a wall
+      this.vel.set(0, 0, 0);
     }
     this.mode = 'walk'; this.station = null; this.aim.visible = false;
+  }
+  // the nearest spot around `p` (ship space) where a player fits and has a floor under their feet
+  freeSpot(s, p) {
+    const ok = (x, y, z) => !this.collides(s, x, y, z) && !!s.solidAt(x, y - 0.1, z);
+    if (ok(p.x, p.y, p.z)) return p.clone();
+    for (let r = 0.3; r <= 3; r += 0.3) for (let a = 0; a < 16; a++) {
+      const x = p.x + Math.cos(a / 16 * Math.PI * 2) * r, z = p.z + Math.sin(a / 16 * Math.PI * 2) * r;
+      for (const dy of [0, VS, -VS, 2 * VS]) if (ok(x, p.y + dy, z)) return new THREE.Vector3(x, p.y + dy, z);
+    }
+    return s.driverLp.clone();
+  }
+  // where the gunner stands: beside the gun on the walkway, not inside the superstructure
+  gunStand(s, c) {
+    if (c.stand) return c.stand;
+    for (const [dx, dz] of [[0, -1.1], [0, 1.1], [-c.side * 0.9, -0.9], [-c.side * 0.9, 0.9], [-c.side * 1.0, 0]]) {
+      const x = c.lp.x + dx, z = c.lp.z + dz;
+      if (!this.collides(s, x, c.lp.y + 0.02, z)) return (c.stand = new THREE.Vector3(x, c.lp.y + 0.02, z));
+    }
+    return (c.stand = this.freeSpot(s, c.lp.clone()));
   }
 
   // ---------- main update ----------
@@ -145,6 +168,48 @@ export class Player {
     else if (this.mode === 'walk') this.prompt = '';
     const moving = this.mode === 'walk' && (down('forward') || down('left') || down('back') || down('right'));
     this.gun.update(dt, this.mode === 'walk' && !this.holding && !this.climbing, moving, moving && down('sprint') && down('forward') && !this.swimming);
+    this.updateBucket(dt, moving);
+    this.updateRepairFx(dt);
+  }
+
+  // green preview of what a plank / furniture fixes; red markers on holes that let the sea in
+  updateRepairFx(dt) {
+    this.fxT = (this.fxT || 0) - dt;
+    if (this.fxT > 0) return;
+    this.fxT = 0.1;
+    const h = this.holding, s = this.frame;
+    const repairing = this.mode === 'walk' && h && h.kind !== 'bucket';
+    if (repairing) {
+      const eye = this.eyeWorld(new THREE.Vector3()), dir = new THREE.Vector3(0, 0, -1).applyQuaternion(G.camera.quaternion);
+      const spot = this.repairSpot(eye, dir);
+      const carp = this.skill === 'carpenter';
+      if (spot) showRepair(spot.ship, h.kind === 'plank' ? spot.ship.repairPreview(spot.p, 1.2, 60) : spot.ship.repairPreview(spot.p, 0.9, h.def.fix * 4 * (carp ? 2 : 1)));
+      else showRepair(null, []);
+    } else showRepair(null, []);
+    const inHold = s && this.mode === 'walk' && this.pos.y < s.deckTop - 0.3;
+    if (s && (repairing || inHold || h?.kind === 'bucket')) showLeaks(s, this.pos);
+    else showLeaks(null, null);
+  }
+
+  // buckets: filling takes a moment, sprinting or jumping spills water, a throw flies in an arc
+  updateBucket(dt, moving) {
+    const h = this.holding;
+    if (this.fillT > 0) {
+      this.fillT -= dt;
+      if (h?.kind === 'bucket') setBucketAmount(h, (h.cap || 3) * (1 - Math.max(0, this.fillT) / 0.6));
+      if (this.fillT <= 0 && h?.kind === 'bucket') { setBucketAmount(h, h.cap || 3); sfx.splash(null, 0.4); }
+    }
+    if (!h || h.kind !== 'bucket' || !(h.amount > 0) || this.fillT > 0) return;
+    let spill = 0;
+    if (moving && down('sprint') && !this.swimming) spill += dt * 0.5;
+    if (hit('jump') && this.onGround) spill += 0.6;
+    if (spill > 0) {
+      setBucketAmount(h, Math.max(0, h.amount - spill));
+      const e = this.eyeWorld(v1);
+      if (Math.random() < 0.6) FX.spray(e.x, e.y - 0.6, e.z, rand(-0.3, 0.3), -0.2, rand(-0.3, 0.3), 0.4);
+      if (h.amount < 0.3) { setBucketAmount(h, 0); G.toast?.('You spilled the bucket. Walk, don\'t run!'); }
+      if (isGuest()) act('bucket', h.id, h.amount > 0);
+    }
   }
 
   updateBreath(dt) {
@@ -337,6 +402,7 @@ export class Player {
         if (guest && !(await act('cannon', o.ship.id, o.ci, true))) return G.toast?.('Someone is using that gun.');
         if (this.holding) this.drop();
         this.mode = 'cannon'; this.station = { ship: o.ship, c: o.c }; o.c.user = this;
+        this.pos.copy(this.gunStand(o.ship, o.c));
       } else if (o.kind === 'storage') {
         const st = o.ship.storage;
         if (this.holding?.kind === 'plank') {
@@ -375,33 +441,19 @@ export class Player {
     const s = this.frame, guest = isGuest();
     const eye = this.eyeWorld(new THREE.Vector3()), dir = new THREE.Vector3(0, 0, -1).applyQuaternion(G.camera.quaternion);
     if (h.kind === 'bucket') {
-      if (!h.full) {
+      if (this.fillT > 0) return;
+      const cap = h.cap = this.skill === 'strong' ? 6 : 3;
+      if (!(h.amount > 0.05)) {
         const c = s && s.compAtLocal(this.pos);
-        const amount = this.skill === 'strong' ? 6 : 3;
         if (c && c.vol > 0.05 && c.level > this.pos.y + 0.12) {
-          if (guest) act('bail', s.id, c.i, amount, h.id); else c.vol = Math.max(0, c.vol - amount);
-          setBucket(h, true); sfx.splash(null, 0.5);
-        } else if (this.inSea || (!s && this.swimming)) { setBucket(h, true); if (guest) act('bucket', h.id, true); sfx.splash(null, 0.5); G.toast?.('Sea water: good for fires, useless for bailing.'); }
+          const take = Math.min(cap, c.vol);
+          if (guest) act('bail', s.id, c.i, take, h.id); else c.vol = Math.max(0, c.vol - take);
+          h.cap = take; this.fillT = 0.6; sfx.splash(null, 0.3);
+        } else if (this.inSea || (!s && this.swimming)) { h.cap = cap; this.fillT = 0.6; if (guest) act('bucket', h.id, true); sfx.splash(null, 0.3); G.toast?.('Sea water: good for fires, useless for bailing.'); }
         else G.toast?.('Stand in the flood water below deck to fill the bucket.');
         return;
       }
-      const p = eye.clone().addScaledVector(dir, 2.2);
-      for (const sh of G.ships) {
-        if (!sh.fires.length) continue;
-        const lp = sh.toLocal(p.clone());
-        if (!sh.fires.some(f => f.lp.distanceTo(lp) < 2.6)) continue;
-        if (guest) act('extinguish', sh.id, arr(p)); else sh.extinguish(p, 2.6);
-        setBucket(h, false); if (guest) act('bucket', h.id, false);
-        for (let i = 0; i < 7; i++) FX.steam(p.x + rand(-1, 1), p.y, p.z + rand(-1, 1));
-        sfx.splash(p, 0.8); G.toast?.('🔥 Fire put out!', 'good');
-        return;
-      }
-      const atRail = !s || this.pos.y >= s.deckTop - 0.1 && Math.abs(this.pos.x) > s.halfAt(1, this.pos.z / s.hl) - 1.4;
-      if (atRail || this.pos.y >= s.deckTop + 1) {
-        setBucket(h, false); if (guest) act('bucket', h.id, false);
-        for (let i = 0; i < 22; i++) FX.spray(eye.x + dir.x * 0.8, eye.y - 0.4, eye.z + dir.z * 0.8, dir.x + rand(-0.3, 0.3), 0.6, dir.z + rand(-0.3, 0.3));
-        sfx.splash(null, 0.7);
-      } else G.toast?.('Take the bucket up to the railing and throw it overboard (or onto a fire).');
+      this.throwWater(h, eye, dir);
       return;
     }
     const spot = this.repairSpot(eye, dir);
@@ -419,6 +471,42 @@ export class Player {
     }
     if (fixed) { sfx.hammer(spot.p); G.toast?.(`Patched ${fixed} blocks.`); }
   }
+  // the water flies in an arc: onto a fire it puts it out, back onto a deck half of it runs into the hold,
+  // over the side it is gone
+  throwWater(h, eye, dir) {
+    const guest = isGuest(), amount = h.amount;
+    setBucketAmount(h, 0); if (guest) act('bucket', h.id, false);
+    const p = eye.clone().addScaledVector(dir, 0.5); p.y -= 0.3;
+    const vel = dir.clone().multiplyScalar(7.5); vel.y += 2.5;
+    if (this.frame) vel.add(this.frame.velocity(v1));
+    for (let i = 0; i < 26; i++) FX.spray(p.x, p.y, p.z, vel.x / 4 + rand(-0.25, 0.25), vel.y / 3 + rand(-0.2, 0.3), vel.z / 4 + rand(-0.25, 0.25), 1.1);
+    sfx.splash(null, 0.6);
+    for (let t = 0; t < 1.8; t += 0.05) {
+      vel.y -= 9.8 * 0.05; p.addScaledVector(vel, 0.05);
+      for (const s of G.ships) {
+        if (s.sunk) continue;
+        const lp = s.toLocal(v2.copy(p));
+        if (!s.inBox(lp, 0.5)) continue;
+        if (s.fires.some(f => f.lp.distanceTo(lp) < 1.8)) {
+          if (guest) act('extinguish', s.id, arr(p)); else s.extinguish(p, 2.2);
+          for (let i = 0; i < 7; i++) FX.steam(p.x + rand(-1, 1), p.y, p.z + rand(-1, 1));
+          G.toast?.('🔥 Fire put out!', 'good');
+          return;
+        }
+        const top = s.topAt(lp.x, lp.z);
+        if (top != null && lp.y <= top + 0.1) {
+          // landed on a deck: half of it runs back down into the hold below
+          const k = Math.floor(lp.z / VS + s.nz / 2), ci = s.compOfK(k);
+          if (Math.abs(lp.x) < s.halfAt(1, lp.z / s.hl) && amount > 0.2) {
+            if (guest) act('pour', s.id, ci, amount * 0.5); else s.comps[ci].vol += amount * 0.5;
+            G.toast?.('Half of it ran back into the hold. Throw it over the side!');
+          }
+          return;
+        }
+      }
+      if (p.y < waveHeight(p.x, p.z)) { FX.splash(p.x, p.y, p.z, 0.5); return; }
+    }
+  }
   repairSpot(eye, dir) {
     for (const s of G.ships) {
       if (s.sunk || Math.hypot(s.x - eye.x, s.z - eye.z) > s.hl + 5) continue;
@@ -433,15 +521,22 @@ export class Player {
   }
 
   // ---------- stations ----------
-  updateWheel() {
+  updateWheel(dt) {
     const s = this.station;
     this.swimming = this.inSea = this.underwater = false; this.underKind = null;
     this.pos.copy(s.driverLp);
     if (hit('forward')) s.throttle = Math.min(3, s.throttle + 1);
     if (hit('back')) s.throttle = Math.max(-1, s.throttle - 1);
+    // hold S: brake hard, then stop, then go into reverse
+    if (down('back')) {
+      this.sHold = (this.sHold || 0) + dt;
+      s.brake = s.speed > 0.4;
+      if (this.sHold > 0.5 && s.throttle > 0) s.throttle = 0;
+      if (this.sHold > 1.4 && s.speed < 1) s.throttle = -1;
+    } else { this.sHold = 0; s.brake = false; }
     s.rudderIn = (down('right') ? 1 : 0) - (down('left') ? 1 : 0);
     if (hit('view')) this.chase = !this.chase;
-    this.prompt = `⚓ ${THROTTLE[s.throttle + 1]}  ·  ${kn('forward')}/${kn('back')} speed  ·  ${kn('left')}/${kn('right')} steer  ·  ${kn('view')} camera  ·  ${kn('crane')} crane  ·  ${kn('use')} let go`;
+    this.prompt = `⚓ ${s.brake ? 'BRAKING' : THROTTLE[s.throttle + 1]}${s.aground > 0 ? ' · ⚠️ AGROUND: reverse!' : ''}  ·  ${kn('forward')}/${kn('back')} speed (hold ${kn('back')}: stop / reverse)  ·  ${kn('left')}/${kn('right')} steer  ·  ${kn('view')} camera  ·  ${kn('crane')} crane  ·  ${kn('use')} let go`;
     if (hit('crane')) { this.mode = 'crane'; s.crane.user = this; s.rudderIn = 0; }
     if (hit('use')) this.leaveStation();
   }
@@ -474,7 +569,7 @@ export class Player {
   updateCannon(dt, sens) {
     const { ship: s, c } = this.station;
     this.swimming = this.inSea = this.underwater = false; this.underKind = null;
-    this.pos.copy(c.lp).add(v1.set(-c.side * 1.0, 0, 0));
+    this.pos.copy(this.gunStand(s, c));
     c.yaw = clamp(c.yaw + IN.mdx * sens * 0.7 * c.side, -0.75, 0.75);
     c.pitch = clamp(c.pitch - IN.mdy * sens * 0.7 * (S.invertY ? -1 : 1), -0.12, 0.5);
     const [pos, dir] = s.cannonMuzzle(c);
@@ -494,8 +589,13 @@ export class Player {
       cam.lookAt(s.hookWorld(v3));
     } else if (this.mode === 'cannon') {
       const { ship: s, c } = this.station;
+      // over the gun, close behind the breech; pulled in if a wall is in the way
       const [pos, dir] = s.cannonMuzzle(c, v1, v2);
-      cam.position.copy(pos).addScaledVector(dir, -3.6); cam.position.y += 1.3;
+      const pivot = s.toWorld(new THREE.Vector3().copy(c.lp).add(new THREE.Vector3(0, 0.66, 0)));
+      const want = pivot.clone().addScaledVector(dir, -1.5); want.y += 0.95;
+      const back = want.clone().sub(pivot), len = back.length(); back.normalize();
+      const block = s.raycast(pivot.clone().addScaledVector(back, 0.6), back, len);
+      cam.position.copy(block ? pivot.clone().addScaledVector(back, Math.max(0.5, block.dist + 0.6 - 0.25)) : want);
       cam.lookAt(v3.copy(pos).addScaledVector(dir, 30));
     } else if (this.mode === 'wheel' && this.chase) {
       // chase camera behind and above the ship, mouse looks around

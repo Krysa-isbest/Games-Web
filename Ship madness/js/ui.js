@@ -219,7 +219,7 @@ export function updateHUD(dt) {
   sp.classList.toggle('hidden', !ship);
   if (ship) {
     const st = ship.stats();
-    const comps = ship.comps.map(c => `<div class="comp" title="${c.name}"><div style="height:${Math.min(100, c.vol / c.cap * 100)}%"></div></div>`).join('');
+    const comps = ship.comps.map(c => `<div class="comp${ship.leakComps?.[c.i] ? ' leaking' : ''}" title="${c.name}${ship.leakComps?.[c.i] ? ' (leaking!)' : ''}"><div style="height:${Math.min(100, c.vol / c.cap * 100)}%"></div></div>`).join('');
     sp.innerHTML = `<b>${ship.name}</b>${ship.sinking ? ' <em class="bad">SINKING!</em>' : ''}
       <div class="bar"><span>Hull</span><div class="track"><div class="fill hull" style="width:${st.hull * 100}%"></div></div><small>${Math.round(st.hull * 100)}%</small></div>
       <div class="bar"><span>Water</span><div class="track"><div class="fill water" style="width:${st.flood * 100}%"></div></div><small>${Math.round(st.flood * 100)}%</small></div>

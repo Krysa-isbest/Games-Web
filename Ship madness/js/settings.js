@@ -38,6 +38,7 @@ function audio() {
   return `<div class="set-h">Sound</div>` +
     slider('Master volume', 'vol', 0, 1, 0.05, FMT.vol) +
     slider('Effects', 'sfxVol', 0, 1, 0.05, FMT.sfxVol) +
+    slider('Music', 'musicVol', 0, 1, 0.05, FMT.sfxVol, 'Your own music from the audio folder.') +
     slider('Sea & wind', 'ambVol', 0, 1.5, 0.05, FMT.ambVol) +
     `<div class="set-h">Voice chat</div>` +
     toggle('Voice chat', 'voice', 'Talk to your crew in online games (online play comes next).') +

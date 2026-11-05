@@ -1,7 +1,7 @@
 // Guns (with arms, animations and attachments), hitscan, cannonballs, grenades, C4, airstrikes and the nuke.
 import * as THREE from 'three';
 import { G, P, rand, clamp, damp, isGuest, isHost, nextId } from './state.js';
-import { waveHeight } from './ocean.js';
+import { waveHeight, SKY } from './ocean.js';
 import { groundHeight } from './islands.js';
 import { FX } from './fx.js';
 import { sfx } from './sfx.js';
@@ -258,8 +258,13 @@ function updateStrikes(dt) {
 }
 
 // ---------- nuke ----------
+// 15 s warning (red circle = certain death), then: white flash, a fireball that grows into a mushroom cloud,
+// a shockwave racing over the water, a blast wave that shoves ships away, an orange sky and falling ash.
+// The boom reaches you later the further away you are. Damage fades with distance.
 export const NUKE_R = 50;
-let ring = null, cloud = null;
+const NUKE_REACH = 120;
+let ring = null;
+const BLASTS = [];
 function makeRing(x, z) {
   if (ring) G.scene.remove(ring);
   ring = new THREE.Mesh(new THREE.RingGeometry(NUKE_R - 1.5, NUKE_R, 96), new THREE.MeshBasicMaterial({ color: '#ff2a1a', transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
@@ -276,48 +281,111 @@ export function armNuke(p, owner) {
   return true;
 }
 export function nukeVisual(x, z, t) { if (!isGuest()) return; G.nuke = { x, z, t, siren: 0, visual: true }; makeRing(x, z); }
-export function nukeBoomVisual(x, z) {
-  if (!isGuest()) return;
-  G.flashScreen = 1; sfx.boom(null, 4);
-  for (let i = 0; i < 10; i++) FX.explosion(x + rand(-15, 15), rand(0, 8), z + rand(-15, 15), 6);
-  cloud = { x, z, t: 9 };
-  if (ring) G.scene.remove(ring);
-  ring = null; G.nuke = null;
+export function nukeBoomVisual(x, z) { if (!isGuest()) return; blastVisual(x, z); if (ring) G.scene.remove(ring); ring = null; G.nuke = null; }
+
+const glowMat = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+const SKY0 = { h: null, z: null };
+function blastVisual(x, z) {
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  const fire = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), glowMat('#fff2c0'));
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.4, 1, 16, 1, true), new THREE.MeshStandardMaterial({ color: '#5a4a40', emissive: '#ff5a1a', emissiveIntensity: 1, roughness: 1, transparent: true, side: THREE.DoubleSide }));
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: '#6b5a50', emissive: '#ff6a2a', emissiveIntensity: 1.2, roughness: 1, transparent: true }));
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(1, 0.42, 12, 32), cap.material);
+  torus.rotation.x = Math.PI / 2;
+  const shock = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 128), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+  shock.rotation.x = -Math.PI / 2; shock.position.y = 1.2;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial({ color: '#ffe8c0', transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  const light = new THREE.PointLight('#ffb060', 8000, 900, 1.6);
+  g.add(fire, stem, cap, torus, shock, dome, light);
+  G.scene.add(g);
+  G.flashScreen = 1;
+  SKY0.h ??= SKY.horizon.clone(); SKY0.z ??= SKY.zenith.clone();
+  BLASTS.push({ g, fire, stem, cap, torus, shock, dome, light, t: 0, x, z, boomed: false, ash: 25 });
+  // the boom travels at the speed of sound
+  const d = G.camera.position.distanceTo(new THREE.Vector3(x, 0, z));
+  setTimeout(() => { sfx.boom(null, 4); sfx.thunder(); G.shake = Math.max(G.shake || 0, Math.max(0.4, 2 - d / 300)); }, Math.min(4000, d / 340 * 1000));
+  for (let i = 0; i < 12; i++) FX.explosion(x + rand(-18, 18), rand(0, 10), z + rand(-18, 18), 6);
+}
+function updateBlasts(dt) {
+  for (let i = BLASTS.length - 1; i >= 0; i--) {
+    const b = BLASTS[i];
+    b.t += dt;
+    const t = b.t;
+    // fireball: grows fast, then rises and cools into the cap
+    const fr = Math.min(32, t * 40);
+    b.fire.scale.setScalar(fr * Math.max(0.2, 1 - Math.max(0, t - 3) / 8));
+    b.fire.position.y = 10 + Math.max(0, t - 0.8) * 9;
+    b.fire.material.color.setHSL(0.11 - Math.min(0.1, t * 0.012), 1, Math.max(0.15, 0.85 - t * 0.06));
+    b.fire.material.opacity = Math.max(0, 1 - t / 12);
+    const capY = Math.min(115, 15 + t * 9);
+    b.cap.position.y = capY; b.cap.scale.set(22 + Math.min(30, t * 3), 18 + Math.min(14, t * 1.4), 22 + Math.min(30, t * 3));
+    b.torus.position.y = capY - 4; b.torus.scale.setScalar(26 + Math.min(32, t * 3.2));
+    b.stem.scale.set(6 + Math.min(6, t * 0.6), capY, 6 + Math.min(6, t * 0.6)); b.stem.position.y = capY / 2;
+    const glow = Math.max(0, 1.4 - t * 0.09);
+    b.cap.material.emissiveIntensity = glow; b.stem.material.emissiveIntensity = glow * 0.8;
+    const fade = t > 22 ? Math.max(0, 1 - (t - 22) / 8) : 1;
+    b.cap.material.opacity = fade; b.stem.material.opacity = fade;
+    const sr = Math.min(480, t * 130);
+    b.shock.scale.setScalar(sr); b.shock.material.opacity = Math.max(0, 0.8 - t / 4);
+    b.dome.scale.setScalar(Math.min(220, t * 260)); b.dome.material.opacity = Math.max(0, 0.35 - t * 0.4);
+    b.light.intensity = Math.max(0, 8000 * (1 - t / 6));
+    // smoke boiling off the cloud, fire in the stem
+    if (fade > 0.3) {
+      for (let k = 0; k < 4; k++) FX.smoke(b.x + rand(-1, 1) * (20 + t * 2), capY + rand(-8, 10), b.z + rand(-1, 1) * (20 + t * 2), 6, true);
+      if (t < 10) for (let k = 0; k < 3; k++) FX.fire(b.x + rand(-6, 6), rand(2, capY * 0.6), b.z + rand(-6, 6), 5);
+    }
+    // the sky glows orange, then recovers
+    const tint = Math.max(0, Math.min(1, t < 2 ? t / 2 : 1 - (t - 6) / 14));
+    SKY.horizon.copy(SKY0.h).lerp(new THREE.Color('#ff8a40'), tint * 0.6);
+    SKY.zenith.copy(SKY0.z).lerp(new THREE.Color('#b0503a'), tint * 0.45);
+    // ash falls around the camera
+    if (t > 3 && t < b.ash) { const c = G.camera.position; for (let k = 0; k < 3; k++) FX.ash(c.x + rand(-25, 25), c.y + rand(6, 18), c.z + rand(-25, 25)); }
+    if (t > 32) {
+      G.scene.remove(b.g); BLASTS.splice(i, 1);
+      if (!BLASTS.length && SKY0.h) { SKY.horizon.copy(SKY0.h); SKY.zenith.copy(SKY0.z); }
+    }
+  }
+}
+function nukeDamage(n) {
+  const c = new THREE.Vector3(n.x, 1, n.z);
+  for (const s of G.ships) {
+    if (s.gone) continue;
+    const d = Math.max(0, Math.hypot(s.x - n.x, s.z - n.z) - s.hl * 0.5);
+    // the blast wave shoves and rolls every ship nearby
+    if (d < 260) {
+      const k = (1 - d / 260) * 16, dx = (s.x - n.x) / (d + 1), dz = (s.z - n.z) / (d + 1);
+      s.kx = (s.kx || 0) + dx * k; s.kz = (s.kz || 0) + dz * k;
+      s.vr += rand(-1, 1) * k * 0.05; s.vp += rand(-1, 1) * k * 0.03; s.vy += k * 0.3;
+    }
+    if (d > NUKE_REACH) continue;
+    const hard = d < 30 ? 1 : d < 70 ? 0.55 : 0.25;
+    const n2 = Math.round(2 + hard * 5);
+    for (let i = 0; i < n2; i++) s.damageSphere(tmp.set(s.x + rand(-s.hl, s.hl) * 0.6, s.y + rand(0.5, s.deckTop + 3), s.z + rand(-s.hl, s.hl) * 0.6), 1.5 + hard * 2.2, 5 + hard * 10, n.owner, hard);
+    for (const cp of s.comps) cp.vol = Math.min(cp.cap, cp.vol + cp.cap * (d < 30 ? 0.97 : hard * 0.5));
+  }
+  for (const t of targets()) {
+    const p = t.center(tmp), d = Math.hypot(p.x - n.x, p.z - n.z);
+    if (d > NUKE_REACH) continue;
+    if (t.isShark) t.stun(25, c);
+    else t.hurt(d < NUKE_R ? 999 : 160 * (1 - (d - NUKE_R) / (NUKE_REACH - NUKE_R)), n.owner, 'nuke', c);
+  }
 }
 function updateNuke(dt) {
-  if (cloud) {
-    cloud.t -= dt;
-    for (let i = 0; i < 8; i++) FX.smoke(cloud.x + rand(-6, 6), rand(0, 1) * (45 - cloud.t * 4), cloud.z + rand(-6, 6), 5, true);
-    if (cloud.t > 6) for (let i = 0; i < 4; i++) FX.fire(cloud.x + rand(-8, 8), rand(0, 20), cloud.z + rand(-8, 8), 6);
-    if (cloud.t <= 0) cloud = null;
-  }
+  updateBlasts(dt);
   const n = G.nuke;
   if (!n) return;
   n.t -= dt; n.siren -= dt;
   if (n.siren <= 0) { n.siren = 3.6; sfx.siren(); }
-  if (ring) ring.material.opacity = 0.35 + 0.3 * Math.sin(G.t * 8);
+  if (ring) ring.material.opacity = 0.35 + 0.3 * Math.sin(G.t * (n.t < 5 ? 16 : 8));
   if (n.t > 0 || n.visual) return;
-  const c = new THREE.Vector3(n.x, 1, n.z);
-  G.flashScreen = 1;
-  sfx.boom(null, 4);
   G.netFx?.({ k: 'nukeBoom', x: n.x, z: n.z });
-  for (let i = 0; i < 10; i++) FX.explosion(n.x + rand(-15, 15), rand(0, 8), n.z + rand(-15, 15), 6);
-  for (const s of G.ships) {
-    if (s.gone) continue;
-    if (Math.hypot(s.x - n.x, s.z - n.z) > NUKE_R + s.hl) continue;
-    for (let i = 0; i < 6; i++) s.damageSphere(tmp.set(s.x + rand(-s.hl, s.hl) * 0.6, s.y + rand(0.5, s.deckTop), s.z + rand(-s.hl, s.hl) * 0.6), 3.5, 14, n.owner, 1);
-    for (const cp of s.comps) cp.vol = cp.cap * 0.97;
-  }
-  for (const t of targets()) {
-    const p = t.center(tmp);
-    if (Math.hypot(p.x - n.x, p.z - n.z) > NUKE_R) continue;
-    if (t.isShark) t.stun(25, c); else t.hurt(999, n.owner, 'nuke', c);
-  }
-  cloud = { x: n.x, z: n.z, t: 9 };
+  blastVisual(n.x, n.z);
+  nukeDamage(n);
   if (ring) G.scene.remove(ring);
   ring = null;
   G.nuke = null;
 }
+export function clearBlasts() { for (const b of BLASTS) G.scene.remove(b.g); BLASTS.length = 0; if (SKY0.h) { SKY.horizon.copy(SKY0.h); SKY.zenith.copy(SKY0.z); } }
 
 // ---------- C4 ----------
 const c4Geo = new THREE.BoxGeometry(0.35, 0.2, 0.25);
@@ -359,7 +427,8 @@ export function resetWeaponsWorld() {
   for (const c of G.c4s) c.mesh.parent?.remove(c.mesh);
   G.c4s = [];
   if (ring) G.scene.remove(ring);
-  ring = null; cloud = null; G.nuke = null;
+  ring = null; G.nuke = null;
+  clearBlasts();
 }
 
 // ---------- inventory ----------

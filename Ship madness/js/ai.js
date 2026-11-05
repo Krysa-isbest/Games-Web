@@ -12,7 +12,7 @@ const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3
 export const DIFF = { aim: 1, hp: 1, dmg: 1 };   // set by the campaign difficulty
 
 export function makeAI(ship, { crew = ship.def.crew, captain = false, hp = 60, name = '' } = {}) {
-  ship.ai = { t: 0, wander: rand(-1, 1), alive: true };
+  ship.ai = { t: 0, wander: rand(-1, 1), alive: true, err: 0, ram: ['tug', 'yacht', 'trawler'].includes(ship.key) && Math.random() < 0.3 };
   const bots = [];
   if (captain) {
     const b = new Bot(ship, ship.driverLp.clone(), { hp: 120, captain: true, name });
@@ -29,34 +29,48 @@ function enemiesOf(ship) {
   return G.ships.filter(s => s !== ship && !s.sunk && (hostile(ship.team, s.team) || (s.driver?.isPlayer && ship.team !== 'player')));
 }
 
+// Enemy ships try to keep up with you and shoot, but they are sloppy: lazy rudder, wandering course, never
+// faster than you. Close in and they hold their course, so you can board them. A few small ones try to ram.
+// No captain or no crew left = the ship drifts. Badly flooded ones run.
 export function updateAI(dt) {
   if (isGuest()) { for (const b of G.bots) b.update(dt); return; }
+  const crew = new Map();
+  for (const b of G.bots) if (b.alive) crew.set(b.ship, (crew.get(b.ship) || 0) + 1);
   for (const s of G.ships) {
     if (!s.ai) continue;
-    if (s.sinking || (s.captain && !s.captain.alive)) { s.rudderIn = 0; if (s.captain && !s.captain.alive) s.throttle = 0; continue; }
     const ai = s.ai;
-    ai.t -= dt;
+    if (s.sinking || (s.captain && !s.captain.alive) || !crew.get(s)) { s.rudderIn = 0; s.throttle = 0; s.brake = false; continue; }
+    ai.t -= dt; ai.errT = (ai.errT || 0) - dt;
+    if (ai.errT <= 0) { ai.errT = rand(2, 5); ai.err = rand(-0.35, 0.35); }
     let target = null, td = Infinity;
     for (const o of enemiesOf(s)) { const d = Math.hypot(o.x - s.x, o.z - s.z); if (d < td) { td = d; target = o; } }
     let want = s.yaw, thr = 1;
-    if (G.game?.zone) {      // stay inside the storm ring
-      const z = G.game.zone, d = Math.hypot(s.x - z.x, s.z - z.z);
-      if (d > z.r * 0.85) { want = Math.atan2(z.x - s.x, z.z - s.z); thr = 3; target = null; }
-    }
-    if (target && td < 320) {
+    const zone = G.game?.zone, outZone = zone && Math.hypot(s.x - zone.x, s.z - zone.z) > zone.r * 0.85;
+    if (outZone) { want = Math.atan2(zone.x - s.x, zone.z - s.z); thr = 3; }
+    else if (target && td < 320) {
       const bearing = Math.atan2(target.x - s.x, target.z - s.z);
-      if (td > 75) { want = bearing; thr = 3; }
+      const tSpeed = Math.abs(target.speed), cap = Math.max(1, target.throttle);   // never out-run you
+      if (s.flood > 0.55 && !ai.ram) { want = bearing + Math.PI; thr = 3; }        // too damaged: run
+      else if (ai.ram && td < 90) { want = bearing + angDiff(bearing, Math.atan2(target.x + target.velocity(v2).x * 2 - s.x, target.z + target.velocity(v2).z * 2 - s.z)); thr = 3; }
+      else if (td > 110) { want = bearing; thr = 3; }
+      else if (td < 30) { want = s.yaw; thr = 1; }                                  // close: hold course, you can board
       else {
-        const a = bearing + Math.PI / 2, b = bearing - Math.PI / 2;
-        want = Math.abs(angDiff(s.yaw, a)) < Math.abs(angDiff(s.yaw, b)) ? a : b;
-        if (td < 35) want += Math.sign(angDiff(bearing, want)) * 0.4;
-        thr = 2;
+        // ride alongside, about 40 m off the target's beam
+        const th = tSpeed > 1 ? target.yaw : bearing + Math.PI / 2;
+        const rx = Math.cos(th), rz = -Math.sin(th);
+        const side = Math.sign((s.x - target.x) * rx + (s.z - target.z) * rz) || 1;
+        const ax = target.x + rx * side * 40 + Math.sin(th) * 6, az = target.z + rz * side * 40 + Math.cos(th) * 6;
+        const da = Math.hypot(ax - s.x, az - s.z);
+        want = da > 14 ? Math.atan2(ax - s.x, az - s.z) : th;
+        thr = da > 30 ? 3 : tSpeed > 1 ? target.throttle : 1;
+        thr = Math.min(thr, cap);
       }
-      fireBroadside(s, target, td);
-    } else if (!G.game?.zone || Math.hypot(s.x - G.game.zone.x, s.z - G.game.zone.z) <= G.game.zone.r * 0.85) {
+      if (!ai.ram || td > 90) fireBroadside(s, target, td);
+    } else {
       if (ai.t <= 0) { ai.t = rand(4, 9); ai.wander = rand(-1, 1); }
       want = s.yaw + ai.wander * 0.6; thr = 1;
     }
+    want += ai.err;
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
     for (const look of [18, 34]) {
       if (groundHeight(s.x + fx * look, s.z + fz * look) > s.y - 0.5) {
@@ -67,14 +81,14 @@ export function updateAI(dt) {
         break;
       }
     }
-    s.throttle = thr;
-    s.rudderIn = clamp(-angDiff(s.yaw, want) * 2.2, -1, 1);
+    if (s.aground > 0) thr = -1;
+    s.throttle = clamp(Math.round(thr), -1, 3);
+    s.rudderIn = clamp(-angDiff(s.yaw, want) * 1.2, -0.8, 0.8);
   }
   for (const b of G.bots) b.update(dt);
   for (const b of G.bots) if (b.gone) G.netHook?.('despawn', 'bot', b);
   G.bots = G.bots.filter(b => !b.gone);
 }
-
 function fireBroadside(s, target, dist) {
   if (dist > 170) return;
   const lead = s.velocity(v3).clone(), tv = target.velocity(v2);

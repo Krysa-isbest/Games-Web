@@ -6,6 +6,7 @@ let ctx = null, master, filt, noiseBuf, amb, echo, echoGain;
 
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  setTimeout(loadSamples, 0);
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 20000;
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
@@ -109,3 +110,53 @@ export const sfx = {
   crackle(pos) { noise({ dur: 0.05, freq: 3000, q: 2, type: 'bandpass', gain: 0.2, pos }); },
   bounce(pos) { tone({ f0: 900, f1: 700, dur: 0.05, type: 'triangle', gain: 0.2, pos }); },
 };
+
+// ---------- your own sound files (audio/list.json -> audio/sfx/...) ----------
+// Any effect listed in audio/list.json plays your file instead of the built-in synth sound.
+// Several files for one effect = a random one each time.
+export const SAMPLES = {};
+let ambSrc = null;
+async function loadSamples() {
+  let list;
+  try { list = await (await fetch('audio/list.json', { cache: 'no-store' })).json(); } catch { return; }
+  for (const [name, files] of Object.entries(list.sfx || {})) {
+    for (const f of files || []) {
+      try {
+        const buf = await (await fetch('audio/sfx/' + encodeURIComponent(f))).arrayBuffer();
+        (SAMPLES[name] ||= []).push(await ctx.decodeAudioData(buf));
+      } catch (e) { console.warn('Sound file could not load:', f); }
+    }
+  }
+  // your own sea ambience replaces the noise
+  if (SAMPLES.ambience?.length && !ambSrc) {
+    ambSrc = ctx.createBufferSource(); ambSrc.buffer = SAMPLES.ambience[0]; ambSrc.loop = true;
+    ambSrc.connect(amb); ambSrc.start();
+  }
+}
+const LOUD = { boom: 1.2, cannon: 1.1, nuke: 1.3 };
+function playSample(name, pos) {
+  const arr = SAMPLES[name];
+  if (!ctx || !arr?.length) return false;
+  const g0 = vol(pos) * S.sfxVol * (LOUD[name] || 1);
+  if (g0 < 0.008) return true;
+  const src = ctx.createBufferSource();
+  src.buffer = arr[Math.random() * arr.length | 0];
+  src.playbackRate.value = 0.95 + Math.random() * 0.1;
+  const g = ctx.createGain(); g.gain.value = g0;
+  src.connect(g); g.connect(filt);
+  if (/^(shot|cannon|boom)/.test(name)) { const w = ctx.createGain(); w.gain.value = 0.35; g.connect(w); w.connect(echoGain); }
+  src.start();
+  return true;
+}
+// which argument of each effect is its position in the world
+const POS_ARG = { shot: 1, cannon: 0, boom: 0, wood: 0, splash: 0, hammer: 0, bite: 0, crash: 0, crackle: 0, bounce: 0 };
+for (const k of Object.keys(sfx)) {
+  const synth = sfx[k];
+  sfx[k] = (...a) => {
+    const pos = POS_ARG[k] != null ? a[POS_ARG[k]] : null;
+    if (k === 'shot' && (playSample('shot_' + a[0] + (a[2] ? '_quiet' : ''), pos) || playSample('shot_' + a[0], pos) || playSample('shot', pos))) return;
+    if (k === 'boom' && a[1] >= 4 && playSample('nuke', pos)) return;
+    if (k !== 'shot' && playSample(k, pos)) return;
+    synth(...a);
+  };
+}
