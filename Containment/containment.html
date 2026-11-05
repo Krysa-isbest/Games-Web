@@ -605,7 +605,7 @@ body.camp #tl,body.camp #waveprog{display:none}
 
 /* ================= v38: glass and neon theme, motion ================= */
 :root{--orange:#2fd8ff;--yellow:#ffe14d;--teal:#35ffc2;--red:#ff3a5c}
-.plate{background:linear-gradient(180deg,rgba(16,30,44,.78),rgba(8,14,22,.8));backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+.plate{background:linear-gradient(180deg,rgba(16,30,44,.78),rgba(8,14,22,.84));
   box-shadow:0 0 24px rgba(47,216,255,.12),inset 0 0 0 1px rgba(140,225,255,.1);animation:plateIn .7s cubic-bezier(.2,.9,.2,1) both}
 #tr .plate,#scorePlate{animation-name:plateInR}
 #br{animation-name:plateInR}
@@ -629,7 +629,7 @@ body.camp #tl,body.camp #waveprog{display:none}
 #slots i.sel{transform:translateY(-3px);box-shadow:0 0 14px rgba(47,216,255,.55)}
 #wname{letter-spacing:.04em}
 #ammo b{transition:color .2s}
-.feedrow{backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);background:rgba(10,18,28,.72);border-radius:0 4px 4px 0}
+.feedrow{background:rgba(10,18,28,.78);border-radius:0 4px 4px 0}
 .ch,#dot{background:#eafcff;box-shadow:0 0 0 1px rgba(0,0,0,.7),0 0 6px rgba(47,216,255,.6)}
 .pop{text-shadow:0 2px 0 #06101a,0 0 14px rgba(47,216,255,.45)}
 #msgBig{text-shadow:0 3px 0 #06101a,0 0 30px rgba(47,216,255,.55);letter-spacing:.02em}
@@ -1150,7 +1150,7 @@ var DIFF={
   normal:{name:'Operative',hp:1,dmg:1,spawn:1,score:1,note:'The intended experience.'},
   hard:{name:'Veteran',hp:1.3,dmg:1.35,spawn:.8,score:1.3,note:'Tougher drones, harder hits, and a 30% score bonus.'}
 };
-var DEFAULTS={sens:1,fov:95,vol:.7,music:true,musicVol:.65,shake:1,quality:IS_TOUCH?'low':'high',dmgNums:true,fps:false,diff:'normal',crouchMode:'hold',sprintMode:'toggle',bob:1,post:true,adapt:true};
+var DEFAULTS={sens:1,fov:95,vol:.7,music:true,musicVol:.65,shake:1,quality:IS_TOUCH?'low':'high',dmgNums:true,fps:false,diff:'normal',crouchMode:'hold',sprintMode:'toggle',bob:1,post:true,adapt:true,refl:false};
 var settings=Object.assign({},DEFAULTS);
 try{var _s=JSON.parse(localStorage.getItem('containment2_settings')||'null'); if(_s) Object.assign(settings,_s);}catch(e){}
 function saveSettings(){try{localStorage.setItem('containment2_settings',JSON.stringify(settings))}catch(e){}}
@@ -1167,6 +1167,7 @@ var SETTINGS_HTML=
  '<label><span class="li">'+ico('shake',16)+'Weapon and camera motion</span> <output data-o="bob"></output><input type="range" data-k="bob" min="0" max="1.5" step="0.1"></label>'+
  '<label class="chk"><input type="checkbox" data-k="post"> <span class="li">'+ico('monitor',16)+'Glow and post effects</span></label>'+
  '<label class="chk"><input type="checkbox" data-k="adapt"> <span class="li">'+ico('fps',16)+'Adaptive resolution</span></label>'+
+ '<label class="chk"><input type="checkbox" data-k="refl"> <span class="li">'+ico('monitor',16)+'Reflections (experimental)</span></label>'+
  '<label><span class="li">'+ico('monitor',16)+'Graphics</span> <select data-k="quality"><option value="high">High (shadows)</option><option value="low">Low (faster)</option></select></label>'+
  '<label><span class="li">'+ico('sprint',16)+'Sprint</span> <select data-k="sprintMode"><option value="toggle">Toggle</option><option value="hold">Hold</option></select></label>'+
  '<label><span class="li">'+ico('crouch',16)+'Crouch</span> <select data-k="crouchMode"><option value="hold">Hold</option><option value="toggle">Toggle</option></select></label>'+
@@ -1297,8 +1298,8 @@ function applyPal(){
   var p=palCur, u=skyMat.uniforms;
   u.uTop.value.copy(p.top); u.uHor.value.copy(p.hor); u.uSunC.value.copy(p.sunC); u.uNight.value=p.night; u.uSunDir.value.copy(p.sunP).normalize();
   scene.fog.color.copy(p.fog); scene.fog.density=p.fogD*(1+dirFogK()*2.4); scene.background.copy(p.fog);
-  hemi.color.copy(p.hemiS); hemi.groundColor.copy(p.hemiG); hemi.intensity=p.hemiI*(1-dirFogK()*.4);
-  sun.color.copy(p.sunC); sun.intensity=p.sunI*(1-dirFogK()*.5); sun.position.copy(p.sunP).add(SUNC);
+  hemi.color.copy(p.hemiS); hemi.groundColor.copy(p.hemiG); hemi.intensity=p.hemiI*(1-dirFogK()*.4)*gfxLk();
+  sun.color.copy(p.sunC); sun.intensity=p.sunI*(1-dirFogK()*.5)*gfxLk(); sun.position.copy(p.sunP).add(SUNC);
   var alarm=(palTgt===PALS[3])?(.55+.45*Math.sin(alarmT*4)):1;
   for(var i=0;i<lamps.length;i++){ lamps[i].intensity=p.lamp*alarm; lamps[i].color.setHex(palTgt===PALS[3]?0xff2a4a:0x4fd8ff); }
 }
@@ -9858,17 +9859,18 @@ function dirFrame(dt){
 
 /* ================= v38: graphics rework and performance =================
    Everything here is optional: if any of it fails, the game falls back to the plain renderer that was there before. */
-var GFX={init:false,on:false,fail:false,failWhy:'',rt:null,mids:null,P:null,quad:null,pscene:null,pcam:null,scale:1,minScale:.55,ema:16.7,cool:4,last:0,frames:0,sf:0,shadowDirty:true,w:0,h:0,envs:[],envTier:-1,skyline:null,skyWin:null,lodI:0};
+var GFX={init:false,on:false,fail:false,failWhy:'',rt:null,mids:null,P:null,quad:null,pscene:null,pcam:null,scale:1,minScale:.55,ema:16.7,cool:4,last:0,frames:0,sf:0,shadowDirty:true,w:0,h:0,envs:[],envTier:-1,skyline:null,skyWin:null,lodI:0,lk:1,exT:0,exN:0,clip:0,envOff:false,cuts:0};
+function gfxLk(){ return (typeof GFX==='object'&&GFX&&GFX.lk>0)?GFX.lk:1; }
 var SUNC=new THREE.Vector3();
 function dirFogK(){ return DIR?DIR.fogK:0; }
 
 /* ---- palettes: cooler, cleaner light, neon lamps ---- */
 (function gfxPalette(){
   function P_(i,o){ var p=PALS[i], k; for(k in o){ if(p[k]&&p[k].setHex) p[k].setHex(o[k]); else p[k]=o[k]; } }
-  P_(0,{top:0x4f9bf0,hor:0xcde6f2,fog:0xbcd9e8,fogD:.0095,hemiS:0xeaf5ff,hemiG:0x8493a3,hemiI:.92,sunC:0xfff3df,sunI:1.0});
-  P_(1,{top:0x26346e,hor:0xff8f72,fog:0xc4879a,fogD:.0112,hemiS:0xffd2c4,hemiG:0x5b4b6c,hemiI:.8,sunC:0xff9a68,sunI:1.0});
-  P_(2,{top:0x030619,hor:0x15305e,fog:0x0d1a38,fogD:.015,hemiS:0x6ba6ff,hemiG:0x131b34,hemiI:.6,sunC:0x7fb0ff,sunI:.45});
-  P_(3,{top:0x1a0308,hor:0x6a0f26,fog:0x34091a,fogD:.017,hemiS:0xff6f8a,hemiG:0x2a0f1a,hemiI:.6,sunC:0xff3a52,sunI:.5});
+  P_(0,{top:0x4f9bf0,hor:0xcde6f2,fog:0xbcd9e8,fogD:.0095,hemiS:0xeaf5ff,hemiG:0x8493a3,hemiI:.52,sunC:0xfff3df,sunI:.78});
+  P_(1,{top:0x26346e,hor:0xff8f72,fog:0xc4879a,fogD:.0112,hemiS:0xffd2c4,hemiG:0x5b4b6c,hemiI:.5,sunC:0xff9a68,sunI:.8});
+  P_(2,{top:0x030619,hor:0x15305e,fog:0x0d1a38,fogD:.015,hemiS:0x6ba6ff,hemiG:0x131b34,hemiI:.46,sunC:0x7fb0ff,sunI:.4});
+  P_(3,{top:0x1a0308,hor:0x6a0f26,fog:0x34091a,fogD:.017,hemiS:0xff6f8a,hemiG:0x2a0f1a,hemiI:.46,sunC:0xff3a52,sunI:.42});
   var t=PALS[1], p=palCur; p.top.copy(t.top); p.hor.copy(t.hor); p.fog.copy(t.fog); p.hemiS.copy(t.hemiS); p.hemiG.copy(t.hemiG); p.sunC.copy(t.sunC); p.fogD=t.fogD; p.hemiI=t.hemiI; p.sunI=t.sunI;
 })();
 
@@ -9963,23 +9965,25 @@ function gfxEnvBuild(){
   if(typeof THREE.PMREMGenerator!=='function') return;
   var pm=new THREE.PMREMGenerator(renderer), i;
   if(typeof pm.fromScene!=='function') return;
-  var K=[.85,.62,.34,.4];
+  var K=[.24,.18,.12,.13];
   for(i=0;i<PALS.length;i++){
     var p=PALS[i], es=new THREE.Scene();
     var m=new THREE.ShaderMaterial({uniforms:{uTop:{value:new THREE.Color().copy(p.top).multiplyScalar(K[i])},uHor:{value:new THREE.Color().copy(p.hor).multiplyScalar(K[i])},uGnd:{value:new THREE.Color().copy(p.hemiG).multiplyScalar(K[i]*.8)}},
       vertexShader:'varying vec3 vD;void main(){vD=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
       fragmentShader:'uniform vec3 uTop;uniform vec3 uHor;uniform vec3 uGnd;varying vec3 vD;void main(){float t=vD.y;vec3 c=t>0.0?mix(uHor,uTop,pow(t,0.6)):mix(uHor,uGnd,clamp(-t*2.5,0.0,1.0));gl_FragColor=vec4(c,1.0);}',side:THREE.BackSide,depthWrite:false});
     es.add(new THREE.Mesh(new THREE.SphereGeometry(50,24,12),m));
-    var lc=i===3?0xff4060:(i===2?0x6fd8ff:0xfff4e6), pan=new THREE.MeshBasicMaterial({color:new THREE.Color(lc).multiplyScalar(i===2?2.2:3.2)});
+    var lc=i===3?0xff4060:(i===2?0x6fd8ff:0xfff4e6), pan=new THREE.MeshBasicMaterial({color:new THREE.Color(lc).multiplyScalar(i===2?1.0:.55)});
     [[0,38,0,30,1,30],[-34,12,0,1,16,30],[34,10,10,1,14,24],[0,9,-36,34,2,1]].forEach(function(b){ var bm=new THREE.Mesh(new THREE.BoxGeometry(b[3],b[4],b[5]),pan); bm.position.set(b[0],b[1],b[2]); es.add(bm); });
     GFX.envs.push(pm.fromScene(es,.03).texture);
   }
   pm.dispose();
 }
 function gfxEnvTier(){
-  if(!GFX.envs.length) return;
+  if(settings.refl!==true){ if(scene.environment&&GFX.envs.indexOf(scene.environment)>=0){ scene.environment=null; GFX.envTier=-1; } return; }
+  if(!GFX.envs.length&&!GFX.envTried){ GFX.envTried=true; try{ gfxEnvBuild(); }catch(e){ console.warn('[gfx] env',e); GFX.envs.length=0; } }
+  if(!GFX.envs.length||GFX.envOff) return;
   var t=PALS.indexOf(palTgt); if(t<0||t===GFX.envTier) return;
-  GFX.envTier=t; scene.environment=GFX.envs[t]; viewScene.environment=GFX.envs[t];
+  GFX.envTier=t; if(!GFX.envOff) scene.environment=GFX.envs[t];
 }
 
 /* ---- shadows: a tight sun box that follows the player, refreshed every other frame ---- */
@@ -10127,7 +10131,6 @@ function gfxInit(){
   if((window.devicePixelRatio||1)>1.5) GFX.scale=.8;
   try{ gfxSun(); }catch(e){ console.warn('[gfx] sun',e); }
   try{ gfxDecor(); }catch(e){ console.warn('[gfx] decor',e); }
-  try{ gfxEnvBuild(); }catch(e){ console.warn('[gfx] env',e); GFX.envs.length=0; }
 }
 function gfxFrame(){
   var now=performance.now(), ms=GFX.last?now-GFX.last:16; GFX.last=now;
@@ -10135,7 +10138,34 @@ function gfxFrame(){
   gfxAdapt(ms); gfxShadow(); gfxLod(); gfxEnvTier(); gfxSkylineTint();
   if(GFX.holo){ var hd=Math.min(ms,100)/1000; GFX.holo.children[0].rotation.z+=hd*.22; GFX.holo.children[1].rotation.z-=hd*.3; GFX.holo.visible=state!=='menu'||true; var pa=palTgt===PALS[3]?0xff3a52:0x37e6ff; GFX.holoMats[0].color.setHex(pa); GFX.holoMats[1].color.setHex(pa); }
 }
+/* ---- clipping guard: if a lot of the picture is pure white, the lights are turned down until the surfaces show their texture ---- */
+function gfxClipRead(){
+  var gl=renderer.getContext(), W_=renderer.domElement.width, H_=renderer.domElement.height;
+  if(!gl||!gl.readPixels||!W_||!H_) return -1;
+  var px=new Uint8Array(4), xs=[.1,.3,.5,.7,.9], ys=[.3,.45,.6,.75,.9], n=0, c=0, i, j;
+  for(i=0;i<xs.length;i++) for(j=0;j<ys.length;j++){
+    gl.readPixels(Math.floor(W_*xs[i]),Math.floor(H_*(1-ys[j])),1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);
+    n++; if(px[0]>=232&&px[1]>=232&&px[2]>=232) c++;
+  }
+  return n?c/n:-1;
+}
+function gfxExposure(){
+  if(state!=='playing'&&state!=='menu') return;
+  if(++GFX.exT<(GFX.exN<14?18:90)) return; GFX.exT=0; GFX.exN++;
+  var f=gfxClipRead(); if(!(f>=0)) return;
+  GFX.clip=f;
+  if(f>.22){
+    GFX.lk=Math.max(.45,GFX.lk*(f>.5?.82:.9)); GFX.cuts++;
+    /* the reflections are the usual culprit, so they go first if the lights alone are not enough */
+    if(GFX.lk<.7&&!GFX.envOff&&scene.environment){ GFX.envOff=true; scene.environment=null; }
+  }
+  else if(f<.06&&GFX.lk<1) GFX.lk=Math.min(1,GFX.lk*1.06);
+}
 function render(){
+  renderGfx();
+  try{ gfxExposure(); }catch(e){ if(!GFX.warnedX){ GFX.warnedX=true; console.warn('[gfx] exposure',e); } }
+}
+function renderGfx(){
   try{ gfxFrame(); }catch(e){ if(!GFX.warnedF){ GFX.warnedF=true; console.warn('[gfx] frame',e); } }
   if(gfxPostWanted()){
     try{

@@ -147,9 +147,20 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
   {
-    file: 'Scrap fist/Scrap Fist — VR Robot Arena.html', title: 'Scrap Fist', subtitle: 'VR Robot Arena', art: 'scrap', vrtest: true,
+    file: 'Bonk derby/bonk-derby.html', party: 'bonkderby', title: 'Bonk Derby', art: 'bonk',
+    desc: 'Head-bonking vehicle chaos for 4 on land, in the air and on water. Pick a ride, bonk the other drivers on the head and protect your own. The last one standing wins the star. Play on one device with friends and bots, or online.',
+    mp: 'Online or same device · up to 4', lang: 'English', genre: 'Party vehicle brawler',
+    updating: true, changelog: [
+      { title: 'New game', date: '2026-11-05', notes: ['Bonk Derby is on the page. Local play for 1–4 players plus bots, or online with a room code. Works with the party lobby.'] }
+    ]
+  },
+  {
+    file: 'Scrap fist/scrapfist.html', title: 'Scrap Fist', subtitle: 'VR Robot Arena', art: 'scrap', vrtest: true,
     desc: 'Punch and shoot your way through waves of scrap robots in an arena. Built for VR, with a desktop mode too.',
-    mp: null, lang: 'English', genre: 'VR arena brawler'
+    mp: null, lang: 'English', genre: 'VR arena brawler',
+    changelog: [
+      { title: 'Update', date: '2026-11-05', notes: ['New version of the game.'] }
+    ]
   },
   {
     file: 'Farm Chaos/index.html', party: 'farm', title: 'Chaos Farm', art: 'farm',
@@ -345,7 +356,9 @@ const GAMES = [
     file: 'Containment/containment.html', party: 'containment', title: 'Containment', art: 'containment',
     desc: 'Hold a sealed chamber against waves of drones. Pick upgrades between waves, craft gear and face a Warden every fifth wave.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: '3D shooter',
-    updating: true, changelog: []
+    updating: true, changelog: [
+      { title: 'Update', date: '2026-11-05', notes: ['New version of the game.'] }
+    ]
   },
   {
     file: 'Dredge 2/Dredge copy 3.html', party: 'tides', title: 'Hollow Tides', subtitle: 'Dredge 2', art: 'tides',
@@ -502,7 +515,16 @@ const ART = {
     <g fill="#3a4a55"><rect x="176" y="60" width="48" height="40" rx="6"/><rect x="166" y="104" width="68" height="62" rx="8"/><rect x="146" y="110" width="16" height="44" rx="6"/><rect x="238" y="110" width="16" height="44" rx="6"/><rect x="176" y="166" width="16" height="20"/><rect x="208" y="166" width="16" height="20"/></g>
     <g fill="#ff5a3a"><rect x="186" y="74" width="10" height="8" rx="2"/><rect x="204" y="74" width="10" height="8" rx="2"/></g>
     <g fill="#c9d2d8" opacity=".9"><rect x="40" y="110" width="54" height="40" rx="10"/><rect x="306" y="96" width="54" height="40" rx="10"/></g>
-    <g stroke="#c9d2d8" stroke-width="3" opacity=".5"><path d="M98 130h30M298 116h-30"/></g>`
+    <g stroke="#c9d2d8" stroke-width="3" opacity=".5"><path d="M98 130h30M298 116h-30"/></g>`,
+  bonk: `
+    <defs><linearGradient id="gbd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b1d5e"/><stop offset=".7" stop-color="#7a2f6b"/><stop offset="1" stop-color="#ff7a3a"/></linearGradient></defs>
+    <rect width="400" height="200" fill="url(#gbd)"/>
+    <g fill="#fff" opacity=".7"><circle cx="40" cy="30" r="1.6"/><circle cx="120" cy="18" r="1.2"/><circle cx="300" cy="26" r="1.6"/><circle cx="360" cy="54" r="1.2"/><circle cx="230" cy="14" r="1"/></g>
+    <path d="M0 150 Q60 128 120 146 T240 140 T400 136 V200 H0z" fill="#2c6b3a"/><path d="M0 160 Q70 142 140 158 T280 152 T400 150 V200 H0z" fill="#1f4a2a"/>
+    <g transform="translate(118 112)"><rect x="0" y="12" width="70" height="22" rx="8" fill="#ff4d6d"/><rect x="18" y="0" width="30" height="16" rx="6" fill="#ff8fa3"/><circle cx="33" cy="-8" r="11" fill="#ffd6a5"/><circle cx="37" cy="-10" r="2" fill="#222"/><circle cx="14" cy="36" r="9" fill="#222"/><circle cx="56" cy="36" r="9" fill="#222"/></g>
+    <g transform="translate(282 112) scale(-1 1)"><rect x="0" y="12" width="70" height="22" rx="8" fill="#3ac0ff"/><rect x="18" y="0" width="30" height="16" rx="6" fill="#9ae1ff"/><circle cx="33" cy="-8" r="11" fill="#ffd6a5"/><circle cx="37" cy="-10" r="2" fill="#222"/><circle cx="14" cy="36" r="9" fill="#222"/><circle cx="56" cy="36" r="9" fill="#222"/></g>
+    <path d="M200 70 l8 14 16 2 -12 10 4 16 -16 -8 -16 8 4 -16 -12 -10 16 -2z" fill="#ffe14d" stroke="#fff" stroke-width="2"/>
+    <text x="200" y="44" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="26" fill="#ffe14d" stroke="#3b1d5e" stroke-width="3" paint-order="stroke">BONK!</text>`
 };
 
 const ICON_MP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 13.6c2.6.2 4.5 2 4.5 4.9"/></svg>';
@@ -581,6 +603,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="Farm%20Chaos/party-adapter.js"></script>
 <script src="Chucky's%20house/party-adapter.js"></script>
 <script src="Ship%20madness/party-adapter.js"></script>
+<script src="Bonk%20derby/party-adapter.js"></script>
 <script src="party.js"></script>
 </body>
 </html>
