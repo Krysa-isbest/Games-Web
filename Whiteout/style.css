@@ -208,6 +208,11 @@ textarea { width: 100%; resize: none; font: 12px/1.4 ui-monospace, Consolas, mon
 .hc p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--ink2); }
 .tip { padding: 12px 16px; border-left: 3px solid #4f86b0; background: rgba(255, 255, 255, 0.45); border-radius: 0 6px 6px 0; color: var(--ink2); font-size: 14px; line-height: 1.5; }
 .tip b { color: #2f6a96; margin-right: 6px; letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; }
+.ht-sub { display: flex; align-items: center; gap: 10px; margin: 26px 0 6px; font: 600 20px var(--title); letter-spacing: 0.06em; color: var(--ink); }
+.ht-sub svg { width: 22px; height: 22px; fill: none; stroke: var(--hot); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.steps { margin: 12px 0 14px; padding: 0; list-style: none; counter-reset: s; max-width: 760px; }
+.steps li { counter-increment: s; position: relative; padding: 9px 12px 9px 46px; margin-bottom: 6px; background: var(--pane); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 6px; color: var(--ink2); font-size: 14px; }
+.steps li::before { content: counter(s); position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #17324a; color: #fff; font: 700 12px var(--ui); }
 .ht-foot { display: flex; justify-content: space-between; margin-top: 26px; }
 .ctl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
 .ctl-g { padding: 12px 16px; background: var(--pane); border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 6px; }

@@ -22,7 +22,13 @@ const I = {
   keys: '<path d="M3 7h18v10H3zM7 11h1M10 11h1M13 11h1M16 11h1M8 14h8"/>',
   moon: '<path d="M20 14A8 8 0 1110 4a7 7 0 0010 10z"/>',
   bag: '<path d="M6 8h12l1 13H5zM9 8V6a3 3 0 016 0v2"/>',
+  axe: '<path d="M14 4l6 6M5 21l11-11M13 3c-3 1-5 4-4 7l3 1c2-3 2-6 1-8z"/>',
+  book: '<path d="M4 5c3-1 6-1 8 1v14c-2-2-5-2-8-1zM20 5c-3-1-6-1-8 1v14c2-2 5-2 8-1z"/>',
+  log: '<path d="M4 9h13a3 3 0 010 6H4a3 3 0 010-6zM17 12h.01M8 9v6"/>',
+  sapling: '<path d="M12 21v-9M12 12c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5zM7 21h10"/>',
+  bench: '<path d="M3 10h18v3H3zM5 13v8M19 13v8M8 10V7h3v3M14 10V6l3 1v3"/>',
 };
+const steps = list => `<ol class="steps">${list.map(s => `<li>${s}</li>`).join('')}</ol>`;
 const ico = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
 const card = (i, t, p) => `<div class="hc"><div class="hc-i">${ico(i)}</div><div><b>${t}</b><p>${p}</p></div></div>`;
 const tip = t => `<div class="tip"><b>Tip</b> ${t}</div>`;
@@ -49,6 +55,21 @@ const PAGES = [
     <p class="lead">Hunger and thirst drain slowly, but an empty stomach makes the cold hit harder.</p>
     <div class="cards">${card('fish', 'Ice fishing', 'Chop a hole in the sea ice, drop a line and wait. Quiet, cold and safe-ish.')}${card('bow', 'Hunting', 'Hares, birds, and bigger animals inland. Something else hunts out there too.')}${card('flame', 'Cook it', 'Raw meat makes you sick. Cook on the stove or a campfire.')}${card('drop', 'Melt snow', 'Eating snow costs you heat. Melt it in a pot first.')}</div>
     ${tip(`Eat or drink what you hold with ${kn('eat')}. Food from the plane goes off: eat that first.`)}` },
+  { id: 'tech', icon: 'bench', name: 'Techniques', html: () => `
+    <div class="kick">KNOW-HOW</div><h3>Work smart, waste nothing</h3>
+    <p class="lead">Nothing on this island comes back fast. Every log, plank and nail is either warmth tonight or a better shack tomorrow. Choose well.</p>
+    <h4 class="ht-sub">${ico('axe')} Your one axe</h4>
+    <p>There is only one axe, and it's lying in the shack. It's an item like any other: you carry it, drop it and can lose it.</p>
+    <div class="cards">${card('axe', 'Don\'t lose it', 'Dropped in the snow, it gets buried, faster in a storm. Remember where you put it down. Through the ice it\'s gone for good.')}${card('bench', 'Keep it sharp', 'A dull axe works slowly and can break. Sharpen and repair it at the workbench.')}${card('hammer', 'The backup', 'You can make a stone axe at the workbench. It\'s slow and breaks quickly, but it beats your bare hands.')}</div>
+    <h4 class="ht-sub">${ico('book')} The workbench and the crafting book</h4>
+    <p>You craft only at the workbench in the shack. The worn notebook on it holds the recipes of whoever lived here before: the bow, planks, patches, tools, traps and more.</p>
+    ${steps(['Open the book on the workbench and find the recipe.', 'Lay the materials it needs on the bench.', 'Work them: the item takes shape in front of you.'])}
+    ${tip('Not every recipe is in the book at the start. Survivors\' notes and journals add new pages.')}
+    <h4 class="ht-sub">${ico('log')} Wood and fire</h4>
+    <div class="cards">${card('sapling', 'Trees grow back slowly', 'A felled tree leaves a stump with a sapling. It takes 5 days to grow back. The trees near the shack run out first.')}${card('log', 'Dry your wood', 'Fresh wood smokes and barely burns. Stack it by the stove for a while before you need it.')}${card('wind', 'Branches are free', 'Fallen branches and dead wood need no axe. They burn fast, and storms knock more down.')}${card('flame', 'Other fuel', 'Wreck parts, furniture, the leather seats, books and even banknotes burn. Seal fat burns long and hot.')}</div>
+    <h4 class="ht-sub">${ico('house')} Building or burning</h4>
+    <div class="cards">${card('hammer', 'Burn it or build with it?', 'A plank in the stove is warmth for an hour. The same plank nailed over a gap saves heat every night after.')}${card('bag', 'Store it dry', 'Wood left in the snow gets wet. Keep a woodpile under a roof. Food keeps best somewhere cold but dry.')}${card('bench', 'Take it apart', 'Broken things give some of their materials back at the workbench.')}${card('drop', 'Melt your water', 'Melt snow in a pot on the stove. Eating snow costs body heat.')}</div>
+    ${tip('Plan a day ahead: dry tomorrow\'s wood tonight, and never leave the axe where the snow can take it.')}` },
   { id: 'dead', icon: 'skull', name: 'The ones before you', html: () => `
     <div class="kick">SURVIVORS</div><h3>You are not the first</h3>
     <p class="lead">Others were stranded here before you. You'll find what's left of them: frozen camps, collapsed tents, a cabin with the door barred from the inside.</p>
