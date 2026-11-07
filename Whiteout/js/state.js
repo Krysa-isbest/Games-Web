@@ -15,7 +15,7 @@ export const DEFAULTS = {
   // graphics
   preset: 'high', scale: 1, shadows: 'high', snow: 'high', fog: 'medium', view: 'far', aa: true, bloom: true, grain: true, frost: true, fps: false,
   // audio
-  vol: 0.8, menuMusic: 0.6, music: 0.6, sfx: 1, wind: 0.8, ui: 0.6,
+  vol: 0.8, menuMusic: 0.25, music: 0.6, sfx: 1, wind: 0.8, ui: 0.6,
   voice: true, voiceMode: 'ptt', mic: '', micVol: 1, voiceVol: 1, noise: true,
   // controls
   sprintMode: 'hold', crouchMode: 'hold', walkMode: 'hold',
@@ -29,6 +29,8 @@ export const PRESETS = {
   ultra: { scale: 1, shadows: 'ultra', snow: 'ultra', fog: 'high', view: 'far', aa: true, bloom: true, grain: true },
 };
 export const S = Object.assign({}, DEFAULTS, load(SKEY));
+// the menu song used to start at 60 %: move saved copies of that old default down to the new one
+if (!S.v2) { if (S.menuMusic === 0.6) S.menuMusic = DEFAULTS.menuMusic; S.v2 = true; }
 export function saveSettings() { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch { /* private mode */ } }
 function load(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; } }
 
