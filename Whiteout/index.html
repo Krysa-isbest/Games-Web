@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whiteout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="frost"></canvas>
+<div id="vignette"></div>
+<div id="fade"></div>
+<div id="fps" class="hidden"></div>
+
+<!-- splash -->
+<div id="splash">
+  <div class="sp-inner">
+    <div class="sp-kicker">FLIGHT 2207 · LAST CONTACT 03:14</div>
+    <h1 class="title" data-text="WHITEOUT">WHITEOUT</h1>
+    <div class="sp-sub">Crash. Freeze. Escape.</div>
+    <div class="sp-click">Click anywhere</div>
+  </div>
+  <div class="sp-note">Headphones recommended</div>
+</div>
+
+<!-- main menu -->
+<section id="s-main" class="screen hidden">
+  <div class="main-left">
+    <div class="brand">
+      <div class="kicker">A co-op survival story · 1–4 players</div>
+      <h1 class="title small" data-text="WHITEOUT">WHITEOUT</h1>
+      <div class="tag">Crash. Freeze. Escape.</div>
+    </div>
+    <nav class="menu">
+      <button class="mi" data-go="play"><span class="mi-n">01</span><span class="mi-t">Play</span><span class="mi-d">Solo, host or join a crew</span></button>
+      <button class="mi" data-go="howto"><span class="mi-n">02</span><span class="mi-t">How to play</span><span class="mi-d">Heat, wind, food and the way out</span></button>
+      <button class="mi" data-go="settings"><span class="mi-n">03</span><span class="mi-t">Settings</span><span class="mi-d">Graphics, audio, controls, network</span></button>
+      <button class="mi" data-go="credits"><span class="mi-n">04</span><span class="mi-t">Credits</span><span class="mi-d">And what's new</span></button>
+    </nav>
+  </div>
+  <button id="profile" class="profile" title="Change your name and coat"></button>
+  <div class="hud-corner">
+    <div id="weather" class="weather"></div>
+    <div class="ver"><span id="ver"></span> · menu only</div>
+  </div>
+</section>
+
+<!-- play -->
+<section id="s-play" class="screen hidden">
+  <div class="panel wide">
+    <header class="p-head"><button class="back" data-back>‹</button><h2>Play</h2><span class="p-sub">Playing as <b class="me-name"></b></span></header>
+    <div id="play-pick">
+      <div class="play-cards">
+        <button class="pcard" id="pc-solo"><div class="pc-ico"></div><b>Solo</b><p>Just you, the shack and the cold.</p><span class="pc-tag">Single player</span></button>
+        <button class="pcard" id="pc-host"><div class="pc-ico"></div><b>Host a crew</b><p>Open a game for up to 3 friends.</p><span class="pc-tag">Online · LAN · Tailscale</span></button>
+        <button class="pcard" id="pc-join"><div class="pc-ico"></div><b>Join a crew</b><p>Got a code from a friend? Get in.</p><span class="pc-tag">Room code or invite</span></button>
+      </div>
+      <div class="conn-row">
+        <span class="lbl">Connection</span>
+        <div class="seg" id="net-way"><button data-v="peer">Internet room code</button><button data-v="direct">LAN / Tailscale invite codes</button></div>
+        <span class="conn-hint" id="net-hint"></span>
+      </div>
+    </div>
+
+    <!-- host / join forms -->
+    <div id="play-host" class="hidden">
+      <div class="form-peer">
+        <p class="note">Your room is opening. Share the code with your crew: they pick <b>Join a crew</b> and type it.</p>
+      </div>
+      <div class="form-direct two">
+        <div class="box"><h4>1 · Invite code</h4><p class="note">Make one invite per friend and send it to them (any chat app).</p><button class="btn" id="dh-make">Make an invite code</button><textarea id="dh-code" readonly rows="4" placeholder="The invite code appears here"></textarea><button class="btn ghost" id="dh-copy">Copy</button></div>
+        <div class="box"><h4>2 · Their reply</h4><p class="note">Paste the reply code your friend sends back, then connect.</p><textarea id="dh-reply" rows="4" placeholder="Paste the reply code"></textarea><button class="btn" id="dh-accept">Connect</button></div>
+      </div>
+    </div>
+    <div id="play-join" class="hidden">
+      <div class="form-peer join-peer">
+        <p class="note">Type the 5-letter room code from the host.</p>
+        <div class="code-row"><input id="join-code" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false"><button class="btn primary" id="join-go">Join</button></div>
+      </div>
+      <div class="form-direct two">
+        <div class="box"><h4>1 · The host's invite</h4><textarea id="dj-code" rows="4" placeholder="Paste the invite code from the host"></textarea><button class="btn" id="dj-make">Make my reply code</button></div>
+        <div class="box"><h4>2 · Send this back</h4><textarea id="dj-reply" readonly rows="4" placeholder="Your reply code appears here"></textarea><button class="btn ghost" id="dj-copy">Copy</button></div>
+      </div>
+    </div>
+
+    <!-- lobby -->
+    <div id="play-lobby" class="hidden">
+      <div class="lobby">
+        <div class="lb-main">
+          <div class="room-code hidden" id="room-box"><span>ROOM</span><b id="room-code"></b><button class="btn ghost small" id="room-copy">Copy</button></div>
+          <div id="slots" class="slots"></div>
+          <div class="lb-opts" id="lb-opts">
+            <div class="opt"><span>Difficulty</span><div class="seg" id="o-diff"><button data-v="easy">Mild</button><button data-v="normal">Harsh</button><button data-v="hard">Brutal</button><button data-v="whiteout">Whiteout</button></div></div>
+            <div class="opt"><span>Island</span><div class="seg" id="o-island"><button data-v="random">Random</button><button data-v="classic">The first island</button></div></div>
+            <div class="opt"><span>Friendly fire</span><div class="seg" id="o-ff"><button data-v="0">Off</button><button data-v="1">On</button></div></div>
+          </div>
+          <div class="lb-guest hidden" id="lb-guest"></div>
+        </div>
+        <div class="lb-chat">
+          <div class="chat-log" id="chat-log"></div>
+          <div class="chat-in"><input id="chat-in" maxlength="140" placeholder="Say something… (Enter)"><button class="btn small" id="chat-send">Send</button></div>
+        </div>
+      </div>
+    </div>
+    <footer class="p-foot">
+      <span id="net-status" class="status"></span>
+      <button class="btn ghost hidden" id="lb-leave">Leave</button>
+      <button class="btn hidden" id="lb-ready">I'm ready</button>
+      <button class="btn primary hidden" id="lb-start">Start the game</button>
+    </footer>
+  </div>
+</section>
+
+<!-- how to play -->
+<section id="s-howto" class="screen hidden">
+  <div class="panel wide tall">
+    <header class="p-head"><button class="back" data-back>‹</button><h2>How to play</h2><span class="p-sub">Everything you need to survive the first night</span></header>
+    <div class="howto">
+      <nav class="ht-nav" id="ht-nav"></nav>
+      <article class="ht-page" id="ht-page"></article>
+    </div>
+  </div>
+</section>
+
+<!-- settings -->
+<section id="s-settings" class="screen hidden">
+  <div class="panel wide tall">
+    <header class="p-head"><button class="back" data-back>‹</button><h2>Settings</h2><span class="p-sub">Changes are saved right away</span></header>
+    <div class="settings">
+      <nav class="st-nav" id="st-nav"></nav>
+      <div class="st-body" id="st-body"></div>
+    </div>
+  </div>
+</section>
+
+<!-- credits -->
+<section id="s-credits" class="screen hidden">
+  <div class="panel">
+    <header class="p-head"><button class="back" data-back>‹</button><h2>Credits</h2></header>
+    <div class="credits">
+      <div class="cr-block"><small>A game by</small><b id="cr-name">Tomáš</b></div>
+      <div class="cr-block"><small>Built with</small><b>Three.js · PeerJS · Web Audio</b></div>
+      <div class="cr-block"><small>Status</small><b>Menu prototype. The island comes next.</b></div>
+      <h4>What's new</h4>
+      <ul class="news">
+        <li><b>v0.1</b> The main menu: a live frozen island behind it, a full settings menu with key rebinding, online lobbies (room codes, LAN and Tailscale) with chat, and a how-to-play guide.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- profile -->
+<div id="profile-pop" class="pop hidden">
+  <h4>Your survivor</h4>
+  <label>Name<input id="pf-name" maxlength="16" autocomplete="off"></label>
+  <label>Coat</label>
+  <div class="coats" id="pf-coats"></div>
+  <button class="btn small" id="pf-done">Done</button>
+</div>
+
+<div id="toasts"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

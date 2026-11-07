@@ -147,6 +147,19 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
   {
+    file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
+    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now only the main menu is here: the island comes next.',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
+    updating: true, changelog: [
+      { version: '0.1', date: '2026-11-07', notes: [
+        'The main menu: a live frozen island at night behind it, with the aurora, falling snow, the shack with a warm window, the burning plane wreck and wind gusts that frost over the screen.',
+        'Settings for graphics, audio and voice, and controls (rebind every key and mouse button, hold or toggle sprint and crouch).',
+        'Online lobbies for up to 4: an internet room code, or invite codes for LAN and Tailscale (or your own PeerJS server). Ready checks and chat.',
+        'A how-to-play guide and the main menu song.'
+      ] }
+    ]
+  },
+  {
     file: 'Bonk derby/bonk-derby.html', party: 'bonkderby', title: 'Bonk Derby', art: 'bonk',
     desc: 'Head-bonking vehicle chaos for 4 on land, in the air and on water. Pick a ride, bonk the other drivers on the head and protect your own. The last one standing wins the star. Play on one device with friends and bots, or online.',
     mp: 'Online or same device · up to 4', lang: 'English', genre: 'Party vehicle brawler',
@@ -539,7 +552,20 @@ const ART = {
     <g transform="translate(118 112)"><rect x="0" y="12" width="70" height="22" rx="8" fill="#ff4d6d"/><rect x="18" y="0" width="30" height="16" rx="6" fill="#ff8fa3"/><circle cx="33" cy="-8" r="11" fill="#ffd6a5"/><circle cx="37" cy="-10" r="2" fill="#222"/><circle cx="14" cy="36" r="9" fill="#222"/><circle cx="56" cy="36" r="9" fill="#222"/></g>
     <g transform="translate(282 112) scale(-1 1)"><rect x="0" y="12" width="70" height="22" rx="8" fill="#3ac0ff"/><rect x="18" y="0" width="30" height="16" rx="6" fill="#9ae1ff"/><circle cx="33" cy="-8" r="11" fill="#ffd6a5"/><circle cx="37" cy="-10" r="2" fill="#222"/><circle cx="14" cy="36" r="9" fill="#222"/><circle cx="56" cy="36" r="9" fill="#222"/></g>
     <path d="M200 70 l8 14 16 2 -12 10 4 16 -16 -8 -16 8 4 -16 -12 -10 16 -2z" fill="#ffe14d" stroke="#fff" stroke-width="2"/>
-    <text x="200" y="44" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="26" fill="#ffe14d" stroke="#3b1d5e" stroke-width="3" paint-order="stroke">BONK!</text>`
+    <text x="200" y="44" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="26" fill="#ffe14d" stroke="#3b1d5e" stroke-width="3" paint-order="stroke">BONK!</text>`,
+  whiteout: `
+    <defs><linearGradient id="gwo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050c18"/><stop offset="1" stop-color="#1c3346"/></linearGradient>
+    <linearGradient id="gwoa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a5cff" stop-opacity="0"/><stop offset=".55" stop-color="#3dffa8" stop-opacity=".55"/><stop offset="1" stop-color="#3dffa8" stop-opacity="0"/></linearGradient>
+    <radialGradient id="gwow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffb35c" stop-opacity=".9"/><stop offset="1" stop-color="#ff8a3a" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#gwo)"/>
+    <g fill="#fff" opacity=".75"><circle cx="30" cy="20" r="1"/><circle cx="90" cy="44" r="1.2"/><circle cx="160" cy="16" r="1"/><circle cx="250" cy="30" r="1.3"/><circle cx="330" cy="14" r="1"/><circle cx="372" cy="46" r="1.1"/></g>
+    <path d="M-10 70 C60 20 120 90 200 40 S330 70 410 20 L410 70 C330 110 270 60 200 90 S60 60 -10 110z" fill="url(#gwoa)" opacity=".8"/>
+    <path d="M0 150 Q90 118 190 134 T400 124 V200 H0z" fill="#c9d9e6"/><path d="M0 166 Q110 150 220 160 T400 156 V200 H0z" fill="#e8f0f6"/>
+    <g fill="#14262f"><path d="M40 150 l10 -34 10 34z"/><path d="M58 152 l8 -26 8 26z"/><path d="M342 140 l11 -38 11 38z"/><path d="M362 142 l8 -26 8 26z"/></g>
+    <circle cx="196" cy="128" r="34" fill="url(#gwow)"/>
+    <g transform="translate(160 104)"><rect x="0" y="16" width="72" height="34" fill="#4a3324"/><path d="M-6 18 L36 -6 L78 18z" fill="#2e2018"/><path d="M-8 18 L36 -8 L80 18 L76 20 L36 -3 L-4 20z" fill="#f2f7fb"/><rect x="50" y="-10" width="8" height="16" fill="#555b62"/><rect x="12" y="25" width="16" height="12" fill="#ffc06a"/><rect x="44" y="26" width="12" height="24" fill="#24170f"/></g>
+    <g fill="#cfd8e0" opacity=".55"><circle cx="232" cy="84" r="5"/><circle cx="240" cy="72" r="7"/><circle cx="252" cy="58" r="9"/></g>
+    <g fill="#fff" opacity=".85"><circle cx="70" cy="90" r="1.4"/><circle cx="130" cy="64" r="1.2"/><circle cx="288" cy="98" r="1.5"/><circle cx="310" cy="70" r="1.1"/><circle cx="110" cy="120" r="1.3"/><circle cx="260" cy="120" r="1.2"/></g>`
 };
 
 const ICON_MP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 13.6c2.6.2 4.5 2 4.5 4.9"/></svg>';

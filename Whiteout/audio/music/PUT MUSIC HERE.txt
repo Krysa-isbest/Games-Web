@@ -1,0 +1,1 @@
+Put your menu song here (mp3/ogg), then write its file name in audio/list.json, e.g. "menu": ["Menu theme.mp3"]
