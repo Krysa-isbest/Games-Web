@@ -242,7 +242,7 @@ export const NODE = {
   wreck: { icon: '⚓', name: 'Wreck', desc: 'Salvage 4 crates from a wreck site. Sharks!' },
   storm: { icon: '⛈️', name: 'Storm', desc: 'Survive 100 s of storm and lightning.' },
   shop: { icon: '🛒', name: 'Harbour shop', desc: 'Spend FT on repairs, planks and weapons.' },
-  rest: { icon: '🏝️', name: 'Calm cove', desc: 'Free repairs (half the damage) and full health.' },
+  rest: { icon: '🏝️', name: 'Calm cove', desc: 'Free repairs: every leak sealed, half of the other damage fixed. Full health.' },
   boss: { icon: '💀', name: 'The Ferryman', desc: "The ghost liner that collects every sailor's token." },
 };
 function makeMap(seed) {
@@ -273,7 +273,7 @@ export const reachableOf = (map, cur) => !cur ? map[0].map((_, i) => i) : map[cu
 
 // ship-wide shop items (run on the host); personal ones run on each player's own client
 export const DOCK_SHOP = [
-  { id: 'dock', name: 'Dock repair: fixes most of the damage, pumps the water out, fixes the engine', price: 10 },
+  { id: 'dock', name: 'Dock repair: fixes all the damage, pumps the water out, fixes the engine', price: 10 },
 ];
 export const SHIP_SHOP = [
   { id: 'repair', name: '🔧 Full repair + pump (ship)', price: 150 },
@@ -352,7 +352,7 @@ export class Campaign {
     }
     if (node.type === 'rest') {
       this.ship.repairFraction(0.5); this.ship.pumpAll(); G.me.hp = 100;
-      this.reward(40, 30, 'Calm cove: half of the damage repaired, water pumped out. Everyone is healed.', true);
+      this.reward(40, 30, 'Calm cove: every leak sealed, half of the other damage repaired, water pumped out. Everyone is healed.', true);
       return this.showMap();
     }
     this.startEncounter(node);
@@ -490,7 +490,7 @@ export class Campaign {
   shipBuy(id) {
     const s = this.ship;
     if (id === 'repair') { s.repairAll(); s.pumpAll(); return true; }
-    if (id === 'dock') { if (this.docked === this.nodesDone) return false; this.docked = this.nodesDone; s.repairFraction(0.6); s.pumpAll(); s.engineHp = 100; s.fires.length = 0; return true; }
+    if (id === 'dock') { if (this.docked === this.nodesDone) return false; this.docked = this.nodesDone; s.repairAll(); s.pumpAll(); return true; }
     if (id === 'planks') { if (s.storage.planks >= 12) return false; s.storage.planks = Math.min(12, s.storage.planks + 6); updateStorage(s); return true; }
     if (id === 'refit') { if (s.guns >= s.def.maxGuns) return false; this.refit(s.guns + 1); return true; }
     return false;

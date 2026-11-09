@@ -828,7 +828,10 @@ export class Ship {
     return false;
   }
   repairAll() { for (let n = 0; n < this.orig.length; n++) this.restoreCell(n); this.fires.length = 0; this.engineHp = 100; }
+  // partial repair: every hole in the hull below the deck is sealed first (so the ship never leaves leaking),
+  // then a share `f` of everything else (decks, cabins, railings)
   repairFraction(f) {
+    for (const n of [...this.holes]) { const j = ((n / this.nx) | 0) % this.ny; if (j < this.H) this.restoreCell(n); }
     for (let n = 0; n < this.orig.length; n++) if (this.orig[n] && !this.cells[n] && Math.random() < f) this.restoreCell(n);
     this.engineHp = Math.max(this.engineHp, Math.min(100, this.engineHp + f * 100));
   }

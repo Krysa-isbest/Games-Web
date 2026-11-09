@@ -403,3 +403,157 @@ textarea { font: 13px monospace; background: rgba(0, 0, 0, 0.35); color: #cfe; b
 .fill.eng.dead { background: #ff3a2a; width: 100% !important; animation: pulse 0.6s infinite; }
 #weapon .slots i.tool { background: rgba(95, 212, 255, 0.12); }
 #weapon .small { font-size: 14px; font-family: var(--ui); opacity: 0.85; }
+/* ================= v0.7: DOCKYARD THEME (painted ship steel, rivets, hazard stripes, stencil paint, shipping containers) ================= */
+:root {
+  --stencil: 'Saira Stencil One', 'Russo One', sans-serif; --label: 'Barlow Condensed', 'Barlow', sans-serif; --body: 'Barlow', 'Segoe UI', sans-serif;
+  --paint: #f2c12e; --paint2: #c99512; --rust: #b4482a; --steel1: #34404b; --steel2: #222b33; --steel3: #171d23; --weld: #0e1317; --lamp: #47d36a;
+  --rivets:
+    radial-gradient(circle at 13px 13px, #a9b3bb 0, #6c7680 2.4px, #1d2329 3.6px, transparent 4.4px),
+    radial-gradient(circle at calc(100% - 13px) 13px, #a9b3bb 0, #6c7680 2.4px, #1d2329 3.6px, transparent 4.4px),
+    radial-gradient(circle at 13px calc(100% - 13px), #a9b3bb 0, #6c7680 2.4px, #1d2329 3.6px, transparent 4.4px),
+    radial-gradient(circle at calc(100% - 13px) calc(100% - 13px), #a9b3bb 0, #6c7680 2.4px, #1d2329 3.6px, transparent 4.4px);
+  --brushed: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 3px);
+  --hazard: repeating-linear-gradient(-45deg, var(--paint) 0 11px, #15181b 11px 22px);
+}
+/* ---- a steel plate: used by every panel ---- */
+.panel, .s2-panel, .ov-box, #admin, .card-glass {
+  position: relative; color: #eef1f3; font-family: var(--body); font-weight: 500;
+  background: var(--rivets), var(--brushed), linear-gradient(180deg, var(--steel1), var(--steel2) 60%, #1c242b) !important;
+  border: 2px solid var(--weld) !important; border-radius: 4px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 -3px 0 rgba(0, 0, 0, 0.35), 0 30px 70px rgba(0, 0, 0, 0.6) !important;
+}
+.panel, .ov-box { padding-top: 26px !important; }
+.panel::before, .ov-box::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 9px; background: var(--hazard); border-bottom: 2px solid var(--weld); opacity: 0.95; }
+.card-glass { background: var(--brushed), linear-gradient(180deg, #2b353f, #1f272e) !important; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.05) !important; }
+/* stencilled headings, like paint on a hull */
+.panel-head h2, .g2-head h2, .ov-box h2, .s2-panel .g2-head h2 { font-family: var(--stencil) !important; font-weight: 400 !important; letter-spacing: 4px !important; text-transform: uppercase; color: #f4f1e8 !important; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.8); }
+.back { border-radius: 4px !important; background: linear-gradient(180deg, #4a5661, #2d363f) !important; border: 2px solid var(--weld) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 0 #0b0f12 !important; color: var(--paint) !important; }
+.back:hover { background: linear-gradient(180deg, #56636f, #36414b) !important; }
+.note { color: #c3ccd3; opacity: 1; }
+/* ---- buttons: painted switch plates ---- */
+.panel > button, .panel-foot button, .row button, .ov-box .row button, .shop-item button, .lb-cols button, .small-btn, .adm-row button, .g2-btn, .g-row button, .g-card button {
+  font-family: var(--label) !important; font-weight: 700 !important; letter-spacing: 1px; text-transform: uppercase; color: #eef1f3 !important;
+  background: linear-gradient(180deg, #56636e, #36414b) !important; border: 2px solid var(--weld) !important; border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 3px 0 #0b0f12 !important; transition: transform 0.08s, filter 0.12s !important;
+}
+.panel > button:hover:not(:disabled), .panel-foot button:hover:not(:disabled), .row button:hover:not(:disabled), .shop-item button:hover:not(:disabled), .lb-cols button:hover:not(:disabled), .small-btn:hover, .adm-row button:hover, .g2-btn:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+.panel > button:active, .panel-foot button:active, .row button:active, .g2-btn:active { transform: translateY(2px) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 0 #0b0f12 !important; }
+button.primary, .g2-btn.buy {
+  font-family: var(--stencil) !important; font-weight: 400 !important; letter-spacing: 3px !important; color: #1a1406 !important;
+  background: linear-gradient(180deg, #ffd650, var(--paint) 50%, var(--paint2)) !important; border: 2px solid #5a4306 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 3px 0 #4a3705, 0 0 18px rgba(242, 193, 46, 0.25) !important; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.g2-btn.eq { background: linear-gradient(180deg, #2f6b45, #1f4a2f) !important; color: #c8f5d6 !important; }
+.g2-btn.lock { background: linear-gradient(180deg, #2a3138, #1d2328) !important; color: #7d8a94 !important; }
+/* ---- segmented choices: a bank of switches ---- */
+.seg, .g2-modes { background: #0f1418 !important; border: 2px solid var(--weld) !important; border-radius: 3px !important; padding: 3px !important; gap: 3px !important; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6); }
+.seg button, .g2-modes button { font-family: var(--label) !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 1px; color: #aeb8c0 !important; background: linear-gradient(180deg, #3b4650, #2a333b) !important; border-radius: 2px !important; opacity: 1 !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.seg button:hover, .g2-modes button:hover { color: #fff !important; }
+.seg button.on, .g2-modes button.on { color: #1a1406 !important; background: linear-gradient(180deg, #ffd650, var(--paint)) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 10px rgba(242, 193, 46, 0.35) !important; }
+/* ---- toggle switches with an indicator lamp ---- */
+.switch, .sw { width: 54px !important; height: 26px !important; border-radius: 3px !important; background: linear-gradient(180deg, #0d1114, #1d242a) !important; border: 2px solid var(--weld) !important; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7) !important; }
+.switch::after, .sw i { border-radius: 2px !important; width: 20px !important; height: 18px !important; top: 2px !important; left: 3px !important; background: linear-gradient(180deg, #a7b1b9, #5e6872) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px #000 !important; }
+.switch.on, .sw.on { background: linear-gradient(180deg, #123a1f, #1b4f2b) !important; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 0 10px rgba(71, 211, 106, 0.35) !important; }
+.switch.on::after, .sw.on i { left: 29px !important; background: linear-gradient(180deg, #c9f7d4, var(--lamp)) !important; }
+/* ---- sliders: a groove with a brass lever knob ---- */
+input[type=range] { -webkit-appearance: none; appearance: none; height: 8px !important; border-radius: 2px !important; background: linear-gradient(180deg, #0b0f12, #1f272e) !important; border: 1px solid var(--weld); box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.8) !important; accent-color: var(--paint); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px !important; height: 26px !important; border-radius: 3px !important; background: linear-gradient(90deg, #8a6a1e, #f0cf6a 45%, #c99a2a 55%, #7a5a14) !important; border: 1px solid #3a2a06 !important; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.7) !important; }
+input[type=range]::-moz-range-thumb { width: 14px; height: 24px; border-radius: 3px; background: #e0b54a; border: 1px solid #3a2a06; }
+/* ---- inputs: recessed plates ---- */
+.panel input:not([type=range]):not([type=color]):not([type=checkbox]), .panel select, textarea, .code-in, .grid2 input, .g2-name input, .set-row select {
+  background: #0d1215 !important; color: #f2efe6 !important; border: 2px solid var(--weld) !important; border-radius: 3px !important; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.7) !important;
+}
+.code-in, .lb-codebox b { font-family: var(--stencil) !important; color: var(--paint) !important; }
+/* ---- key bindings: worn metal keycaps ---- */
+.keybtn, .s2 .keybtn { font-family: var(--label) !important; font-weight: 700 !important; letter-spacing: 1px; color: #f2efe6 !important; background: linear-gradient(180deg, #5a6672, #39434d) !important; border: 2px solid var(--weld) !important; border-radius: 3px !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 3px 0 #0b0f12 !important; }
+.keybtn.listen { background: linear-gradient(180deg, #ffd650, var(--paint)) !important; color: #1a1406 !important; }
+.keybtn.clash { border-color: var(--rust) !important; color: #ffb39a !important; }
+/* ---- settings ---- */
+.s2-panel { padding: 0 !important; }
+.s2-panel .g2-head { border-bottom: 2px solid var(--weld) !important; padding-top: 26px !important; }
+.s2-tabs { background: linear-gradient(90deg, #12181d, #1a2128) !important; border-right: 2px solid var(--weld) !important; padding: 16px 12px !important; gap: 6px !important; }
+.s2-tabs button { border-radius: 3px !important; border: 2px solid transparent !important; color: #aeb8c0 !important; }
+.s2-tabs button b { font-family: var(--label) !important; font-size: 18px !important; letter-spacing: 1px; text-transform: uppercase; }
+.s2-tabs button small { color: #7f8b95 !important; }
+.s2-tabs button:hover { background: rgba(255, 255, 255, 0.05) !important; color: #fff !important; }
+.s2-tabs button.on { background: linear-gradient(180deg, #ffd650, var(--paint)) !important; color: #1a1406 !important; border-color: #5a4306 !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 3px 0 #4a3705 !important; }
+.s2-tabs button.on small { color: #5a4306 !important; }
+.s2 .set-body { background: var(--brushed); }
+.s2 .set-h, .set-h { font-family: var(--stencil) !important; font-weight: 400 !important; letter-spacing: 3px !important; color: var(--paint) !important; margin-top: 22px !important; padding-bottom: 6px; border-bottom: 2px solid var(--weld); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04); }
+.s2 .set-row, .set-row { border-bottom: 1px solid rgba(0, 0, 0, 0.45) !important; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04); }
+.s2 .set-row label, .set-row label { font-family: var(--body); font-weight: 600; color: #f2efe6 !important; }
+.s2 .set-row small, .set-row small { color: #98a4ad !important; }
+.s2 .set-row output, .set-row output { font-family: var(--label); color: var(--paint) !important; font-size: 17px !important; }
+.s2 .note { color: #aab5bd !important; }
+/* ---- main menu ---- */
+.screen.menu { background: linear-gradient(90deg, rgba(5, 12, 18, 0.9) 0, rgba(5, 12, 18, 0.45) 34%, rgba(5, 12, 18, 0) 58%), linear-gradient(0deg, rgba(5, 12, 18, 0.75), transparent 34%) !important; }
+.nav-btn { font-family: var(--stencil) !important; font-weight: 400; letter-spacing: 4px !important; color: rgba(238, 241, 243, 0.62) !important; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
+.nav-btn i { color: var(--paint); opacity: 0.85 !important; }
+.nav-btn::after { height: 6px !important; bottom: -2px !important; background: var(--hazard) !important; border: 1px solid var(--weld); }
+.nav-btn:hover, .nav-btn.on { color: #fff !important; }
+.nav-btn.on { color: var(--paint) !important; }
+/* profile: a riveted ID plate */
+.profile-chip { background: var(--rivets), var(--brushed), linear-gradient(180deg, var(--steel1), var(--steel2)) !important; border: 2px solid var(--weld) !important; border-radius: 4px !important; padding: 12px 22px !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 26px rgba(0, 0, 0, 0.5) !important; backdrop-filter: none !important; }
+.pc-name { font-family: var(--stencil) !important; letter-spacing: 2px; }
+.pc-rows { font-family: var(--label); font-size: 15px !important; letter-spacing: 0.5px; }
+.pc-rows .mini { border-radius: 1px !important; background: #0d1215 !important; }
+.pc-rows .mini i { background: var(--hazard) !important; }
+.avatar { border-color: var(--paint) !important; border-radius: 4px !important; }
+.section-title { font-family: var(--stencil) !important; letter-spacing: 4px !important; color: var(--paint); opacity: 1 !important; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
+/* mode cards: shipping containers */
+.mode-cards { gap: 18px !important; }
+.mode-card { --cc: #8a2a1e; --cc2: #5e1a12; --code: 'SMDU 207114 2'; border: 0 !important; border-radius: 3px !important; overflow: hidden; backdrop-filter: none !important;
+  background: linear-gradient(180deg, var(--cc), var(--cc2)) !important;
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35), inset 0 6px 0 rgba(255, 255, 255, 0.08), 0 16px 32px rgba(0, 0, 0, 0.55) !important; transition: transform 0.25s cubic-bezier(.3, 1.6, .5, 1), box-shadow 0.25s !important; }
+.mode-card::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.07) 0 7px, rgba(0, 0, 0, 0.14) 7px 14px); }
+.mode-card::after { content: var(--code); position: absolute; top: 10px; left: 12px; font: 12px var(--stencil); letter-spacing: 2px; color: rgba(255, 255, 255, 0.72); pointer-events: none; }
+.mode-card.ffa { --cc: #a8341f; --cc2: #6a1d12; --code: 'SMDU 207114 2  FFA'; }
+.mode-card.camp { --cc: #2f6b45; --cc2: #1b422a; --code: 'SMCU 418503 7  CO-OP'; }
+.mode-card.sand { --cc: #c97a1c; --cc2: #85500f; --code: 'SMSU 990271 4  FREE'; }
+.mode-card.online { --cc: #2c5a8e; --cc2: #193659; --code: 'SMOU 552018 1  NET'; }
+.mode-card:hover { transform: translateY(-12px) rotate(-0.6deg) !important; box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35), inset 0 6px 0 rgba(255, 255, 255, 0.08), 0 30px 40px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--paint) !important; }
+.mode-card .mc-art { position: relative; z-index: 1; height: 112px !important; padding-top: 14px; background: linear-gradient(90deg, transparent 24%, rgba(10, 10, 10, 0.5) 24% 26%, transparent 26% 74%, rgba(10, 10, 10, 0.5) 74% 76%, transparent 76%) !important; }
+.mode-card .mc-body { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.32); border-top: 3px solid rgba(0, 0, 0, 0.35); }
+.mode-card .mc-body b { font-family: var(--stencil) !important; letter-spacing: 2px; text-transform: uppercase; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
+.mode-card .mc-body p { color: #f1ece2 !important; opacity: 1 !important; font-family: var(--body); font-size: 15px !important; }
+.chip { border-radius: 2px !important; font-family: var(--label); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(0, 0, 0, 0.45) !important; color: #fff; }
+.chip.warn { background: var(--paint) !important; color: #1a1406 !important; }
+.news h3 { font-family: var(--stencil) !important; color: var(--paint) !important; letter-spacing: 2px; }
+.news li { font-family: var(--body); font-size: 15px !important; color: #dfe4e8; opacity: 1 !important; }
+.ver { font-family: var(--label); letter-spacing: 2px !important; }
+.opt { border-bottom: 1px solid rgba(0, 0, 0, 0.45) !important; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04); }
+.opt > span { font-family: var(--label); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #dfe4e8; opacity: 1 !important; }
+/* ---- garage: steel side panel ---- */
+.g2-panel { background: var(--rivets), var(--brushed), linear-gradient(180deg, var(--steel1), var(--steel2)) !important; border-left: 0 !important; box-shadow: -30px 0 60px rgba(0, 0, 0, 0.55) !important; }
+.g2-panel::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: repeating-linear-gradient(45deg, var(--paint) 0 11px, #15181b 11px 22px); border-right: 2px solid var(--weld); }
+.g2-panel > * { margin-left: 10px; }
+.g2-tabs button { font-family: var(--label) !important; color: #aeb8c0 !important; }
+.g2-tabs button.on { color: var(--paint) !important; border-color: var(--paint) !important; }
+.g2-sec, .g-content h3 { font-family: var(--stencil) !important; font-weight: 400 !important; letter-spacing: 3px !important; color: var(--paint) !important; }
+.g2-card, .g2-row, .g2-mounts button, .g2-level, .g2-swatch { background: linear-gradient(180deg, #2b353f, #222a32) !important; border: 2px solid var(--weld) !important; border-left: 5px solid #44505b !important; border-radius: 3px !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important; }
+.g2-card.sel, .g2-row.sel, .g2-mounts button.on { border-left-color: var(--paint) !important; }
+.g2-lvnum b, .g2-ft b { font-family: var(--stencil) !important; }
+.g2-bar i.on { background: var(--paint) !important; }
+.g2-plate b { font-family: var(--stencil) !important; letter-spacing: 3px !important; }
+.g2-plate small { color: var(--paint) !important; }
+/* ---- campaign map: a paper nautical chart ---- */
+.ov-box.map .mapwrap { border-radius: 2px !important; border: 3px solid #5a4a30;
+  background: linear-gradient(rgba(60, 90, 120, 0.18) 1px, transparent 1px) 0 0/40px 40px, linear-gradient(90deg, rgba(60, 90, 120, 0.18) 1px, transparent 1px) 0 0/40px 40px, radial-gradient(ellipse at center, #efe3c4, #d9c79c) !important;
+  box-shadow: inset 0 0 40px rgba(110, 80, 30, 0.45), 0 6px 18px rgba(0, 0, 0, 0.5); }
+.ov-box.map .mapwrap line { stroke: rgba(70, 50, 25, 0.55) !important; }
+.ov-box.map .mapwrap line.hot { stroke: var(--rust) !important; stroke-width: 3; }
+.ov-box.map .node { background: radial-gradient(circle at 40% 35%, #fff9e8, #e2d3ac) !important; border: 2px solid #5a4a30 !important; color: #2a2010; }
+.ov-box.map .node.can { border-color: var(--rust) !important; box-shadow: 0 0 0 3px rgba(180, 72, 42, 0.35), 0 0 14px rgba(180, 72, 42, 0.6) !important; }
+.ov-box.map .node.done { background: #c9b98f !important; }
+.ov-box.map .node.here { border-color: #1d4f7a !important; box-shadow: 0 0 0 3px rgba(29, 79, 122, 0.4) !important; }
+.ov-box.map .node.boss { background: radial-gradient(circle at 40% 35%, #5a2a2a, #2a0f0f) !important; color: #fff; }
+.legend { font-family: var(--label); letter-spacing: 0.5px; color: #dfe4e8; opacity: 1 !important; }
+.shop-item { background: linear-gradient(180deg, #2b353f, #222a32) !important; border: 2px solid var(--weld); border-radius: 3px !important; }
+/* ---- lobby, results, toasts, admin ---- */
+.lb-player { background: linear-gradient(180deg, #2b353f, #222a32) !important; border: 2px solid var(--weld) !important; border-radius: 3px !important; }
+.lb-player.empty { background: rgba(0, 0, 0, 0.25) !important; border-style: dashed !important; }
+#res-body .gain { font-family: var(--stencil); letter-spacing: 1px; color: var(--paint) !important; }
+.toast { background: var(--brushed), linear-gradient(180deg, #33404b, #222b33) !important; border: 2px solid var(--weld) !important; border-left: 6px solid #6c7882 !important; border-radius: 3px !important; font-family: var(--body); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5); }
+.toast.good { border-left-color: var(--lamp) !important; } .toast.bad { border-left-color: var(--rust) !important; } .toast.warn { border-left-color: var(--paint) !important; }
+.adm-head b { font-family: var(--stencil) !important; color: var(--paint) !important; letter-spacing: 2px; }
+.adm-sec h4 { font-family: var(--label); color: var(--paint); opacity: 1 !important; }
