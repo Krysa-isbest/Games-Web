@@ -136,7 +136,7 @@ const shellMat = new THREE.MeshStandardMaterial({ color: '#c9a03c', metalness: 0
 export const PSPEC = {
   ball: { grav: 9.8, r: 1.3, power: 8, dmg: 70, hit: 90, fire: 0.25, near: 5 },
   ac: { grav: 6, r: 0.55, power: 5, dmg: 22, hit: 28, fire: 0.05, small: true },
-  mortar: { grav: 9.8, r: 2.3, power: 11, dmg: 120, hit: 110, fire: 0.5, near: 7 },
+  mortar: { grav: 30, r: 2.3, power: 11, dmg: 120, hit: 110, fire: 0.5, near: 7 },
   heavy: { grav: 9.8, r: 1.9, power: 11, dmg: 100, hit: 130, fire: 0.3, near: 6 },     // the warships' naval gun
   rocket: { grav: 1.5, r: 1.15, power: 7, dmg: 65, hit: 70, fire: 0.35 },
   torpedo: { grav: 9.8, r: 2.1, power: 13, dmg: 150, hit: 0, fire: 0, run: 24 },

@@ -7,7 +7,9 @@ import * as THREE from 'three';
 export const CANNONS = {
   deckgun: { name: 'Deck gun', short: 'GUN', desc: 'The all-rounder. Explosive shells, a steady reload.', speed: 62, grav: 9.8, reload: 2.6, yaw: 0.85, pmin: -0.12, pmax: 0.5, pitch: 0.12, proj: 'ball', muzzle: 2.1, stats: { dmg: 3, rate: 2, range: 3 } },
   autocannon: { name: 'Autocannon', short: 'AUTO', desc: 'Fast-firing 30 mm. Shreds decks and crews, small holes. Overheats after 14 shots.', speed: 115, grav: 6, reload: 0.2, heat: 14, yaw: 0.95, pmin: -0.15, pmax: 0.6, pitch: 0.05, proj: 'ac', muzzle: 1.7, stats: { dmg: 1, rate: 5, range: 4 } },
-  mortar: { name: 'Mortar', short: 'MORT', desc: 'Lobs heavy bombs high over cover. Huge holes, hard to aim.', speed: 40, grav: 9.8, reload: 5.5, yaw: 0.8, pmin: 0.55, pmax: 1.3, pitch: 0.85, proj: 'mortar', muzzle: 0.9, stats: { dmg: 5, rate: 1, range: 2 } },
+  // v0.6.8: a faster, heavier bomb: 80–155 m, lands in 3–4.5 s instead of ~6, so ships can't sail out from under
+  // it. The barrel stays above 45°, so lower = always further.
+  mortar: { name: 'Mortar', short: 'MORT', desc: 'Lobs heavy bombs in a steep arc over cover. Huge holes.', speed: 68, grav: 30, reload: 5.5, yaw: 0.8, pmin: 0.8, pmax: 1.3, pitch: 1.0, proj: 'mortar', muzzle: 0.9, stats: { dmg: 5, rate: 1, range: 2 } },
   rockets: { name: 'Rocket pod', short: 'RKT', desc: 'A salvo of 4 rockets that fly almost straight. Great at long range.', speed: 85, grav: 1.5, reload: 7, salvo: 4, yaw: 0.85, pmin: -0.1, pmax: 0.45, pitch: 0.04, proj: 'rocket', muzzle: 0.9, stats: { dmg: 4, rate: 1, range: 5 } },
   torpedo: { name: 'Torpedo tube', short: 'TORP', desc: 'Runs under the waves and blows a huge hole below the waterline. Slow.', speed: 24, grav: 9.8, reload: 9, yaw: 0.7, pmin: -0.05, pmax: 0.05, pitch: 0, proj: 'torpedo', muzzle: 1.4, stats: { dmg: 5, rate: 1, range: 4 } },
   // warships only: the main gun in a turret on the centre line (bow, and on the big ones the stern too)

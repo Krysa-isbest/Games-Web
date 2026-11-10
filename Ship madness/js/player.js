@@ -815,9 +815,15 @@ export class Player {
     this.gunZoom = damp(this.gunZoom, IN.rmb ? 2.6 : 1, 10, dt);
     const sens = 0.0022 * S.sens / this.gunZoom;
     const mortar = c.type === 'mortar';
-    c.yaw = clamp(c.yaw + IN.mdx * sens * 0.6 * c.side, c.ymin ?? -T.yaw, c.ymax ?? T.yaw);
+    c.yaw = clamp(c.yaw + IN.mdx * sens * (mortar ? 1.1 : 0.6) * c.side, c.ymin ?? -T.yaw, c.ymax ?? T.yaw);
     // the mortar is aimed from above: mouse up throws it further (a lower barrel), so the ring follows the mouse
-    c.pitch = clamp(c.pitch - IN.mdy * sens * (mortar ? -0.35 : 0.6) * (S.invertY ? -1 : 1), T.pmin, T.pmax);
+    c.pitch = clamp(c.pitch - IN.mdy * sens * (mortar ? -1.0 : 0.6) * (S.invertY ? -1 : 1), T.pmin, T.pmax);
+    if (mortar) {        // W / S = further / closer, A / D = left / right (fine aiming)
+      if (down('forward')) c.pitch = Math.max(T.pmin, c.pitch - dt * 0.35);
+      if (down('back')) c.pitch = Math.min(T.pmax, c.pitch + dt * 0.35);
+      if (down('left')) c.yaw = clamp(c.yaw - dt * 0.5 * c.side, c.ymin ?? -T.yaw, c.ymax ?? T.yaw);
+      if (down('right')) c.yaw = clamp(c.yaw + dt * 0.5 * c.side, c.ymin ?? -T.yaw, c.ymax ?? T.yaw);
+    }
     const [pos, dir] = s.cannonMuzzle(c);
     const vel = dir.clone().multiplyScalar(T.speed).add(s.velocity(v2)); vel.y -= s.vy;
     let pts = arcPoints(pos, vel, PSPEC[T.proj]?.grav ?? 9.8, T.proj === 'ac' || T.proj === 'rocket' ? 120 : 80);
@@ -834,7 +840,8 @@ export class Player {
     const want = T.heat ? IN.lmb : IN.lmbHit;
     if (want && !fireCannon(s, c, this, this.skill === 'gunner' ? 0.65 : 1) && IN.lmbHit) G.toast?.(c.over ? 'Overheated! Let it cool.' : 'Reloading…');
     const state = c.over ? ' · 🔥 OVERHEATED' : c.cd > 0.05 ? ` · reloading ${c.cd.toFixed(1)}s` : ' · READY';
-    this.prompt = `💥 ${T.name}${state} · mouse aims the gun · ${T.heat ? 'hold ' : ''}LMB fire · RMB zoom · ${kn('use')} leave`;
+    this.prompt = mortar ? `💥 ${T.name}${state} · mouse or ${kn('forward')}/${kn('back')} further / closer · ${kn('left')}/${kn('right')} turn · LMB fire · RMB zoom · ${kn('use')} leave`
+      : `💥 ${T.name}${state} · mouse aims the gun · ${T.heat ? 'hold ' : ''}LMB fire · RMB zoom · ${kn('use')} leave`;
     if (hit('use')) this.leaveStation();
   }
 
