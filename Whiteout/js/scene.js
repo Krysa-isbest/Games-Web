@@ -11,6 +11,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { S, clamp, lerp, rand } from './state.js';
 
 export const W = { gust: 0, wind: 4, t: 0, fps: 0 };        // read by the audio and the frost overlay
+export const SCN = { paused: false };                         // the cutscene pauses the menu island
 let renderer, scene, camera, composer, bloom, finalPass;
 let sky, snow, moonLight, windowLight, fireLight, lanternLight, towerLamp, towerLight, smokeShack, smokeFire, fireSprites, drifts;
 const sparkleU = { value: 0 };
@@ -42,7 +43,7 @@ export function height(x, z) {
 }
 
 // ---------- textures ----------
-function canvasTex(w, h, draw, repeat = 1) {
+export function canvasTex(w, h, draw, repeat = 1) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
@@ -72,7 +73,7 @@ const iceTex = () => canvasTex(1024, 1024, (x, w, h) => {
   }
 }, 30);
 const plankRoofTex = () => canvasTex(256, 256, (x, w, h) => { for (let i = 0; i < 8; i++) { x.fillStyle = `hsl(25, 18%, ${18 + Math.random() * 10}%)`; x.fillRect(i * w / 8, 0, w / 8, h); x.fillStyle = 'rgba(0,0,0,0.5)'; x.fillRect(i * w / 8, 0, 2, h); } });
-const glowTex = (inner, outer) => canvasTex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, inner); g.addColorStop(0.35, outer); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
+export const glowTex = (inner, outer) => canvasTex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, inner); g.addColorStop(0.35, outer); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
 const planeTex = () => canvasTex(512, 256, (x, w, h) => {
   x.fillStyle = '#d9dde2'; x.fillRect(0, 0, w, h);
   x.fillStyle = '#1d3a5f'; x.fillRect(w * 0.18, 0, w * 0.035, h); x.fillRect(w * 0.82, 0, w * 0.035, h);
@@ -445,6 +446,7 @@ const drift = new THREE.Vector3();
 let last = performance.now(), fpsN = 0, fpsT = 0;
 function loop(now) {
   requestAnimationFrame(loop);
+  if (SCN.paused) { last = now; return; }
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   fpsN++; fpsT += dt; if (fpsT > 0.5) { W.fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
   W.t += dt;

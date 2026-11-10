@@ -21,7 +21,7 @@ export function initLobby(h) {
   };
   way.querySelectorAll('button').forEach(b => b.onclick = () => { S.netWay = b.dataset.v; saveSettings(); syncWay(); ui.click(); });
   syncWay();
-  $('pc-solo').onclick = () => { ui.error(); H.toast('Solo opens once the island is built. The menu comes first: this is it!', 'warn'); };
+  $('pc-solo').onclick = () => { if (G.started) return; G.started = true; ui.click(); H.starting({ players: [me()] }); };
   $('pc-host').onclick = () => startHost();
   $('pc-join').onclick = () => { setStage('join'); setTimeout(() => $(S.netWay === 'peer' ? 'join-code' : 'dj-code').focus(), 50); };
   $('join-code').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });

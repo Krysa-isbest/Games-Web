@@ -1,5 +1,6 @@
 {
   "music": {
-    "menu": ["Main menu.mp3"]
+    "menu": ["Main menu.mp3"],
+    "intro": []
   }
 }

@@ -148,9 +148,15 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 const GAMES = [
   {
     file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
-    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now only the main menu is here: the island comes next.',
+    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now the main menu and the opening cutscene are here: the island comes next.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
+      { version: '0.2', date: '2026-11-10', notes: [
+        'The opening cutscene (1.5 minutes): a calm night flight on a private jet, the captain\'s message breaking off, the power cut, turbulence and oxygen masks, the crash, and waking up in the burning plane with the tail torn off.',
+        'The radio comes alive and the host takes it: hold the push-to-talk key (V) to answer. Stay silent and a line plays on its own. Nobody answers.',
+        'Its own synthesized music and sound effects. Solo plays it now; in co-op it starts for the whole crew when the host presses Start. Once you have seen it, hold Space to skip.',
+        'It ends with "Coming soon": the island and the ruined shack are next.'
+      ] },
       { version: '0.1.2', date: '2026-11-07', notes: ['How to play has a new Techniques page: your one axe, the workbench and its crafting book, drying wood, trees that take 5 days to grow back, other fuel, and burning versus building.'] },
       { version: '0.1.1', date: '2026-11-07', notes: ['The main menu song is quieter by default (25 %). Change it in Settings › Audio & voice › Main menu music.'] },
       { version: '0.1', date: '2026-11-07', notes: [

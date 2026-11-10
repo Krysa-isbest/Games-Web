@@ -7,6 +7,7 @@ import { initSettings, openSettings, closeSettings, isListening } from './settin
 import { openHowto } from './howto.js';
 import { initLobby, openPlay, playBack, profileChanged } from './lobby.js';
 import { dressPanel } from './frost.js';
+import { playCutscene } from './cutscene.js';
 
 const $ = id => document.getElementById(id);
 const SCREENS = ['main', 'play', 'howto', 'settings', 'credits'];
@@ -104,20 +105,10 @@ function drawFrost() {
   x.globalAlpha = 1; x.fillStyle = g; x.fillRect(0, 0, w, h);
 }
 
-// ---------- "starting" the game: everything works, the island doesn't exist yet ----------
+// ---------- starting the game: the opening cutscene (the island itself comes next) ----------
 function starting(lobby) {
-  const ov = document.createElement('div');
-  ov.className = 'starting';
-  const crew = lobby.players.map(p => esc(p.name)).join(', ') || esc(S.name);
-  ov.innerHTML = `<div class="st-box"><div class="kicker">FLIGHT 2207</div><h3>Preparing the island…</h3><div class="st-bar"><i></i></div><p class="st-msg">Crew: ${crew}</p></div>`;
-  document.body.append(ov);
-  ui.open();
-  setTimeout(() => {
-    ov.querySelector('h3').textContent = 'The island isn\'t built yet';
-    ov.querySelector('.st-msg').innerHTML = `This is the menu prototype. The connection works: everyone in the crew got this message.<br><br><button class="btn primary">Back to the lobby</button>`;
-    ov.querySelector('.st-msg button').onclick = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 400); G.started = false; ui.back(); };
-    ui.error();
-  }, 2600);
+  const coop = G.net.role !== 'solo';
+  playCutscene({ players: lobby.players, meId: G.net.id, coop, onBack: () => { if (!coop) go('main'); } });
 }
 
 // ---------- settings applied live ----------
@@ -164,7 +155,7 @@ addEventListener('keydown', e => {
   if (isListening()) return;
   if (e.key === 'Escape' || e.code === 'Escape') {
     if (!$('profile-pop').classList.contains('hidden')) { $('profile-pop').classList.add('hidden'); return; }
-    if (document.querySelector('.starting')) return;
+    if (document.querySelector('.starting, .cutscene')) return;
     if (current !== 'main' && current !== 'splash') back();
   }
 });

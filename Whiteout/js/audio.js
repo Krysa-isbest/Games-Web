@@ -54,6 +54,15 @@ async function loadMusic() {
   music.play().catch(() => {});
 }
 export const hasMusic = () => !!music;
+// for the cutscene: the audio clock and the master output
+export const audioCtx = () => ctx;
+export const audioOut = () => master;
+// the menu's wind, fire, drone and song fade out while the cutscene plays
+let menuOn = 1;
+export function menuAudio(on) {
+  menuOn = on ? 1 : 0;
+  if (on && music?.paused) { music.currentTime = 0; music.play().catch(() => {}); }
+}
 
 // called every frame
 let musicV = 0;
@@ -61,13 +70,17 @@ export function audioTick(dt) {
   if (!ctx) return;
   const t = ctx.currentTime, g = W.gust;
   master.gain.setTargetAtTime(S.vol, t, 0.1);
-  windGain.gain.setTargetAtTime((0.22 + g * 0.55) * S.wind, t, 0.25);
+  windGain.gain.setTargetAtTime((0.22 + g * 0.55) * S.wind * menuOn, t, 0.25);
   windBand.frequency.setTargetAtTime(320 + g * 520 + Math.sin(W.t * 0.7) * 60, t, 0.4);
   windBand2.frequency.setTargetAtTime(700 + g * 900 + Math.sin(W.t * 1.3) * 120, t, 0.3);
-  droneGain.gain.setTargetAtTime(music ? 0 : 0.5 * S.menuMusic, t, 1.5);
-  fireGain.gain.setTargetAtTime(0.1 * S.sfx, t, 0.3);
+  droneGain.gain.setTargetAtTime(music ? 0 : 0.5 * S.menuMusic * menuOn, t, 1.5);
+  fireGain.gain.setTargetAtTime(0.1 * S.sfx * menuOn, t, 0.3);
   uiGain.gain.value = S.ui;
-  if (music) { musicV = Math.min(1, musicV + dt / 3); music.volume = Math.min(1, musicV * S.menuMusic * S.vol); }
+  if (music) {
+    musicV = menuOn ? Math.min(1, musicV + dt / 3) : Math.max(0, musicV - dt / 1.2);
+    music.volume = Math.min(1, musicV * S.menuMusic * S.vol);
+    if (!menuOn && musicV === 0 && !music.paused) music.pause();
+  }
 }
 
 // ---------- UI sounds ----------
