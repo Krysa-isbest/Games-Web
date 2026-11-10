@@ -337,6 +337,24 @@ const GAMES = [
     desc: 'Sink ships in first person. Blow voxel holes in tugboats, yachts, ferries, container ships and cruise liners, patch the leaks with planks, bail out the water, board the enemy and kill their captain. Watch out for the sharks.',
     mp: 'Online · up to 4 · voice chat', lang: 'English', genre: 'Naval FPS · voxel destruction',
     updating: true, changelog: [
+      { version: '0.6.3', date: '2026-11-10', notes: [
+        'Online is much smoother: positions now travel on a fast lane where a lost packet is simply skipped, instead of holding up everything behind it (that was the lag spikes).',
+        'Ships glide on every screen: between updates they keep moving with their own speed and turn, and the rocking on the waves is worked out on your own PC, so standing on a deck online no longer jitters.',
+        'Other players move smoothly instead of stepping, and players, ships and crates are sent 20 times a second.',
+        'Only what changed is sent (flooding, fires, guns, items), and broken blocks after a big explosion are packed much smaller.',
+        'Your own cannon shots, grenades and flares fire the moment you click when you\'re a guest; the host still decides the damage.',
+        'Hosting over LAN / Tailscale starts with the invite code. The lobby opens once your friend is aboard, and you can invite more friends from the lobby ("Invite another friend via LAN / Tailscale"), also in a room-code lobby.',
+        'Copy buttons for the invite and reply codes, and everyone\'s ping is shown in the lobby and next to the FPS counter.',
+      ] },
+      { version: '0.6.2', date: '2026-11-10', notes: [
+        'Repairs land exactly where you aim: the plank, furniture and hammer fix the hole under your crosshair, also when you play online on a moving ship. Putting out fires and sticking C4 on ships online are exact too.',
+        'You no longer get stuck inside other ships: hulls are solid when you swim next to them or under them and when you board, and if you ever end up inside blocks you are pushed out.',
+        'Enemy sailors can\'t shoot you through the hull, decks or walls any more: they need a clear line of sight.',
+        'Under water is blue now: deep water in every direction, lighter towards the surface.',
+        'No more railing around the stairs to the hold, which players got stuck on.',
+        'The long white lines behind the ships are gone: ships leave a short trail of churned water instead.',
+        'Crouch with C: lower, slower and harder to hit. In the water, C dives deeper.'
+      ] },
       { version: '0.6.1', date: '2026-11-09', notes: [
         'Fixed: the repair after a battle (the dock) left random holes in the hull, so the ship kept leaking. The dock repair now fixes everything. The free repair in a calm cove seals every leak first and then fixes half of the rest.',
         'A new dockyard look for the menus: painted steel plates with rivets and hazard stripes, stencilled lettering, the game modes as shipping containers, and the campaign map on a paper sea chart.'
