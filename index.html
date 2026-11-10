@@ -337,6 +337,31 @@ const GAMES = [
     desc: 'Sink ships in first person. Blow voxel holes in tugboats, yachts, ferries, container ships and cruise liners, patch the leaks with planks, bail out the water, board the enemy and kill their captain. Watch out for the sharks.',
     mp: 'Online · up to 4 · voice chat', lang: 'English', genre: 'Naval FPS · voxel destruction',
     updating: true, changelog: [
+      { version: '0.6.7', date: '2026-11-10', notes: [
+        'Hire your own crew in the Garage\'s new Crew tab: Marine (shoots enemy sailors), Gunner (mans the gun pair or turret you post him to and swaps to the side facing the enemy), Carpenter (puts broken hull blocks back, the ones under water first), Bilge hand (bails water) and Helmsman (when nobody is at the helm, he turns your broadside to the nearest enemy and keeps off the rocks).',
+        'Every crew member can be trained up to rank 3, and the Garage shows what each rank does. Your ship has as many berths as its crew size, and the top of the list sails with you.',
+        'Pick a gunner and click a gun on the ship model to post him there; badges on the ship show where everyone works.',
+        'The crew works online too: every player brings their own (in co-op, one extra berth per friend). They come back for every campaign stop, and your gunner steps aside when you take over his gun.',
+        'Fixed: the gun mount badges in the Garage were drawn in the wrong place.',
+      ] },
+      { version: '0.6.6', date: '2026-11-10', notes: [
+        'Warships: the Garage has Modern ships and Warships now. Patrol boat (level 10), corvette (13), frigate (16) and destroyer (19): expensive, with heavy built-in plating and a naval gun turret on the bow (the frigate and the destroyer have a second one on the stern). The turret fires heavy shells and turns almost all the way round. You can still buy gun pairs on top.',
+        'Upgrades make a real difference now: hull plating gives +50 % hull toughness per level, the bilge pump moves 1.5 / 3.2 / 5.5 m³ of water a second, and engine tuning gives +15 % speed, +25 % acceleration and +12 % turning per level.',
+        'The Garage shows what each upgrade does at your level and what the next level gives.',
+        'Late in the campaign an enemy patrol boat can show up, and high-level FFA rivals may bring a corvette.',
+      ] },
+      { version: '0.6.5', date: '2026-11-10', notes: [
+        'Every enemy deck gun is manned by a sailor. Kill the gunner and that gun goes quiet, until another sailor runs over to take his place, or a gunner from the far side swaps over to the side facing you.',
+        'Gunners stick to their guns, but they grab their rifles when you board close to them.',
+        'Campaign: if your ship goes down during a fight, you can steal one of theirs. Board an enemy ship, take out everyone aboard, and she becomes your ship (damage and all), and the campaign carries on with her.',
+        'While you\'re in the water, the enemy ships come after you, and if you die you come back in the water near a ship you can take.',
+      ] },
+      { version: '0.6.4', date: '2026-11-10', notes: [
+        'The engine is a real block in the stern hold: a tough casing around a glowing core. Shoot through the casing and every bit of core you break costs top speed; with the core gone the ship stops dead. The wrench puts the core back, the hammer and planks fix the casing.',
+        'The mortar has its own view: a spotter\'s camera high above and behind the gun, looking down at where the bomb lands. Mouse up throws further, RMB zooms in, and the range is shown.',
+        'New driving: ships speed up and slow down much faster, the rudder answers at once, turns are tighter and the hull no longer slides around like on ice. You can turn slowly even when stopped.',
+        'Space at the helm brakes hard. The throttle and the rudder move quicker when you hold the keys, and the rudder centres itself when you let go.',
+      ] },
       { version: '0.6.3', date: '2026-11-10', notes: [
         'Online is much smoother: positions now travel on a fast lane where a lost packet is simply skipped, instead of holding up everything behind it (that was the lag spikes).',
         'Ships glide on every screen: between updates they keep moving with their own speed and turn, and the rocking on the waves is worked out on your own PC, so standing on a deck online no longer jitters.',
