@@ -251,7 +251,7 @@ function initUI() {
       G.lobby.players = G.lobby.players.filter(p => p.id !== pid);
       const a = byId.player(pid);
       if (a) {
-        for (const s of G.ships) { if (s.driver === a) s.driver = null; if (s.crane.user === a) s.crane.user = null; for (const c of s.cannons) if (c.user === a) c.user = null; }
+        for (const s of G.ships) { if (s.driver === a) { s.driver = null; s.brake = false; } if (s.crane.user === a) s.crane.user = null; for (const c of s.cannons) if (c.user === a) c.user = null; }
         for (const it of G.items) if (it.holder === a) { it.holder = null; it.ship = a.frame; it.lp = a.frame ? a.pos.clone() : null; it.wp = a.frame ? null : a.worldPos(); G.netHook?.('despawn', 'item', it); }
         a.remove(); G.players = G.players.filter(p => p !== a);
         G.game?.onDeath?.(a, null, 'left');

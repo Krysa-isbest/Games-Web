@@ -213,7 +213,7 @@ export function populateShip(s) {
   s.comps.forEach((c, ci) => {
     const z0 = s.zOf(c.k0) + 0.5 + (ci === 0 ? 2.5 : 0), z1 = s.zOf(c.k1) - 0.5;      // the plank storage sits at the very stern
     const wx = z => Math.max(0.9, s.halfAt(0.9 / s.deckTop, z / s.hl) - VS - 0.1);
-    const eng = s.engineLp, skip = (a, b) => (ci === 0 && b > eng.z - 1.0 && a < eng.z + 1.0) || (b > sz0 && a < sz1 && stw.wide);
+    const eng = s.engineLp, eh = s.engineSize.z / 2 + 0.5, skip = (a, b) => (ci === 0 && b > eng.z - eh && a < eng.z + eh) || (b > sz0 && a < sz1 && stw.wide);
     lineWall(s, HOLDS[ci].L, -1, fl, z0, z1, wx, skip);
     lineWall(s, HOLDS[ci].R, 1, fl, z0, z1, wx, skip);
   });

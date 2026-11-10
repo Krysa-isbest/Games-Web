@@ -87,6 +87,7 @@ export class Player {
   }
   hurt(amount, by, kind, from) {
     if (!this.alive || G.admin.god) return;
+    if (by?.crew && by.team === this.team) return;          // your own hired crew never hurt you
     this.hp -= amount; this.hurtT = 0.4;
     this.lastHurt = by;
     sfx.hurt();
@@ -111,7 +112,11 @@ export class Player {
     this.hp = 100; this.oxygen = 1; this.alive = true;
     const ship = G.game?.respawnShip?.(this);
     if (ship) this.placeOn(ship, ship.spawnSpot(Math.floor(Math.random() * 4)));
-    else { this.frame = null; this.pos.set(0, 2, 0); }
+    else {      // no ship: in the water (castaways: near a ship they can take)
+      this.frame = null;
+      const at = G.game?.respawnSea?.(this);
+      if (at) this.pos.copy(at); else this.pos.set(0, 2, 0);
+    }
     for (const k of ['primary', 'secondary']) { const g = this.inv[k]; if (g) { g.mag = g.magMax; g.reserve = Math.max(g.reserve, WEAPONS[g.id].reserve); } }
     if (this.inv.gadget) this.inv.gadget.count = Math.max(this.inv.gadget.count, WEAPONS[this.inv.gadget.id].count || 0);
     if (this.inv.bucket) this.inv.bucket.amount = 0;
@@ -120,6 +125,7 @@ export class Player {
   leaveStation() {
     const s = this.station;
     if (this.mode === 'wheel') {
+      s.brake = false;
       if (isGuest()) act('helm', s.id, false);
       else { if (s.driver === this) s.driver = null; s.rudderIn = 0; }
     }
@@ -150,7 +156,9 @@ export class Player {
   // where the gunner stands: beside the gun on the walkway, not inside the superstructure
   gunStand(s, c) {
     if (c.stand) return c.stand;
-    for (const [dx, dz] of [[0, -1.1], [0, 1.1], [-c.side * 0.9, -0.9], [-c.side * 0.9, 0.9], [-c.side * 1.0, 0]]) {
+    const spots = [[0, -1.1], [0, 1.1], [-c.side * 0.9, -0.9], [-c.side * 0.9, 0.9], [-c.side * 1.0, 0]];
+    if (c.standDz) spots.unshift([0, c.standDz]);         // a turret: behind it, towards the middle of the ship
+    for (const [dx, dz] of spots) {
       const x = c.lp.x + dx, z = c.lp.z + dz;
       if (!this.collides(s, x, c.lp.y + 0.02, z)) return (c.stand = new THREE.Vector3(x, c.lp.y + 0.02, z));
     }
@@ -473,10 +481,11 @@ export class Player {
     const W = (lp, dy) => s.toWorld(new THREE.Vector3().copy(lp).add(new THREE.Vector3(0, dy, 0)));   // fresh vectors for every entry
     if (s) {
       if (!this.helmTaken(s)) out.push({ kind: 'wheel', ship: s, p: W(s.wheelLp, 1.1), label: `Take the helm of the ${s.name}` });
-      s.cannons.forEach((c, ci) => { if (!c.user || c.user === this) out.push({ kind: 'cannon', ship: s, c, ci, p: W(c.lp, 0.7), label: `Man the ${cannonOf(c).name.toLowerCase()}` }); });
+      // (your own crew gunner steps aside for you)
+      s.cannons.forEach((c, ci) => { if (!c.user || c.user === this || (c.user.crew && c.user.team === this.team)) out.push({ kind: 'cannon', ship: s, c, ci, p: W(c.lp, 0.7), label: `Man the ${cannonOf(c).name.toLowerCase()}` }); });
       if (s.storage) out.push({ kind: 'storage', ship: s, p: W(s.storage.lp, 0.5), label: this.holding?.kind === 'plank' ? 'Put the plank back' : `Take a plank (${s.storage.planks} left)` });
       if (!this.craneTaken(s)) out.push({ kind: 'crane', ship: s, p: W(s.crane.base, s.crane.pedH + 0.4), label: 'Operate the crane' });
-      if (s.engineHp < 100) out.push({ kind: 'engine', ship: s, p: W(s.engineLp, 0.6), label: `Engine ${pct(s.engineHp)}${s.engineHp <= 0 ? ' · BROKEN' : ''}: fix it with the wrench (${kn('slot7')})` });
+      if (s.engineHp < 100) out.push({ kind: 'engine', ship: s, p: W(s.engineC, s.engineSize.y / 2 + 0.2), label: `Engine core ${pct(s.engineHp)}${s.engineFactor() <= 0 ? ' · WRECKED' : ''}: fix it with the wrench (${kn('slot7')})` });
       for (const L of s.ladders) if (this.pos.y > s.deckTop - 0.3) out.push({ kind: 'ladder', ship: s, L, p: W(new THREE.Vector3(L.x - L.side * 0.15, L.top, L.z), 0.6), label: 'Climb down the ladder' });
     }
     for (const it of G.items) if (!it.holder) out.push({ kind: 'item', it, p: itemWorld(it, new THREE.Vector3()).add(new THREE.Vector3(0, 0.3, 0)), label: `Pick up the ${it.def.name.toLowerCase()}${it.def.fix ? ' (patches holes)' : ''}` });
@@ -541,7 +550,8 @@ export class Player {
       } else if (o.kind === 'cannon') {
         if (guest && !(await act('cannon', o.ship.id, o.ci, true))) return G.toast?.('Someone is using that gun.');
         if (this.holding) this.drop();
-        this.mode = 'cannon'; this.station = { ship: o.ship, c: o.c }; o.c.user = this; this.gunZoom = 1;
+        if (o.c.user?.crew) o.c.user.gun = null;          // our gunner lets go (he takes it back when we leave)
+        this.mode = 'cannon'; this.station = { ship: o.ship, c: o.c }; o.c.user = this; this.gunZoom = 1; this.mortarAim = null;
         this.pos.copy(this.gunStand(o.ship, o.c));
       } else if (o.kind === 'ladder') {
         this.enterLadder(o.ship, o.L, o.L.top - 0.45);
@@ -709,9 +719,12 @@ export class Player {
     const eye = this.eyeWorld(new THREE.Vector3()), fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(G.camera.quaternion);
     for (const s of G.ships) {
       if (s.sunk || Math.hypot(s.x - eye.x, s.z - eye.z) > s.hl + 3) continue;
-      const c = s.toWorld(v1.copy(s.engineLp).add(v2.set(0, 0.55, 0)));
-      const d = c.distanceTo(eye);
-      if (d < 2.6 && v3.copy(c).sub(eye).normalize().dot(fwd) > 0.6) return s;
+      // the nearest point of the engine block: close enough, and you're looking at it
+      const le = s.toLocal(v1.copy(eye)), c = s.engineC, h = s.engineSize;
+      const near = new THREE.Vector3(clamp(le.x, c.x - h.x / 2, c.x + h.x / 2), clamp(le.y, c.y - h.y / 2, c.y + h.y / 2), clamp(le.z, c.z - h.z / 2, c.z + h.z / 2));
+      if (near.distanceTo(le) > 1.7) continue;
+      const toC = s.toWorld(v2.copy(c)).sub(eye).normalize(), toN = s.toWorld(near).sub(eye);
+      if (toN.lengthSq() < 0.04 || toN.normalize().dot(fwd) > 0.45 || toC.dot(fwd) > 0.45) return s;
     }
     return null;
   }
@@ -725,9 +738,10 @@ export class Player {
     const amount = 26 * this.toolT;
     this.toolT = 0;
     sfx.ratchet(this.eyeWorld(v1));
+    FX.spark?.(v1.x, v1.y - 0.3, v1.z);
     if (isGuest()) act('fixEngine', s.id, amount);
     else if (s.repairEngine(amount)) G.toast?.('⚙️ The engine is running again!', 'good');
-    if (s.engineHp + amount >= 100) G.toast?.('⚙️ Engine fully repaired.', 'good');
+    if (s.engineHp < 100 && s.engineHp + amount >= 100) G.toast?.('⚙️ Engine core fully repaired.', 'good');
   }
 
   // ---------- stations ----------
@@ -743,18 +757,24 @@ export class Player {
     this.tapT = Math.max(0, (this.tapT || 0) - dt);
     if ((up || dn) && this.tapT <= 0) {
       const before = s.throttle;
-      let t = clamp(before + (up ? 1 : -1) * dt * 1.3, -1, 3);
-      if ((before > 0.02 && t <= 0) || (before < -0.02 && t >= 0)) { t = 0; this.detent = 0.6; }
+      let t = clamp(before + (up ? 1 : -1) * dt * 2.2, -1, 3);
+      if ((before > 0.02 && t <= 0) || (before < -0.02 && t >= 0)) { t = 0; this.detent = 0.45; }
       if (this.detent > 0) { this.detent -= dt; t = 0; }
       s.throttle = t;
     } else this.detent = 0;
+    // brake (Space): the telegraph goes to STOP and the prop is thrown into reverse while you hold it
+    const braking = down('jump');
+    if (hit('jump')) s.throttle = 0;
+    s.brake = braking;
+    // the rudder: hold A / D to put it over (fast, and straight across when you change sides), let go and it centres
     const steer = (down('right') ? 1 : 0) - (down('left') ? 1 : 0);
-    s.rudderIn = steer ? clamp(s.rudderIn + steer * dt * 1.6, -1, 1) : damp(s.rudderIn, 0, 2.5, dt);
+    if (steer && Math.sign(s.rudderIn) === -steer) s.rudderIn *= 0.3;
+    s.rudderIn = steer ? clamp(s.rudderIn + steer * dt * 3.2, -1, 1) : damp(s.rudderIn, 0, 4, dt);
     if (hit('anchor')) { if (isGuest()) act('anchor', s.id); else s.toggleAnchor(); G.toast?.(s.anchor.state === 'up' || s.anchor.state === 'raising' ? '⚓ Dropping the anchor…' : '⚓ Raising the anchor…'); }
     if (hit('view')) this.chase = !this.chase;
-    const eng = s.engineHp <= 0 ? ' · ⚠️ ENGINE DOWN: fix it with the wrench' : s.engineHp < 40 ? ' · ⚠️ engine damaged' : '';
+    const eng = s.engineFactor() <= 0 ? ' · ⚠️ ENGINE DOWN: fix its core with the wrench' : s.engineHp < 97 ? ` · ⚠️ engine damaged (${s.engineHp}% power)` : '';
     const anch = s.anchor.state === 'down' ? ' · ⚓ ANCHORED' : s.anchor.state !== 'up' ? ` · ⚓ anchor ${s.anchor.state}…` : '';
-    this.prompt = `${THROTTLE_NAME(s.throttle)}${eng}${anch}${s.aground > 0 ? ' · ⚠️ AGROUND: go astern!' : ''}  ·  ${kn('forward')}/${kn('back')} throttle (tap or hold)  ·  ${kn('left')}/${kn('right')} rudder  ·  ${kn('anchor')} anchor  ·  ${kn('view')} camera  ·  ${kn('use')} let go`;
+    this.prompt = `${braking ? '🛑 BRAKING' : THROTTLE_NAME(s.throttle)}${eng}${anch}${s.aground > 0 ? ' · ⚠️ AGROUND: go astern!' : ''}  ·  ${kn('forward')}/${kn('back')} throttle (tap or hold)  ·  ${kn('left')}/${kn('right')} rudder  ·  ${kn('jump')} brake  ·  ${kn('anchor')} anchor  ·  ${kn('view')} camera  ·  ${kn('use')} let go`;
     if (hit('use')) this.leaveStation();
   }
   async updateCrane(dt, sens) {
@@ -794,8 +814,10 @@ export class Player {
     this.pos.copy(this.gunStand(s, c));
     this.gunZoom = damp(this.gunZoom, IN.rmb ? 2.6 : 1, 10, dt);
     const sens = 0.0022 * S.sens / this.gunZoom;
-    c.yaw = clamp(c.yaw + IN.mdx * sens * 0.6 * c.side, -T.yaw, T.yaw);
-    c.pitch = clamp(c.pitch - IN.mdy * sens * 0.6 * (S.invertY ? -1 : 1), T.pmin, T.pmax);
+    const mortar = c.type === 'mortar';
+    c.yaw = clamp(c.yaw + IN.mdx * sens * 0.6 * c.side, c.ymin ?? -T.yaw, c.ymax ?? T.yaw);
+    // the mortar is aimed from above: mouse up throws it further (a lower barrel), so the ring follows the mouse
+    c.pitch = clamp(c.pitch - IN.mdy * sens * (mortar ? -0.35 : 0.6) * (S.invertY ? -1 : 1), T.pmin, T.pmax);
     const [pos, dir] = s.cannonMuzzle(c);
     const vel = dir.clone().multiplyScalar(T.speed).add(s.velocity(v2)); vel.y -= s.vy;
     let pts = arcPoints(pos, vel, PSPEC[T.proj]?.grav ?? 9.8, T.proj === 'ac' || T.proj === 'rocket' ? 120 : 80);
@@ -806,7 +828,9 @@ export class Player {
     this.aim.geometry.setFromPoints(pts); this.aim.computeLineDistances(); this.aim.visible = true;
     const end = pts.at(-1);
     this.aimRing.position.set(end.x, waveHeight(end.x, end.z) + 0.15, end.z); this.aimRing.visible = true;
-    this.aimRing.scale.setScalar(0.6 + pos.distanceTo(end) / 120);
+    this.aimRing.scale.setScalar(mortar ? 2.2 + pos.distanceTo(end) / 60 : 0.6 + pos.distanceTo(end) / 120);
+    this.gunRange = Math.round(Math.hypot(end.x - pos.x, end.z - pos.z));
+    if (mortar) { this.mortarAim = this.mortarAim || end.clone(); this.mortarAim.lerp(end, Math.min(1, dt * 8)); this.mortarFrom = pos.clone(); }
     const want = T.heat ? IN.lmb : IN.lmbHit;
     if (want && !fireCannon(s, c, this, this.skill === 'gunner' ? 0.65 : 1) && IN.lmbHit) G.toast?.(c.over ? 'Overheated! Let it cool.' : 'Reloading…');
     const state = c.over ? ' · 🔥 OVERHEATED' : c.cd > 0.05 ? ` · reloading ${c.cd.toFixed(1)}s` : ' · READY';
@@ -824,13 +848,24 @@ export class Player {
       const lp = v2.set(cr.base.x - Math.sin(cr.yaw) * 3.4, cr.base.y + cr.pedH + 3.2 + cr.boomL * 0.35, cr.base.z - Math.cos(cr.yaw) * 3.4);
       cam.position.copy(s.toWorld(lp));
       cam.lookAt(hook.lerp(s.toWorld(s.craneTipLocal(v1)), 0.2));
+    } else if (this.mode === 'cannon' && this.station.c.type === 'mortar' && this.mortarAim) {
+      // the mortar: a spotter's view from high above and behind the gun, looking down at where the bomb lands.
+      // The landing ring sits in the middle of the screen; RMB pulls the view in closer.
+      const from = this.mortarFrom, to = this.mortarAim;
+      const dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz) || 1;
+      const zoom = (this.gunZoom - 1) / 1.6;                        // 0 .. 1
+      const back = lerp(14, 4, zoom), up = lerp(12 + d * 0.22, 8 + d * 0.08, zoom);
+      cam.position.set(from.x - dx / d * back, from.y + up, from.z - dz / d * back);
+      cam.lookAt(to);
+      fov = lerp(S.fov, S.fov * 0.6, zoom);
     } else if (this.mode === 'cannon') {
       // gunsight: just above the breech, looking straight down the barrel
       const { ship: s, c } = this.station;
       const [, dir] = s.cannonMuzzle(c, v1, v2);
       const pivot = s.toWorld(v3.copy(c.lp).add(new THREE.Vector3(0, 0.66, 0)));
       const up = s.dirToWorld(new THREE.Vector3(0, 1, 0));
-      cam.position.copy(pivot).addScaledVector(up, c.type === 'mortar' ? 0.35 : 0.48).addScaledVector(dir, c.type === 'mortar' ? -0.6 : -0.3);
+      const naval = c.type === 'naval';           // the turret: sit up on the turret roof
+      cam.position.copy(pivot).addScaledVector(up, c.type === 'mortar' ? 0.35 : naval ? 0.8 : 0.48).addScaledVector(dir, c.type === 'mortar' ? -0.6 : naval ? -0.9 : -0.3);
       cam.lookAt(v1.copy(cam.position).add(dir));
       fov = S.fov / this.gunZoom;
     } else if (this.mode === 'wheel' && this.chase) {

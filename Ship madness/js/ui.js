@@ -58,9 +58,9 @@ export function buildHelp() {
     <p><b>${kn('forward')}${kn('left')}${kn('back')}${kn('right')}</b> move · <b>${kn('sprint')}</b> sprint · <b>${kn('jump')}</b> jump / swim up · <b>${kn('crouch')}</b> crouch / dive deeper · walk into a ladder to climb it</p>
     <p><b>${kn('use')}</b> use (helm, deck gun, crane, planks, items, crates) · <b>${kn('drop')}</b> drop</p>
     <p><b>LMB</b> shoot · <b>RMB</b> aim · <b>${kn('reload')}</b> reload · <b>${kn('slot1')}–${kn('slot4')}</b> weapons · <b>${kn('detonate')}</b> detonate C4</p>
-    <p><b>Tools:</b> ${kn('slot5')} bucket · ${kn('slot6')} hammer (one block at a time, free) · ${kn('slot7')} wrench (the engine in the stern hold)</p>
-    <p><b>Helm:</b> ${kn('forward')}/${kn('back')} throttle (tap or hold) · ${kn('left')}/${kn('right')} rudder · ${kn('anchor')} anchor · ${kn('view')} camera · ${kn('use')} let go</p>
-    <p><b>Deck gun:</b> mouse aims the barrel · LMB fire · RMB zoom</p>
+    <p><b>Tools:</b> ${kn('slot5')} bucket · ${kn('slot6')} hammer (one block at a time, free) · ${kn('slot7')} wrench (the engine core in the stern hold)</p>
+    <p><b>Helm:</b> ${kn('forward')}/${kn('back')} throttle (tap or hold) · ${kn('left')}/${kn('right')} rudder · ${kn('jump')} brake · ${kn('anchor')} anchor · ${kn('view')} camera · ${kn('use')} let go</p>
+    <p><b>Deck gun:</b> mouse aims the barrel · LMB fire · RMB zoom · the mortar is aimed from above (mouse up = further)</p>
     <p><b>Crane</b> (at the stern): mouse / ${kn('left')}${kn('right')} turn · ${kn('forward')}/${kn('back')} boom · ${kn('craneDown')}/${kn('craneUp')} or wheel: hook · ${kn('grab')} grab</p>
     <p><b>Holes:</b> plank from the storage (stern hold) patches a hole. <b>Water:</b> bucket in the flood water, throw it over the railing. <b>Fire:</b> full bucket on it.</p>
     <p><b>${kn('admin')}</b> admin (sandbox) · <b>${kn('help')}</b> this card · <b>${kn('ptt')}</b> push to talk · <b>Esc</b> pause</p>`;
@@ -252,9 +252,9 @@ export function updateHUD(dt) {
     sp.innerHTML = `<b>${ship.name}</b>${ship.sinking ? ' <em class="bad">SINKING!</em>' : ''}
       <div class="bar"><span>Hull</span><div class="track"><div class="fill hull" style="width:${st.hull * 100}%"></div></div><small>${Math.round(st.hull * 100)}%</small></div>
       <div class="bar"><span>Water</span><div class="track"><div class="fill water" style="width:${st.flood * 100}%"></div></div><small>${Math.round(st.flood * 100)}%</small></div>
-      <div class="bar"><span>Engine</span><div class="track"><div class="fill eng${st.engine <= 0 ? ' dead' : ''}" style="width:${st.engine}%"></div></div><small>${st.engine <= 0 ? 'DOWN' : Math.round(st.engine) + '%'}</small></div>
+      <div class="bar"><span>Engine</span><div class="track"><div class="fill eng${st.engineDown ? ' dead' : ''}" style="width:${st.engine}%"></div></div><small>${st.engineDown ? 'DOWN' : Math.round(st.engine) + '%'}</small></div>
       <div class="comps">${comps}<small>stern · mid · bow</small></div>
-      ${st.engine <= 0 ? `<div class="fire">⚙️ Engine down! Wrench (${kn('slot7')}) in the stern hold</div>` : ''}
+      ${st.engineDown ? `<div class="fire">⚙️ Engine down! Wrench (${kn('slot7')}) on its core in the stern hold</div>` : st.engine < 97 ? `<div class="leak">⚙️ Engine hit: ${Math.round(st.engine)}% power</div>` : ''}
       ${st.leak > 0.05 ? `<div class="leak">💧 Leaking ${st.leak.toFixed(1)} m³/s</div>` : ''}
       ${st.fires ? `<div class="fire">🔥 ${st.fires} fire${st.fires > 1 ? 's' : ''} on board! (bucket)</div>` : ''}
       <div class="telegraph"><div class="tg-scale"><span>ASTERN</span><span>STOP</span><span>SLOW</span><span>HALF</span><span>FULL</span></div><div class="tg-track"><i style="left:${tPos}%"></i></div><div class="tg-rudder"><i style="left:${rPos}%"></i></div></div>
@@ -272,7 +272,8 @@ export function updateHUD(dt) {
     $('gs-heat').parentElement.classList.toggle('hidden', !T.heat);
     if (T.heat) { $('gs-heat').style.width = Math.min(100, (c.heat || 0) / T.heat * 100) + '%'; $('gs-heat').classList.toggle('over', !!c.over); }
     $('gs-state').textContent = c.over ? 'OVERHEATED' : ready >= 1 ? 'READY' : 'RELOADING';
-    $('gs-zoom').textContent = me.gunZoom > 1.3 ? `ZOOM ${me.gunZoom.toFixed(1)}×` : '';
+    $('gs-zoom').textContent = (c.type === 'mortar' ? `RANGE ${me.gunRange ?? 0} m  ` : '') + (me.gunZoom > 1.3 ? `ZOOM ${me.gunZoom.toFixed(1)}×` : '');
+    gs.classList.toggle('mortar', c.type === 'mortar');       // top-down view: the landing ring is the sight
   }
   const mh = G.game?.hud?.() || '';
   $('mode-hud').innerHTML = mh; $('mode-hud').classList.toggle('hidden', !mh);

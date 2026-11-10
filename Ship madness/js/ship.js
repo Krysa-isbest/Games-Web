@@ -46,9 +46,34 @@ export const SHIP_TYPES = {
     hullWin: [{ y0: 3.25, y1: 3.75, z0: 0.06, z1: 0.86, step: 1.0, len: 0.6 }, { y0: 4.05, y1: 4.55, z0: 0.06, z1: 0.86, step: 1.0, len: 0.6 }],
     funnel: { z: 0.13, r: 1.1, h: 4.2, n: 1 }, extras: ['lifeboats', 'pool', 'slide'], crane: 0.04,
     desc: 'A floating city: six decks, rows of cabins, a pool and a waterslide. Up to 5 gun pairs.' },
+
+  // ---- warships (cat: 'war'): expensive, late, heavily plated (plate = built-in plating, see hpOf), with a
+  // naval-gun turret on the bow, and on the bigger ones one on the stern as well ----
+  patrol: { cat: 'war', name: 'Patrol boat', level: 10, L: 20, W: 5.6, hold: 2.8, maxGuns: 1, speed: 1.5, turn: 1.4, crew: 2, deck: 'steel', shape: { b: 0.6, bow: 0.35, st: 0.1 },
+    sup: { z0: 0.4, z1: 0.6, tiers: [{ h: 2.3, w: 0.5, win: 'rows' }, { h: 2.1, f: 0.3, b: 0.6, w: 0.44, win: 'glass' }] },
+    funnel: { z: 0.43, r: 0.3, h: 1.6, n: 1 }, extras: ['navmast'], crane: 0.1, turrets: ['bow'], plate: 0.5,
+    desc: 'Small, very fast and plated. A naval gun turret on the bow, 1 gun pair.' },
+  corvette: { cat: 'war', name: 'Corvette', level: 13, L: 30, W: 7.2, hold: 3.4, maxGuns: 2, speed: 1.3, turn: 1.15, crew: 3, deck: 'steel', shape: { b: 0.62, bow: 0.38, st: 0.08 },
+    sup: { z0: 0.36, z1: 0.6, tiers: [{ h: 2.5, w: 0.5, win: 'rows' }, { h: 2.3, f: 0.5, b: 1, w: 0.44, win: 'glass' }] },
+    funnel: { z: 0.42, r: 0.55, h: 2.2, n: 1 }, extras: ['navmast'], crane: 0.08, turrets: ['bow'], plate: 0.9,
+    desc: 'A fast escort with thick plating and a bow turret. Up to 2 gun pairs.' },
+  frigate: { cat: 'war', name: 'Frigate', level: 16, L: 40, W: 8.8, hold: 4, maxGuns: 2, speed: 1.15, turn: 0.95, crew: 4, deck: 'steel', shape: { b: 0.66, bow: 0.42, st: 0.06 },
+    sup: { z0: 0.34, z1: 0.62, tiers: [{ h: 2.75, w: 0.56, win: 'rows' }, { h: 2.5, f: 0.8, b: 1.5, w: 0.5, win: 'rows' }, { h: 2.3, f: 1.2, b: 3, w: 0.44, win: 'glass' }] },
+    funnel: { z: 0.4, r: 0.7, h: 2.6, n: 1 }, extras: ['navmast'], crane: 0.06, turrets: ['bow', 'stern'], plate: 1.3,
+    desc: 'Heavy plating and turrets fore and aft. Up to 2 gun pairs.' },
+  destroyer: { cat: 'war', name: 'Destroyer', level: 19, L: 52, W: 10, hold: 4.6, maxGuns: 3, speed: 1.1, turn: 0.85, crew: 5, deck: 'steel', shape: { b: 0.68, bow: 0.44, st: 0.05 },
+    sup: { z0: 0.32, z1: 0.62, tiers: [{ h: 2.75, w: 0.58, win: 'rows' }, { h: 2.75, f: 1, b: 2, w: 0.52, win: 'rows' }, { h: 2.5, f: 1.5, b: 4, w: 0.46, win: 'glass' }] },
+    funnel: { z: 0.38, r: 0.8, h: 3, n: 2 }, extras: ['navmast'], crane: 0.05, turrets: ['bow', 'stern'], plate: 1.6,
+    desc: 'The heaviest plating at sea, turrets fore and aft and up to 3 gun pairs.' },
 };
-export const T = { EMPTY: 0, HULL: 1, DECK: 2, BULK: 3, STAIR: 4, CABIN: 5, RAIL: 6, PAINT: 7, ROOF: 8, PORT: 9, CONT: 10 };
-const BASE_HP = [0, 4, 3, 3, 2, 3, 2, 4, 3, 2, 3];
+export const isWarship = key => SHIP_TYPES[key]?.cat === 'war';
+// what the upgrades do per level (Garage numbers come from here too)
+export const ARMOR_PER_LVL = 0.5;          // hull blocks take +50 % more hits per plating level
+export const PUMP_RATES = [0, 1.5, 3.2, 5.5];  // m³/s
+export const ENGINE_LVL = { speed: 0.15, acc: 0.25, turn: 0.12 };   // per engine-tuning level
+// ENGC = the engine's casing (tough), ENGK = its core (what actually drives the ship)
+export const T = { EMPTY: 0, HULL: 1, DECK: 2, BULK: 3, STAIR: 4, CABIN: 5, RAIL: 6, PAINT: 7, ROOF: 8, PORT: 9, CONT: 10, ENGC: 11, ENGK: 12 };
+const BASE_HP = [0, 4, 3, 3, 2, 3, 2, 4, 3, 2, 3, 7, 3];
 const ARMORED = new Set([T.HULL, T.PAINT]);
 const LEAK = 0.07 / AREA;
 const SPEEDS = [-5.5, 0, 4, 7.5, 11];   // throttle -1 .. 3 (fractions in between)
@@ -193,7 +218,8 @@ export class Ship {
     if (k === this.bulks[0] || k === this.bulks[1]) return null;
     return this.comps[this.compOfK(k)];
   }
-  hpOf(t) { return Math.min(255, Math.round((BASE_HP[t] + (ARMORED.has(t) ? this.armor : 0)) * this.hpMult)); }
+  // hull plating multiplies how many hits a hull block takes (upgrade levels + a warship's built-in plate)
+  hpOf(t) { return Math.min(255, Math.round(BASE_HP[t] * (ARMORED.has(t) ? 1 + this.armor * ARMOR_PER_LVL + (this.def.plate || 0) : 1) * this.hpMult)); }
   deckEdge(k, side) {
     let edge = side > 0 ? 0 : this.nx - 1;
     for (let i = 0; i < this.nx; i++) if (this.In(i, this.H, k)) { if (side > 0) edge = i; else { edge = i; break; } }
@@ -266,6 +292,7 @@ export class Ship {
       if (k === b0 || k === b1) { if (!(stairI.includes(i) && j <= doorH)) set(i, j, k, T.BULK); continue; }
       if (stairI.includes(i)) { const s = Math.floor((k - sk) / run); if (k >= sk && k < sk + SL && s >= 1 && j <= s) set(i, j, k, T.STAIR); }
     }
+    this.buildEngineBlocks(In, set, stairI, sk, SL, b0);
     // containers
     if (def.containers) {
       const cw = M(2.4), cl = M(6), lh = M(2.6), across = Math.max(1, Math.floor(def.W * 0.72 / 2.4)), ch = lh * (def.containers.high || 1);
@@ -284,10 +311,17 @@ export class Ship {
         }
       }
     }
+    // warship turrets on the centre line: the bow one well ahead of the helm console, the stern one behind the
+    // superstructure
+    this.turrets = (def.turrets || []).map(pos => {
+      const k = pos === 'bow' ? clamp(Math.max(Math.round(nz * 0.76), t0.k1 + M(4.4)), 0, Math.round(nz * 0.86))
+        : clamp(Math.min(Math.round(nz * 0.22), t0.k0 - M(2.4)), M(3.5), nz);
+      return { pos, k };
+    });
     // guns: spread along the walkways where there is room
     const cand = [];
     for (let k = Math.round(nz * 0.1); k <= Math.round(nz * 0.8); k += M(1)) {
-      if (Math.abs(k - this.ladK) < M(2) || Math.abs(k - this.craneK) < M(2.6)) continue;
+      if (Math.abs(k - this.ladK) < M(2) || Math.abs(k - this.craneK) < M(2.6) || this.turrets.some(t => Math.abs(k - t.k) < M(2.8))) continue;
       const room = Math.min(this.deckEdge(k, 1), -this.deckEdge(k, -1)) - 1.45 - this.blockedAt(k);
       if (room > 0 && this.zOf(k) / this.hl < 0.62) cand.push(k);
     }
@@ -352,6 +386,7 @@ export class Ship {
     this.mesh = new THREE.InstancedMesh(boxGeo, mat, count);
     this.mesh.castShadow = true; this.mesh.receiveShadow = true;
     this.shellTotal = 0;
+    this.engCore = []; this.engCells = [];
     let id = 0;
     for (let n = 0; n < N; n++) {
       const t = this.orig[n];
@@ -360,9 +395,11 @@ export class Ship {
       this.cells[n] = t; this.hp[n] = this.hpOf(t); this.inst[n] = id;
       this.mesh.setMatrixAt(id, m4.makeTranslation(this.xOf(i), this.yOf(j), this.zOf(k)));
       if (this.shell[n]) this.shellTotal++;
+      if (this.eng[n]) { this.engCells.push(n); if (this.eng[n] === 2) this.engCore.push(n); }
       id++;
     }
     this.shellLeft = this.shellTotal;
+    this.coreTotal = this.engCore.length; this.coreLeft = this.coreTotal; this.engDead = false; this.fixAcc = 0;
     this.recolor();
     this.mesh.computeBoundingSphere();
     this.group.add(this.mesh);
@@ -407,6 +444,53 @@ export class Ship {
     this.openings = [{ lp: new THREE.Vector3(0, this.deckTop - 0.1, this.zOf(smid)), comp: this.compOfK(smid), size: Math.round(40 * AREA) }];
   }
 
+  // the engine: a block of voxels in the stern hold, clear of the plank storage, the stairs and the hull.
+  // A tough casing (ENGC) around a core (ENGK). Breaking the core slows the ship down, all of it gone stops
+  // it (engineFactor); the wrench puts the core back.
+  buildEngineBlocks(In, set, stairI, sk, SL, b0) {
+    const { H, def } = this, mid = this.nx / 2;
+    this.eng = new Uint8Array(this.orig.length);
+    const sternLen = (b0 - 1) * VS;
+    let ew = M(clamp(this.hw * 0.5, 1.2, 2.4)); ew += ew % 2;
+    const eh = Math.min(H - M(1.4), M(clamp(def.hold * 0.45, 1.0, 1.8)));
+    let el = M(clamp(sternLen * 0.42, 1.6, 3.6));
+    const kMin = M(3.0);                          // the plank storage crate sits in the first 3 m
+    const nearStairs = (i, k) => i >= stairI[0] - 1 && i <= stairI.at(-1) + 1 && k >= sk - 2 && k < sk + SL + 2;
+    // the block plus a one-block gap all round has to be open hold space
+    const fits = (i0, k0) => {
+      if (k0 + el > b0 - 1) return false;
+      for (let k = k0 - 1; k <= k0 + el; k++) for (let i = i0 - 1; i <= i0 + ew; i++) for (let j = 1; j <= eh + 1; j++)
+        if (!In(i, j, k) || this.orig[this.idx(i, j, k)] || nearStairs(i, k)) return false;
+      return true;
+    };
+    let place = null;
+    for (let tries = 0; tries < 4 && !place; tries++) {
+      for (const off of [0, 4, -4, 8, -8, 12, -12, 16, -16]) {
+        for (let k0 = kMin; k0 + el <= b0 - 1 && !place; k0++) if (fits(mid - ew / 2 + off, k0)) place = [mid - ew / 2 + off, k0];
+        if (place) break;
+      }
+      if (!place) { ew = Math.max(M(0.8), ew - 2); el = Math.max(M(1.2), el - 2); }
+    }
+    const [i0, k0] = place || [mid - ew / 2, Math.min(kMin, Math.max(1, b0 - 1 - el))];
+    for (let k = k0; k < k0 + el; k++) for (let j = 1; j <= eh; j++) for (let i = i0; i < i0 + ew; i++) {
+      if (!In(i, j, k) || this.orig[this.idx(i, j, k)]) continue;
+      const outer = i === i0 || i === i0 + ew - 1 || j === 1 || j === eh || k === k0 || k === k0 + el - 1;
+      set(i, j, k, outer ? T.ENGC : T.ENGK); this.eng[this.idx(i, j, k)] = outer ? 1 : 2;
+    }
+    // four cylinder heads on top (casing)
+    for (let c = 0; c < 4; c++) {
+      const kk = k0 + 1 + Math.floor((c + 0.5) * (el - 2) / 4);
+      for (const di of [-1, 0]) for (let j = eh + 1; j <= eh + 2; j++) {
+        const i = i0 + ew / 2 + di;
+        if (j < H - 2 && In(i, j, kk) && !this.orig[this.idx(i, j, kk)]) { set(i, j, kk, T.ENGC); this.eng[this.idx(i, j, kk)] = 1; }
+      }
+    }
+    this.engBox = { i0, k0, w: ew, l: el, h: eh };
+    this.engineSize = new THREE.Vector3(ew * VS, eh * VS, el * VS);
+    this.engineLp = new THREE.Vector3(this.xOf(i0) - VS / 2 + ew * VS / 2, VS, this.zOf(k0) - VS / 2 + el * VS / 2);     // bottom centre
+    this.engineC = this.engineLp.clone().add(new THREE.Vector3(0, eh * VS / 2, 0));                                         // middle
+  }
+
   recolor(colors) {
     if (colors) this.colors = colors;
     const hull = new THREE.Color(this.colors.hull), trim = new THREE.Color(this.colors.trim), stripe = new THREE.Color(this.colors.sail);
@@ -414,6 +498,7 @@ export class Ship {
     const bulk = new THREE.Color('#5a5f62'), paint = new THREE.Color(this.ghost ? '#16201b' : '#8a2a22');
     const glass = new THREE.Color(this.ghost ? '#3dff9e' : '#1d3442'), porthole = new THREE.Color(this.ghost ? '#3dff9e' : '#8fc4dc'), roof = trim.clone().multiplyScalar(0.82), boot = new THREE.Color('#1c1c1e');
     const conts = CONT_COLS.map(c => new THREE.Color(c));
+    const engCasing = new THREE.Color('#3f5a4a'), engCore = new THREE.Color('#e0782a');
     const c = new THREE.Color();
     const H = this.H, teak = this.def.deck === 'teak';
     const s0 = H - M(0.75), s1 = H - M(0.25);
@@ -436,6 +521,8 @@ export class Ship {
       else if (t === T.RAIL) c.copy(trim);
       else if (t === T.PORT) { c.copy(j <= H ? porthole : glass); jit = 1; }
       else if (t === T.CONT) { c.copy(conts[this.contCol[n]]).multiplyScalar(k % 2 ? 0.86 : 1); }
+      else if (t === T.ENGC) c.copy(engCasing).multiplyScalar(j % 3 === 0 ? 0.82 : k % 4 === 0 ? 0.9 : 1);    // ribbed engine block
+      else if (t === T.ENGK) { c.copy(engCore).multiplyScalar((i + j + k) % 2 ? 0.85 : 1.1); jit = 1; }        // glowing copper core
       else c.copy(roof);
       this.mesh.setColorAt(this.inst[n], c.multiplyScalar(jit));
     }
@@ -530,7 +617,8 @@ export class Ship {
       const type = CANNONS[this.gunTypes[n]] ? this.gunTypes[n] : 'deckgun';
       for (const side of [1, -1]) {
         const x = this.deckEdge(k, side) - side * 1.0;
-        const c = { side, pair: n, type, lp: new THREE.Vector3(x, dt, this.zOf(k)), yaw: 0, pitch: CANNONS[type].pitch, cd: 0, heat: 0, over: false, user: null };
+        const Y = CANNONS[type].yaw;
+        const c = { side, pair: n, type, lp: new THREE.Vector3(x, dt, this.zOf(k)), yaw: 0, ymin: -Y, ymax: Y, pitch: CANNONS[type].pitch, cd: 0, heat: 0, over: false, user: null };
         const { g, pivot } = buildMount(type, side);
         g.position.copy(c.lp);
         c.group = g; c.pivot = pivot;
@@ -538,6 +626,17 @@ export class Ship {
         this.cannons.push(c);
       }
     });
+    // warship turrets: the naval gun, built in (not a bought gun pair). yaw 0 = to starboard (+x), so the bow
+    // turret faces +z at yaw π/2 and swings almost all the way round from there
+    for (const t of this.turrets) {
+      const N = CANNONS.naval, mid = t.pos === 'bow' ? Math.PI / 2 : -Math.PI / 2;
+      const c = { side: 1, pair: -1, turret: t.pos, type: 'naval', lp: new THREE.Vector3(0, dt, this.zOf(t.k)), yaw: mid, ymin: mid - N.yaw, ymax: mid + N.yaw, standDz: t.pos === 'bow' ? -1.6 : 1.6, pitch: N.pitch, cd: 0, heat: 0, over: false, user: null };
+      const { g, pivot } = buildMount('naval', 1);
+      g.position.copy(c.lp);
+      c.group = g; c.pivot = pivot;
+      this.group.add(g);
+      this.cannons.push(c);
+    }
 
     // boarding ladders (steel) on both sides
     this.ladders = [];
@@ -587,23 +686,18 @@ export class Ship {
     cr.hk = this.craneTipLocal(new THREE.Vector3()); cr.hk.y -= cr.drop;
   }
 
-  // the engine room in the stern hold. Hit it and the ship can't move until someone fixes it with the wrench.
+  // the engine room: the block itself is voxels (buildEngineBlocks); these are the bits around it
   buildEngine(add) {
-    const [b0] = this.bulks;
-    const sternLen = (b0 - 1) * VS;
-    const z = this.zAt(clamp(sternLen * 0.62, 3.0, 4.6));
-    this.engineLp = new THREE.Vector3(0, VS, z);
+    const { x: w, y: h, z: l } = this.engineSize;
     const g = new THREE.Group(); g.position.copy(this.engineLp);
-    add(new THREE.BoxGeometry(1.0, 0.75, 1.4), engineM, 0, 0.38, 0, g);
-    for (let i = 0; i < 4; i++) add(new THREE.BoxGeometry(0.34, 0.24, 0.26), engineM, 0, 0.86, -0.5 + i * 0.33, g);
-    add(new THREE.CylinderGeometry(0.3, 0.3, 0.12, 16).rotateX(Math.PI / 2), dark, 0, 0.4, -0.78, g);            // flywheel
-    add(new THREE.CylinderGeometry(0.07, 0.07, 1.2, 8), dark, 0, 0.3, -1.3, g).rotation.x = Math.PI / 2;           // shaft
-    const pipe = add(new THREE.CylinderGeometry(0.09, 0.09, this.deckTop - 1.3, 8), steel, 0.35, 0.9 + (this.deckTop - 1.3) / 2, 0.45, g);
-    void pipe;
-    add(new THREE.BoxGeometry(0.4, 0.35, 0.06), dark, -0.55, 0.65, 0.2, g);
-    this.engineGauge = add(new THREE.CircleGeometry(0.08, 12), new THREE.MeshBasicMaterial({ color: '#7dff9a' }), -0.585, 0.68, 0.2, g);
+    add(new THREE.CylinderGeometry(Math.min(0.45, h * 0.4), Math.min(0.45, h * 0.4), 0.14, 18).rotateX(Math.PI / 2), dark, 0, h * 0.45, -l / 2 - 0.08, g);   // flywheel
+    add(new THREE.CylinderGeometry(0.07, 0.07, 1.4, 8), dark, 0, h * 0.3, -l / 2 - 0.8, g).rotation.x = Math.PI / 2;                                         // prop shaft
+    const ph = Math.max(0.3, this.deckTop - VS - h - 0.25);
+    add(new THREE.CylinderGeometry(0.09, 0.09, ph, 8), steel, w / 2 - 0.25, h + 0.15 + ph / 2, l / 2 - 0.35, g);                                             // exhaust up through the deck
+    add(new THREE.BoxGeometry(0.06, 0.35, 0.45), dark, -w / 2 - 0.04, h * 0.6, l * 0.2, g);
+    this.engineGauge = add(new THREE.CircleGeometry(0.09, 12), new THREE.MeshBasicMaterial({ color: '#7dff9a' }), -w / 2 - 0.075, h * 0.6, l * 0.2, g);
     this.engineGauge.rotation.y = -Math.PI / 2;
-    this.engineLamp = add(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff2a1a' }), 0.4, 1.02, -0.6, g);
+    this.engineLamp = add(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff2a1a' }), w / 2 - 0.25, h + 0.1, -l / 2 + 0.3, g);
     this.engineLamp.visible = false;
     this.group.add(g);
   }
@@ -675,6 +769,14 @@ export class Ship {
       add(new THREE.CylinderGeometry(0.1, 0.14, 5, 8), white, 0, y + 2.5, z);
       for (const s of [1, -1]) { const boom = add(new THREE.CylinderGeometry(0.06, 0.06, 7, 6), steel, s * 2.9, y + 2.4, z); boom.rotation.z = s * 1.05; }
     }
+    if (ex.includes('navmast')) {      // warships: a tall tripod mast with a yardarm and a radar dish
+      const t = this.tiers.at(-1), y = roofOf(t), z = this.zOf(t.k0) + 0.7, H = 3 + this.hl * 0.12;
+      add(new THREE.CylinderGeometry(0.09, 0.13, H, 8), steel, 0, y + H / 2, z);
+      for (const s of [1, -1]) { const leg = add(new THREE.CylinderGeometry(0.05, 0.06, H * 0.8, 6), steel, s * 0.45, y + H * 0.38, z - 0.3); leg.rotation.z = s * 0.14; }
+      add(new THREE.BoxGeometry(2.6, 0.07, 0.07), steel, 0, y + H * 0.8, z);
+      add(new THREE.BoxGeometry(1.3, 0.5, 0.12), white, 0, y + H + 0.3, z).rotation.x = -0.2;
+      for (const s of [1, -1]) add(new THREE.SphereGeometry(0.06, 6, 4), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffe9b0', emissiveIntensity: 2 }), s * 1.25, y + H * 0.8, z);
+    }
     if (ex.includes('ramp')) {
       const ramp = add(new THREE.BoxGeometry(this.hw * 1.1, 2.4, 0.2), steel, 0, dt + 1.0, -this.hl - 0.15); ramp.rotation.x = 0.12;
       for (const s of [1, -1]) add(new THREE.BoxGeometry(0.12, 2.8, 0.12), steel, s * this.hw * 0.58, dt + 1.4, -this.hl + 0.1);
@@ -728,6 +830,7 @@ export class Ship {
     this.mesh.setMatrixAt(this.inst[n], ZERO);
     this.dirty = true;
     if (this.shell[n]) { this.holes.add(n); this.shellLeft--; }
+    if (this.eng[n]) { this.engT = 0; if (this.eng[n] === 2) { this.coreLeft--; this.engineChanged(); } }
     const [i, j, k] = this.ijk(n);
     if (t === T.BULK) this.bulkHoles[k === this.bulks[0] ? 0 : 1]++;
     if (fx && Math.random() < 0.3 * (G.fxScale ?? 1)) {
@@ -746,6 +849,7 @@ export class Ship {
     this.mesh.setMatrixAt(this.inst[n], m4.makeTranslation(this.xOf(i), this.yOf(j), this.zOf(k)));
     this.dirty = true;
     if (this.shell[n]) { this.holes.delete(n); this.shellLeft++; }
+    if (this.eng[n] === 2) { this.coreLeft++; this.engineChanged(); }
     if (t === T.BULK) { const b = k === this.bulks[0] ? 0 : 1; this.bulkHoles[b] = Math.max(0, this.bulkHoles[b] - 1); }
     return true;
   }
@@ -762,9 +866,6 @@ export class Ship {
     if (!this.inBox(lp, radius + 1)) return 0;
     if (by) this.lastHitBy = by;
     const cx = lp.x, cy = lp.y, cz = lp.z;
-    // the engine takes a beating from anything that goes off near it
-    const ed = Math.hypot(cx - this.engineLp.x, cy - this.engineLp.y - 0.5, cz - this.engineLp.z), er = radius + 1.4;
-    if (ed < er) this.damageEngine(power * 4.5 * (1 - ed / er) + 3);
     const [ci, cj, ck] = this.cellOf(cx, cy, cz), rc = Math.ceil(radius / VS);
     let removed = 0;
     for (let k = ck - rc; k <= ck + rc; k++) for (let j = cj - rc; j <= cj + rc; j++) for (let i = ci - rc; i <= ci + rc; i++) {
@@ -776,17 +877,35 @@ export class Ship {
     if (fire && Math.random() < fire) this.ignite(v1.set(cx, cy, cz), true);
     return removed;
   }
-  damageEngine(amount) {
-    if (isGuest() || this.engineHp <= 0) return;
-    this.engineHp = Math.max(0, this.engineHp - amount);
-    this.engT = 0;
-    if (this.engineHp <= 0) {
-      v1.copy(this.engineLp); v1.y += 0.8; this.toWorld(v1);
-      FX.explosion(v1.x, v1.y, v1.z, 0.6); sfx.crash(v1);
-      this.onEngine?.(this);
+  // the core blocks left -> engineHp (0..100); the moment the last of it goes, it blows (on every screen)
+  engineChanged() {
+    this.engineHp = this.coreTotal ? Math.round(this.coreLeft / this.coreTotal * 100) : 100;
+    const dead = this.engineFactor() <= 0;
+    if (dead && !this.engDead) {
+      v1.copy(this.engineC); this.toWorld(v1);
+      FX.explosion(v1.x, v1.y, v1.z, 0.7); sfx.crash(v1);
+      if (G.me && (G.me.frame === this || G.me.stationShip?.() === this)) G.toast?.('⚙️ The engine is wrecked! Fix its core with the wrench in the stern hold.', 'bad');
+      if (!isGuest()) this.onEngine?.(this);
     }
+    this.engDead = dead;
   }
-  repairEngine(amount) { if (isGuest()) return; const was = this.engineHp; this.engineHp = Math.min(100, this.engineHp + amount); return was <= 0 && this.engineHp > 0; }
+  // knock out `amount` % of the core (and the top of the casing first, so you can see the damage). Admin / tests.
+  damageEngine(amount) {
+    if (isGuest()) return;
+    const { i0, k0, w, l, h } = this.engBox;
+    for (let k = k0 + 1; k < k0 + l - 1; k++) for (let i = i0 + 1; i < i0 + w - 1; i++) if ((i + k) % 3) this.removeCell(this.idx(i, h, k));
+    let n = Math.ceil(amount / 100 * this.coreTotal);
+    for (const c of this.engCore) { if (n <= 0) break; if (this.cells[c]) { this.removeCell(c); n--; } }
+  }
+  // the wrench (and AI crews): put `amount` % of the core back. True when that got a dead engine running again.
+  repairEngine(amount) {
+    if (isGuest()) return false;
+    const was = this.engDead;
+    this.fixAcc += Math.max(0, amount) / 100 * this.coreTotal;
+    for (const c of this.engCore) { if (this.fixAcc < 1) break; if (!this.cells[c] && this.restoreCell(c)) this.fixAcc--; }
+    if (this.coreLeft >= this.coreTotal) this.fixAcc = 0;
+    return was && !this.engDead;
+  }
   // `local` = the point is already in ship space (aiming and online repairs use ship space, so a moving ship
   // or network lag can't shift where the repair lands)
   repairAt(p, radius, max, chance = 1, local = false) {
@@ -808,7 +927,7 @@ export class Ship {
     for (let k = ck - rc; k <= ck + rc; k++) for (let j = cj - rc; j <= cj + rc; j++) for (let i = ci - rc; i <= ci + rc; i++) {
       if (i < 0 || j < 0 || k < 0 || i >= this.nx || j >= this.ny || k >= this.nz) continue;
       const n = this.idx(i, j, k);
-      if (!this.orig[n] || this.cells[n]) continue;
+      if (!this.orig[n] || this.cells[n] || this.eng[n] === 2) continue;      // the engine core: only the wrench
       const d = Math.hypot(this.xOf(i) - lp.x, this.yOf(j) - lp.y, this.zOf(k) - lp.z);
       if (d <= radius) list.push([d, n]);
     }
@@ -820,17 +939,17 @@ export class Ship {
     for (let k = ck - rc; k <= ck + rc; k++) for (let j = cj - rc; j <= cj + rc; j++) for (let i = ci - rc; i <= ci + rc; i++) {
       if (i < 0 || j < 0 || k < 0 || i >= this.nx || j >= this.ny || k >= this.nz) continue;
       const n = this.idx(i, j, k);
-      if (this.orig[n] && !this.cells[n] && Math.hypot(this.xOf(i) - lp.x, this.yOf(j) - lp.y, this.zOf(k) - lp.z) <= radius) return true;
+      if (this.orig[n] && !this.cells[n] && this.eng[n] !== 2 && Math.hypot(this.xOf(i) - lp.x, this.yOf(j) - lp.y, this.zOf(k) - lp.z) <= radius) return true;
     }
     return false;
   }
-  repairAll() { for (let n = 0; n < this.orig.length; n++) this.restoreCell(n); this.fires.length = 0; this.engineHp = 100; }
+  repairAll() { for (let n = 0; n < this.orig.length; n++) this.restoreCell(n); this.fires.length = 0; }
   // partial repair: every hole in the hull below the deck is sealed first (so the ship never leaves leaking),
   // then a share `f` of everything else (decks, cabins, railings)
   repairFraction(f) {
     for (const n of [...this.holes]) { const j = ((n / this.nx) | 0) % this.ny; if (j < this.H) this.restoreCell(n); }
-    for (let n = 0; n < this.orig.length; n++) if (this.orig[n] && !this.cells[n] && Math.random() < f) this.restoreCell(n);
-    this.engineHp = Math.max(this.engineHp, Math.min(100, this.engineHp + f * 100));
+    for (let n = 0; n < this.orig.length; n++) if (this.orig[n] && !this.cells[n] && this.eng[n] !== 2 && Math.random() < f) this.restoreCell(n);
+    this.repairEngine(f * 100);
   }
   pumpAll() { for (const c of this.comps) c.vol = 0; this.sinking = false; this.sinkT = 0; }
 
@@ -942,7 +1061,7 @@ export class Ship {
         const m = this.repairPreview(v3.set(o.x + d.x * tc, o.y + d.y * tc, o.z + d.z * tc), 0.35, 1, true)[0];
         return m == null ? null : at(m);
       }
-      if (this.orig[n]) return at(n);   // a missing block on the ray
+      if (this.orig[n] && this.eng[n] !== 2) return at(n);   // a missing block on the ray (not the engine core: wrench)
       if (tx < ty && tx < tz) { i += sx; tc = tx; tx += dx; }
       else if (ty < tz) { j += sy; tc = ty; ty += dy; }
       else { k += sz; tc = tz; tz += dz; }
@@ -996,7 +1115,7 @@ export class Ship {
     for (const o of this.openings) { v1.copy(o.lp).applyMatrix4(m); flow(this.comps[o.comp], v1.x, v1.y, v1.z, o.size, null); }
     this.leakRate = leaks;
     if (this.pump) {
-      const rate = [0, 0.6, 1.2, 2][this.pump] * dt, tot = this.comps.reduce((s, c) => s + c.vol, 0);
+      const rate = PUMP_RATES[this.pump] * dt, tot = this.comps.reduce((s, c) => s + c.vol, 0);
       if (tot > 0) for (const c of this.comps) c.vol -= rate * c.vol / tot;
     }
     for (let b = 0; b < 2; b++) {
@@ -1019,7 +1138,12 @@ export class Ship {
   }
 
   // ---------- engine + anchor ----------
-  engineFactor() { return this.engineHp <= 0 ? 0 : this.engineHp < 40 ? 0.55 : 1; }
+  // the share of the engine core still there = the share of top speed you get; under 6 % it won't run at all
+  engineFactor() {
+    if (!this.coreTotal) return 1;
+    const f = this.coreLeft / this.coreTotal;
+    return f < 0.06 ? 0 : f;
+  }
   toggleAnchor() {
     const a = this.anchor;
     if (a.state === 'up') { a.state = 'dropping'; a.t = 0; sfx.anchor?.(this.toWorld(v1.copy(this.anchorLp))); return true; }
@@ -1039,7 +1163,7 @@ export class Ship {
   }
   updateEngine(dt) {
     // AI crews patch their own engine after a while
-    if (this.ai && this.engineHp < 100 && !this.sinking) { this.engT = (this.engT || 0) + dt; if (this.engT > 25) this.engineHp = Math.min(100, this.engineHp + 4 * dt); }
+    if (this.ai && this.coreLeft < this.coreTotal && !this.sinking) { this.engT = (this.engT || 0) + dt; if (this.engT > 25) this.repairEngine(4 * dt); }
   }
 
   update(dt) {
@@ -1054,25 +1178,31 @@ export class Ship {
     this.updateEngine(dt); this.updateAnchor(dt);
     const anchored = this.anchor.state === 'down';
     const eng = this.engineFactor();
-    let target = this.sinking ? 0 : thrSpeed(anchored ? 0 : this.throttle) * def.speed * (1 + this.engine * 0.08) * (1 - this.flood * 0.7) * eng;
+    let target = this.sinking ? 0 : thrSpeed(anchored ? 0 : this.throttle) * def.speed * (1 + this.engine * ENGINE_LVL.speed) * (1 - this.flood * 0.7) * eng;
     if (this.aground > 0 && target > 0) target = 0;            // stuck on the sand: only reverse gets you off
-    // momentum: big ships take longer; reversing the prop brakes hard; the anchor stops you fast
-    const heavy = clamp(this.hl / 12, 1, 2.2);
+    // momentum (v0.6.4: much snappier). The prop pushes hard while the gap to the wanted speed is big and eases
+    // off near it; big ships still take longer. Reversing the prop, the brake and the anchor stop you fast.
+    const heavy = clamp(this.hl / 12, 1, 2.2), hs = Math.sqrt(heavy);
     const reversing = Math.sign(target) * Math.sign(this.speed) < 0 && Math.abs(this.speed) > 0.3;
     const slowing = Math.abs(target) < Math.abs(this.speed) - 0.05;
-    let rate = (reversing ? 0.75 : slowing ? 0.32 : 0.3) / Math.sqrt(heavy);
-    if (this.brake) rate = Math.max(rate, 1.2 / Math.sqrt(heavy));
-    if (anchored || this.anchor.state === 'dropping') rate = Math.max(rate, 0.9);
-    this.speed = damp(this.speed, target, rate, dt);
-    this.rudder = damp(this.rudder, this.rudderIn, 2.4 / Math.sqrt(heavy), dt);
+    const gap = target - this.speed;
+    let acc = ((reversing ? 2.2 : slowing ? 1.0 : 1.3) + Math.abs(gap) * (slowing ? 0.18 : 0.32)) / hs * (1 + this.engine * ENGINE_LVL.acc);
+    if (this.brake) acc = Math.max(acc, (3.2 + Math.abs(this.speed) * 0.3) / hs);
+    if (anchored || this.anchor.state === 'dropping') acc = Math.max(acc, 3);
+    this.speed += clamp(gap, -acc * dt, acc * dt);
+    // the rudder swings over quickly
+    this.rudder = damp(this.rudder, this.rudderIn, 4.5 / hs, dt);
     const sp = this.speed;
-    // the rudder needs water flowing past it; the prop wash still turns you a little when you are slow
-    const wash = Math.abs(this.throttle) > 0.05 && eng > 0 && !anchored ? 0.08 * Math.sign(this.throttle) : 0;
-    const yrT = -this.rudder * def.turn * (0.3 * clamp(Math.abs(sp) / 6, 0, 1) * Math.sign(sp || 1) + wash) * (this.ai ? 0.75 : 1);
-    this.yr = damp(this.yr, yrT, 1.8 / Math.sqrt(heavy), dt);
+    // the rudder needs water flowing past it (full bite from ~4 m/s); the prop wash and a bow thruster still turn
+    // you slowly when you are almost stopped
+    const flow = clamp(Math.abs(sp) / 4, 0, 1);
+    const wash = Math.abs(this.throttle) > 0.05 && eng > 0 && !anchored ? 0.1 * Math.sign(this.throttle) : 0;
+    const thruster = eng > 0 && !anchored ? 0.1 * (1 - flow) : 0;
+    const yrT = -this.rudder * def.turn * (1 + this.engine * ENGINE_LVL.turn) * (0.36 * flow * Math.sign(sp || 1) + wash + thruster) * (this.ai ? 0.75 : 1);
+    this.yr = damp(this.yr, yrT, 3 / hs, dt);
     this.yaw += this.yr * dt;
-    // the hull slides outward in a turn, the keel bleeds it off
-    this.side = damp(this.side, -this.yr * sp * 0.4, 1.3, dt);
+    // the hull slides out a little in a turn; the keel bites and stops it quickly (no more driving on ice)
+    this.side = damp(this.side, -this.yr * sp * 0.16, 2.6, dt);
     // knockback from collisions and blasts drifts off
     this.kx *= Math.exp(-0.8 * dt); this.kz *= Math.exp(-0.8 * dt);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -1158,7 +1288,7 @@ export class Ship {
     this.engineGauge.material.color.set(this.engineHp > 60 ? '#7dff9a' : this.engineHp > 0 ? '#ffcf4a' : '#ff3a2a');
     this.engineLamp.visible = this.engineHp < 60 && Math.sin(G.t * 8) > 0;
     if (this.engineHp < 60 && !this.sunk && Math.random() < dt * (this.engineHp <= 0 ? 5 : 1.5)) {
-      v1.copy(this.engineLp); v1.y += 1.0; v1.x += rand(-0.4, 0.4); this.toWorld(v1);
+      v1.copy(this.engineC); v1.y += this.engineSize.y * 0.6; v1.x += rand(-0.4, 0.4); this.toWorld(v1);
       FX.smoke(v1.x, v1.y, v1.z, 0.5, true);
       if (this.engineHp <= 0 && Math.random() < 0.4) FX.spark(v1.x, v1.y, v1.z);
     }
@@ -1262,7 +1392,7 @@ export class Ship {
     this.driverId = driver;
     if (this.storage) this.storage.planks = planks;
     this.team = team;
-    if (eng != null) this.engineHp = eng;
+    void eng;            // engineHp follows the engine-core blocks, which come with the voxel updates
     if (anch != null && ANCHOR[anch] !== this.anchor.state) { this.anchor.state = ANCHOR[anch]; this.anchor.t = 0; }
   }
   netUpdate(dt) {
@@ -1316,7 +1446,7 @@ export class Ship {
     this.toWorld(pos); this.dirToWorld(dir);
     return [pos, dir];
   }
-  stats() { return { hull: this.shellLeft / this.shellTotal, flood: this.flood, leak: this.leakRate, speed: this.speed, throttle: this.throttle, fires: this.fires.length, engine: this.engineHp, anchor: this.anchor.state }; }
+  stats() { return { hull: this.shellLeft / this.shellTotal, flood: this.flood, leak: this.leakRate, speed: this.speed, throttle: this.throttle, fires: this.fires.length, engine: this.engineHp, engineDown: this.engineFactor() <= 0, anchor: this.anchor.state }; }
 }
 
 // ---------- ship <-> ship and ship <-> island collisions ----------

@@ -6,7 +6,7 @@ import { spawnShip, despawnShip, SHIP_TYPES } from './ship.js';
 import { ISLANDS } from './islands.js';
 import { populateShip, spawnShark, spawnSharksNear, spawnCrate, clearSharks, rollLoot, updateStorage, destroyItem } from './entities.js';
 import { Player } from './player.js';
-import { makeAI, DIFF, Bot } from './ai.js';
+import { makeAI, DIFF, Bot, spawnCrew } from './ai.js';
 import { kit, shipCfg, award, prog, level, unlocked } from './progression.js';
 import { WEAPONS, PRIMARIES, gunState } from './weapons.js';
 import { send, broadcast, NET, act } from './net.js';
@@ -32,8 +32,13 @@ export function humans() {
   return isOnline() ? G.lobby.players.map(p => p.id === G.net.id ? { ...p, ...me } : p) : [me];
 }
 function kitFor(h, mode) {
-  if (!h.kits) { const k = kit(mode), cfg = shipCfg(mode, k.ship); return { ship: k.ship, ...cfg, gunTypes: [...(cfg.gunTypes || [])] }; }
+  if (!h.kits) { const k = kit(mode), cfg = shipCfg(mode, k.ship); return { ship: k.ship, ...cfg, gunTypes: [...(cfg.gunTypes || [])], crew: (k.crew || []).map(c => ({ ...c })) }; }
   return h.kits[mode] || { ship: 'tug', guns: 0, armor: 0, pump: 0, engine: 0 };
+}
+// the hired crew that boards a ship: as many as it has berths (in co-op, one extra berth per friend)
+function crewFor(hs, mode, ship) {
+  const all = hs.flatMap(h => (kitFor(h, mode).crew || []).map(c => ({ ...c, id: (h.id || 'p0') + ':' + c.id })));
+  return all.slice(0, ship.def.crew + Math.max(0, hs.length - 1));
 }
 export function kitShip(mode, opts = {}, h = humans()[0]) {
   const k = kitFor(h, mode);
@@ -65,6 +70,7 @@ export class Sandbox {
     const home = kitShip('sandbox', { x: 0, z: 0, yaw: rand(0, 6.28) }, hs[0]);
     newPlayer('sandbox', home);
     hs.slice(1).forEach((h, i) => placeHuman(h.id, home, home.spawnSpot(i + 1)));
+    spawnCrew(home, crewFor(hs, 'sandbox', home));
     spawnSharksNear(this.o.sharks, home);
     if (this.o.enemies) setTimeout(() => G.running && G.game === this && G.spawnEnemy?.('tug'), 4000);
     G.announce(`🏝️ Sandbox! ${isOnline() ? 'The host' : 'You'} can open the admin panel.`, 'good');
@@ -75,6 +81,7 @@ export class Sandbox {
     if (other) return (p.home = other);
     const at = openSpot(p.worldPos().x, p.worldPos().z, 70);
     p.home = kitShip('sandbox', { x: at.x, z: at.z, yaw: rand(0, 6.28) });
+    spawnCrew(p.home, crewFor(humans(), 'sandbox', p.home));
     G.announce('⛵ A new ship has arrived.');
     return p.home;
   }
@@ -125,9 +132,10 @@ export class FFA {
         const p = at(n);
         const s = kitShip('ffa', { team: h.id, x: p.x, z: p.z, yaw: p.yaw }, h);
         if (n === 0) newPlayer('ffa', s, h.id); else placeHuman(h.id, s);
+        spawnCrew(s, crewFor([h], 'ffa', s));                 // everyone brings their own hired crew
         this.rivals.push({ name: h.name, id: h.id, human: true, ship: s, alive: true });
       });
-      const types = lvl >= 12 ? ['trawler', 'ferry', 'cargo'] : lvl >= 5 ? ['tug', 'yacht', 'trawler'] : ['tug', 'tug', 'yacht'];
+      const types = lvl >= 16 ? ['ferry', 'cargo', 'corvette'] : lvl >= 12 ? ['trawler', 'ferry', 'cargo'] : lvl >= 5 ? ['tug', 'yacht', 'trawler'] : ['tug', 'tug', 'yacht'];
       for (let i = 0; i < nAI; i++) {
         const p = at(hs.length + i), key = pick(types);
         const s = spawnShip(key, { team: 'rival' + (i + 1), x: p.x, z: p.z, yaw: p.yaw, guns: Math.min(SHIP_TYPES[key].maxGuns, 1 + (lvl >= 4) + (lvl >= 9)), name: `${names[i]}'s ${SHIP_TYPES[key].name.toLowerCase()}` });
@@ -311,6 +319,8 @@ export class Campaign {
     this.ship.storage.planks = this.o.diff === 'ferryman' ? 4 : 6;
     newPlayer('camp', this.ship);
     hs.slice(1).forEach((h, i) => placeHuman(h.id, this.ship, this.ship.spawnSpot(i + 1)));
+    this.crewList = crewFor(hs, 'camp', this.ship);
+    spawnCrew(this.ship, this.crewList);
     G.announce(`🧭 Campaign (${d.name}, ×${d.reward} FT). Choose your route on the map${isOnline() ? ' (everyone votes)' : ''}.`, 'good');
     this.showMap();
   }
@@ -379,18 +389,19 @@ export class Campaign {
     this.enc = { type: node.type, t: 0, done: false, goal: 0, got: 0, enemies: [] };
     humans().forEach((h, i) => { if (h.id !== G.net.id || G.me.frame !== s || !G.me.alive) placeHuman(h.id, s, s.spawnSpot(i)); });
     s.anchor.state = 'up'; s.kx = s.kz = s.side = 0;
+    spawnCrew(s, this.crewList);        // the whole crew is back on their feet for every stop
     const ring = dist => { const a = rand(0, 6.28); return openSpot(s.x + Math.cos(a) * dist, s.z + Math.sin(a) * dist, 30, 30); };
     const crewBonus = isOnline() ? humans().length - 1 : 0;
     const enemy = (key, extra = {}) => {
       const p = ring(rand(130, 170));
-      const e = spawnShip(key, { team: 'enemy', x: p.x, z: p.z, yaw: Math.atan2(s.x - p.x, s.z - p.z), guns: Math.min(SHIP_TYPES[key].maxGuns, 1 + Math.floor(depth / 2) + (crewBonus > 1 ? 1 : 0)), armor: Math.floor(depth / 3), name: extra.name || 'Raider ' + SHIP_TYPES[key].name.toLowerCase(), ...extra });
+      const e = spawnShip(key, { team: 'enemy', x: p.x, z: p.z, yaw: Math.atan2(s.x - p.x, s.z - p.z), guns: Math.min(SHIP_TYPES[key].maxGuns, 1 + Math.floor(depth / 2) + (crewBonus > 1 ? 1 : 0)), armor: Math.floor(depth / 4), name: extra.name || 'Raider ' + SHIP_TYPES[key].name.toLowerCase(), ...extra });
       populateShip(e); G.hookShip(e); makeAI(e, { crew: SHIP_TYPES[key].crew + (extra.ghost ? 2 : 0) + crewBonus, hp: extra.ghost ? 80 : 60 });
       this.enc.enemies.push(e);
       return e;
     };
     if (node.type === 'battle') {
       const n = clamp(1 + Math.floor(depth / 2) + this.d.extra + (crewBonus >= 2 ? 1 : 0), 1, 5);
-      const pool = depth < 2 ? ['tug', 'yacht'] : depth < 4 ? ['yacht', 'trawler'] : ['trawler', 'ferry', 'cargo'];
+      const pool = depth < 2 ? ['tug', 'yacht'] : depth < 4 ? ['yacht', 'trawler'] : ['trawler', 'ferry', 'cargo', 'patrol'];
       for (let i = 0; i < n; i++) enemy(pick(pool));
       G.announce(`⚔️ ${n} enemy ship${n > 1 ? 's' : ''} on the horizon!`, 'bad');
     } else if (node.type === 'wreck') {
@@ -414,10 +425,67 @@ export class Campaign {
     spawnSharksNear(3, s);
     G.lock?.();
   }
+  // ---- castaways: your ship is gone, but you can take one of theirs ----
+  stealable() { return (this.enc?.enemies || []).filter(s => !s.sinking && !s.sunk && !s.gone); }
+  crewLeft(s) { return G.bots.filter(b => b.ship === s && b.alive).length; }
+  updateStranded(dt) {
+    const e = this.enc;
+    if (!this.stranded) {
+      if (!this.ship.sinking && !this.ship.sunk) return false;
+      if (!this.stealable().length) return false;            // nothing to take: the run ends when she goes under
+      this.stranded = true;
+      G.announce('🏴‍☠️ Your ship is lost! Board an enemy ship and take out EVERYONE aboard: she\'s yours then.', 'bad');
+      sfx.horn?.();
+    }
+    const left = this.stealable();
+    if (!left.length) { this.lose('🌊 Your ship went down and there was nothing left to take'); return true; }
+    for (const s of left) {
+      if (this.crewLeft(s)) continue;
+      // nobody alive on her, and one of us is aboard: she's ours
+      if (!G.players.some(p => p.alive && (p.frame === s || p.stationShip?.() === s))) continue;
+      this.capture(s);
+      break;
+    }
+    void dt;
+    return true;
+  }
+  capture(s) {
+    const old = this.ship;
+    s.team = 'player'; s.ai = null; s.captain = null; s.brake = false;
+    if (s.driver?.isBot) s.driver = null;
+    for (const c of s.cannons) if (c.user?.isBot) c.user = null;
+    s.throttle = 0; s.rudderIn = 0;
+    s.name = 'Captured ' + s.def.name.toLowerCase();
+    this.enc.enemies = this.enc.enemies.filter(x => x !== s);
+    this.ship = s; this.stranded = false;
+    for (const p of G.players) p.home = s;
+    for (const it of [...G.items]) if (it.ship === old && old.sunk) destroyItem(it);
+    spawnCrew(s, this.crewList);        // your hired crew swim over and come aboard
+    G.announce(`🏴‍☠️ You captured the ${s.def.name.toLowerCase()}! She's your ship now, damage and all.`, 'good');
+    sfx.levelup?.();
+    if (!this.enc.enemies.some(x => !x.sinking && !x.sunk) && (this.enc.type === 'battle' || this.enc.type === 'boss')) this.complete();
+  }
+  lose(title) {
+    if (this.over) return;
+    this.over = true;
+    const r = { title, mode: 'camp', lines: [`Difficulty: ${this.d.name}`, `Stops cleared: ${this.nodesDone}`, `FT earned this run: ${this.earned}`], ft: 0, xp: 0, lost: true };
+    setTimeout(() => { if (isHost()) broadcast({ t: 'cres', r }); campResults(r); }, 3000);
+  }
+  // castaways come back in the water near the closest ship they can take
+  respawnSea(p) {
+    if (!this.stranded) return null;
+    const w = p.worldPos(new THREE.Vector3());
+    let best = null, bd = Infinity;
+    for (const s of this.stealable()) { const d = Math.hypot(s.x - w.x, s.z - w.z); if (d < bd) { bd = d; best = s; } }
+    if (!best) return null;
+    const a = rand(0, 6.28);
+    return new THREE.Vector3(best.x + Math.cos(a) * (best.hw + 18), 0.5, best.z + Math.sin(a) * (best.hw + 18));
+  }
   update(dt) {
     const e = this.enc;
-    if (this.phase !== 'sail' || !e || e.done) return;
+    if (this.phase !== 'sail' || !e || e.done || this.over) return;
     e.t += dt;
+    if (this.updateStranded(dt)) return;
     if (e.type === 'battle' || e.type === 'boss') { if (e.enemies.every(s => s.sinking || s.sunk)) this.complete(); }
     else if (e.type === 'wreck') { if (e.got >= e.goal) this.complete(); }
     else if (e.type === 'storm') {
@@ -469,13 +537,12 @@ export class Campaign {
   }
   onShipSunk(s) {
     if (s === this.ship && !this.over) {
-      this.over = true;
-      const r = { title: '🌊 Your ship went down', mode: 'camp', lines: [`Difficulty: ${this.d.name}`, `Stops cleared: ${this.nodesDone}`, `FT earned this run: ${this.earned}`], ft: 0, xp: 0, lost: true };
-      setTimeout(() => { if (isHost()) broadcast({ t: 'cres', r }); campResults(r); }, 3000);
+      if (this.stranded || (this.phase === 'sail' && this.stealable().length)) { this.stranded = true; return; }    // take theirs (updateStranded)
+      this.lose('🌊 Your ship went down');
     } else if (s.lastHitBy?.isPlayer) sunkBy(s);
   }
   onDeath() {}
-  respawnShip() { return this.ship.sunk ? null : this.ship; }
+  respawnShip() { return this.stranded || this.ship.sunk ? null : this.ship; }
   hud() {
     const e = this.enc, n = this.node;
     if (this.phase !== 'sail' || !e) return `<b>🧭 Campaign</b> · ${this.d.name}`;
@@ -483,9 +550,17 @@ export class Campaign {
     if (e.type === 'battle' || e.type === 'boss') goal = `Enemy ships left: <b>${e.enemies.filter(s => !s.sinking && !s.sunk).length}</b>`;
     if (e.type === 'wreck') goal = `Salvage: <b>${e.got}/${e.goal}</b>`;
     if (e.type === 'storm') goal = `Survive: <b>${Math.max(0, Math.ceil(e.goal - e.t))}s</b>`;
+    if (this.stranded) {
+      const crews = this.stealable().map(s => this.crewLeft(s)).sort((a, b) => a - b);
+      goal = `<span class="bad">🏴‍☠️ Ship lost! Board an enemy ship and kill everyone aboard to take it.</span><br>Enemy crew left: <b>${crews.join(' / ') || '-'}</b>`;
+    }
     return `<b>${NODE[n.type].icon} ${NODE[n.type].name}</b> · stop ${n.c + 1}/7<br>${e.done ? '✅ Cleared! Back to the map…' : goal}`;
   }
-  netState() { return { mode: 'camp', hud: this.hud(), ship: this.ship.id }; }
+  netState() {
+    const st = { mode: 'camp', hud: this.hud(), ship: this.ship.id, stranded: !!this.stranded };
+    if (this.stranded) { const s = this.stealable()[0]; if (s) st.sea = [Math.round(s.x), Math.round(s.z), Math.round(s.hw)]; }
+    return st;
+  }
   // ship-wide purchase (anyone can pay, the host applies it)
   shipBuy(id) {
     const s = this.ship;
@@ -504,6 +579,7 @@ export class Campaign {
     despawnShip(old);
     this.ship = s;
     humans().forEach((h, i) => placeHuman(h.id, s, s.spawnSpot(i)));
+    spawnCrew(s, this.crewList);
   }
   leaveShop() { G.ui?.closeOverlay(); this.reward(0, 10, '🛒 Harbour visited.'); this.showMap(); }
   end() { Object.assign(DIFF, { aim: 1, hp: 1, dmg: 1 }); }
@@ -528,8 +604,15 @@ export class GuestGame {
   }
   update() { if (this.mode === 'ffa' && this.zone && !this.ended) stormSelf(this, this.zone); }
   hud() { return (this.state.hud || '') + (this.outside ? '<div class="bad">⚡ You are in the storm! Get back inside!</div>' : ''); }
+  respawnSea() {
+    const s = this.state.sea;
+    if (!this.state.stranded || !s) return null;
+    const a = rand(0, 6.28);
+    return new THREE.Vector3(s[0] + Math.cos(a) * (s[2] + 18), 0.5, s[1] + Math.sin(a) * (s[2] + 18));
+  }
   respawnShip(p) {
     if (this.mode === 'ffa') return null;
+    if (this.state.stranded) return null;
     const id = this.state.ship;
     const s = id ? G.ships.find(x => x.id === id) : null;
     return s && !s.sunk ? s : (p.home && !p.home.sunk && !p.home.gone ? p.home : G.ships.find(x => x.team === 'player' && !x.sunk));

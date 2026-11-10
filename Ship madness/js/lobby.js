@@ -10,7 +10,7 @@ G.lobby = { players: [], mode: 'ffa', opts: {} };
 
 function myInfo() {
   const kits = {};
-  for (const m of ['ffa', 'camp', 'sandbox']) { const k = kit(m); kits[m] = { ship: k.ship, ...shipCfg(m, k.ship) }; }
+  for (const m of ['ffa', 'camp', 'sandbox']) { const k = kit(m); kits[m] = { ship: k.ship, ...shipCfg(m, k.ship), crew: (k.crew || []).slice(0, 8) }; }
   return { id: G.net.id, name: P.name, shirt: P.shirt, colors: { hull: P.hull, trim: P.trim, sail: P.sail }, kits, peerId: NET.peer?.id || null };
 }
 const segVal = id => $(id)?.dataset.value;

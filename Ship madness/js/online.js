@@ -81,6 +81,7 @@ export class Avatar {
   hurt(amount, by, kind, from) {
     if (!this.alive) return;
     if (by?.isPlayer && !G.ff && by !== this) return;
+    if (by?.crew && by.team === this.team) return;          // nor a friend's
     if (isHost()) send(this.id, { t: 'dmg', amount, by: by?.id ?? null, byBot: !!by?.isBot, kind, from: from ? [from.x, from.y, from.z] : null });
     else G.netHit('player', this.id, amount, kind);
   }
@@ -198,7 +199,7 @@ export function hostTick(dt) {
   const m = { t: 'st' };
   if (pick('sea', [G.seaAmp, G.admin.everyone])) { m.sea = G.seaAmp; m.adm = G.admin.everyone; }
   const sh = G.ships.filter(s => !s.gone).map(s => s.netSlow()).filter(a => pick('s' + a[0], a));
-  const bo = G.bots.map(b => [b.id, b.alive ? 1 : 0, r2(b.mesh.rotation.y)]).filter(a => pick('b' + a[0], a));
+  const bo = G.bots.map(b => [b.id, b.alive ? 1 : 0, r2(b.mesh.rotation.y), r2(b.lp.x), r2(b.lp.z)]).filter(a => pick('b' + a[0], a));
   const it = G.items.map(i => [i.id, i.ship?.id ?? null, i.holder ? null : V3(i.ship ? i.lp : i.wp), i.holder?.id ?? null, i.full ? 1 : 0]).filter(a => pick('i' + a[0], a));
   const game = G.game?.netState?.() ?? null;
   if (sh.length) m.ships = sh;
@@ -232,7 +233,7 @@ export function sendMyState(dt) {
   if (psT > 0 || !me) return;
   psT = 1 / 20;
   const ps = { t: 'ps', id: G.net.id, q: ++psN, ts: Math.round(performance.now()) / 1000, s: me.frame?.id ?? null, p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yaw: r2(me.yaw), pitch: r2(me.pitch), mode: me.mode, alive: me.alive, hp: Math.round(me.hp), sea: me.inSea, uw: me.underwater, sw: me.swimming, talk: talking(), hold: me.holding?.id ?? null, cr: me.crouch > 0.5 ? 1 : 0 };
-  if (me.mode === 'wheel' && me.station) { const s = me.station; ps.drive = [s.id, r2(s.throttle), r2(s.rudderIn)]; }
+  if (me.mode === 'wheel' && me.station) { const s = me.station; ps.drive = [s.id, r2(s.throttle), r2(s.rudderIn), s.brake ? 1 : 0]; }
   if (me.mode === 'crane' && me.station) { const s = me.station, c = s.crane; ps.crane = [s.id, r2(c.yaw), r2(c.reach), r2(c.drop)]; }
   if (me.mode === 'cannon') { const { ship, c } = me.station; ps.gun = [ship.id, ship.cannons.indexOf(c), r2(c.yaw), r2(c.pitch)]; }
   sendFast('*', ps);
@@ -255,7 +256,7 @@ export function installActions() {
     const s = byId.ship(sid), who = avatarOf(pid);
     if (!s) return false;
     if (take) { if (s.driver && s.driver.alive && s.driver !== who) return false; s.driver = who; return true; }
-    if (s.driver === who) { s.driver = null; s.rudderIn = 0; }
+    if (s.driver === who) { s.driver = null; s.rudderIn = 0; s.brake = false; }
     return true;
   };
   A.crane = (pid, sid, take) => {
@@ -271,7 +272,11 @@ export function installActions() {
   A.cannon = (pid, sid, ci, take) => {
     const c = byId.ship(sid)?.cannons[ci], who = avatarOf(pid);
     if (!c) return false;
-    if (take) { if (c.user && c.user !== who) return false; c.user = who; return true; }
+    if (take) {
+      if (c.user?.crew && c.user.team === who?.team) c.user.gun = null;       // a guest's own crew gunner steps aside
+      else if (c.user && c.user !== who) return false;
+      c.user = who; return true;
+    }
     if (c.user === who) c.user = null;
     return true;
   };
@@ -438,7 +443,13 @@ function applySnap(m) {
 function applyState(m) {
   if (m.sea != null) { G.seaAmp = m.sea; G.admin.everyone = m.adm; }
   for (const a of m.ships || []) { const s = byId.ship(a[0]); if (s) { s.applySlow(a); updateStorage(s); } }
-  for (const [id, alive, ry] of m.bots || []) { const b = byId.bot(id); if (b) { if (!alive && b.alive) b.alive = false; b.netRot = ry; } }
+  for (const [id, alive, ry, x, z] of m.bots || []) {
+    const b = byId.bot(id);
+    if (!b) continue;
+    if (!alive && b.alive) b.alive = false;
+    b.netRot = ry;
+    if (x != null && (Math.abs(x - b.lp.x) > 0.02 || Math.abs(z - b.lp.z) > 0.02)) b.netLp = new THREE.Vector3(x, b.lp.y, z);     // walking to a gun
+  }
   for (const [id, sid, p, holder, full] of m.items || []) {
     const it = byId.item(id);
     if (!it) continue;
@@ -460,7 +471,7 @@ export function installSharedHandlers() {
     if (!a || !a.isRemote) return;
     if (!a.apply(m)) return;          // an old update that came in late
     if (isHost()) {     // drivers and gunners steer through their state
-      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; } }
+      if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; s.brake = !!m.drive[3]; } }
       if (m.crane) { const s = byId.ship(m.crane[0]); if (s && s.crane.user === a) { s.crane.yaw = m.crane[1]; s.crane.reach = m.crane[2]; s.crane.drop = m.crane[3]; } }
       if (m.gun) { const c = byId.ship(m.gun[0])?.cannons[m.gun[1]]; if (c && c.user === a) { c.yaw = m.gun[2]; c.pitch = m.gun[3]; } }
     }

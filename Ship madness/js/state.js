@@ -1,5 +1,5 @@
 // Shared game state, settings, profile and small helpers.
-export const VERSION = 'Prototype v0.6.3';
+export const VERSION = 'Prototype v0.6.7';
 
 export const G = {
   scene: null, camera: null, renderer: null, sun: null,

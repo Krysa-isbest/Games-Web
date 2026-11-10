@@ -10,8 +10,10 @@ export const CANNONS = {
   mortar: { name: 'Mortar', short: 'MORT', desc: 'Lobs heavy bombs high over cover. Huge holes, hard to aim.', speed: 40, grav: 9.8, reload: 5.5, yaw: 0.8, pmin: 0.55, pmax: 1.3, pitch: 0.85, proj: 'mortar', muzzle: 0.9, stats: { dmg: 5, rate: 1, range: 2 } },
   rockets: { name: 'Rocket pod', short: 'RKT', desc: 'A salvo of 4 rockets that fly almost straight. Great at long range.', speed: 85, grav: 1.5, reload: 7, salvo: 4, yaw: 0.85, pmin: -0.1, pmax: 0.45, pitch: 0.04, proj: 'rocket', muzzle: 0.9, stats: { dmg: 4, rate: 1, range: 5 } },
   torpedo: { name: 'Torpedo tube', short: 'TORP', desc: 'Runs under the waves and blows a huge hole below the waterline. Slow.', speed: 24, grav: 9.8, reload: 9, yaw: 0.7, pmin: -0.05, pmax: 0.05, pitch: 0, proj: 'torpedo', muzzle: 1.4, stats: { dmg: 5, rate: 1, range: 4 } },
+  // warships only: the main gun in a turret on the centre line (bow, and on the big ones the stern too)
+  naval: { name: 'Naval gun', short: 'MAIN', desc: "A warship's main gun in a turret: heavy shells, long range, and it turns almost all the way round.", speed: 82, grav: 9.8, reload: 4.2, yaw: 2.35, pmin: -0.1, pmax: 0.55, pitch: 0.1, proj: 'heavy', muzzle: 2.9, turret: true, stats: { dmg: 5, rate: 2, range: 5 } },
 };
-export const CANNON_IDS = Object.keys(CANNONS);
+export const CANNON_IDS = Object.keys(CANNONS).filter(k => !CANNONS[k].turret);     // the ones you can buy for gun pairs
 export const cannonOf = c => CANNONS[c?.type] || CANNONS.deckgun;
 
 const grey = new THREE.MeshStandardMaterial({ color: '#7d858c', roughness: 0.5, metalness: 0.6 });
@@ -51,6 +53,15 @@ export function buildMount(type, side) {
     tube(0.3, 0.3, 0.1, dark, side * 1.38, 0, 0, pivot);
     tube(0.29, 0.29, 0.1, dark, -side * 0.58, 0, 0, pivot);
     add(new THREE.SphereGeometry(0.16, 8, 6), brass, side * 1.44, 0, 0, pivot);       // the warhead peeking out
+  } else if (type === 'naval') {
+    // a turret: the armoured house turns with the gun (yaw), only the barrel lifts (pitch)
+    add(new THREE.CylinderGeometry(1.05, 1.15, 0.36, 22), grey, 0, 0.18, 0);
+    const house = add(new THREE.BoxGeometry(1.9, 0.85, 1.6), grey, -side * 0.15, 0.62, 0); house.castShadow = true;
+    const slope = add(new THREE.BoxGeometry(0.5, 0.6, 1.5), grey, side * 0.85, 0.55, 0); slope.rotation.z = side * 0.55;
+    add(new THREE.BoxGeometry(0.5, 0.25, 0.5), dark, -side * 0.55, 1.12, 0.4);          // the rangefinder hood
+    tube(0.14, 0.11, 2.6, dark, side * 1.55, 0, 0, pivot);
+    tube(0.17, 0.17, 0.3, dark, side * 2.8, 0, 0, pivot);                               // muzzle brake
+    tube(0.2, 0.2, 0.5, grey, side * 0.45, 0, 0, pivot);                                // mantlet
   } else {
     add(new THREE.BoxGeometry(0.9, 0.55, 0.85), grey, side * 0.05, -0.05, 0, pivot);
     const front = add(new THREE.BoxGeometry(0.25, 0.4, 0.75), grey, side * 0.55, -0.08, 0, pivot); front.rotation.z = side * 0.4;
@@ -68,4 +79,5 @@ export const CANNON_ICON = {
   mortar: '<svg viewBox="0 0 32 32"><rect x="12" y="5" width="8" height="17" rx="2" transform="rotate(25 16 16)"/><rect x="6" y="24" width="20" height="3" rx="1"/></svg>',
   rockets: '<svg viewBox="0 0 32 32"><rect x="5" y="11" width="22" height="11" rx="2"/><circle cx="22" cy="14" r="1.8" fill="#1a1408"/><circle cx="22" cy="19" r="1.8" fill="#1a1408"/><circle cx="17" cy="14" r="1.8" fill="#1a1408"/><circle cx="17" cy="19" r="1.8" fill="#1a1408"/><rect x="11" y="22" width="6" height="5"/></svg>',
   torpedo: '<svg viewBox="0 0 32 32"><rect x="3" y="13" width="22" height="7" rx="3.5"/><path d="M25 13 L30 16.5 L25 20z"/><rect x="4" y="11" width="3" height="11"/></svg>',
+  naval: '<svg viewBox="0 0 32 32"><path d="M3 25 L7 15 H19 L22 19 V25z"/><rect x="18" y="15.5" width="12" height="3" rx="1.2"/><rect x="2" y="25" width="22" height="3"/></svg>',
 };

@@ -2,7 +2,7 @@
 // FFA and the campaign each have their own level, FT and unlocks. The sandbox owns everything for free.
 import { P, saveProfile, newKit } from './state.js';
 import { WEAPONS, ATTACH } from './weapons.js';
-import { SHIP_TYPES } from './ship.js';
+import { SHIP_TYPES, ARMOR_PER_LVL, PUMP_RATES, ENGINE_LVL } from './ship.js';
 import { CANNONS } from './cannons.js';
 
 export const SKILLS = {
@@ -30,15 +30,66 @@ export const UNLOCKS = [
   [14, 'repel', 450],
   // deck gun types
   [1, 'deckgun', 0], [4, 'autocannon', 450], [6, 'mortar', 600], [9, 'rockets', 800], [11, 'torpedo', 1000],
+  // warships
+  [10, 'patrol', 2400], [13, 'corvette', 3800], [16, 'frigate', 5600], [19, 'destroyer', 8000],
 ];
 export const MAX_LEVEL = 20;
+// every level makes a difference you can feel; `fx(lv)` is the effect at that level, shown in the Garage
 export const UPGRADES = {
-  armor: { name: 'Hull plating', desc: '+1 toughness on every hull block per level.', price: [300, 650, 1100] },
-  pump: { name: 'Bilge pump', desc: 'Pumps water out by itself (0.6 / 1.2 / 2 m³/s).', price: [250, 550, 950] },
-  engine: { name: 'Engine tuning', desc: '+8 % top speed per level.', price: [200, 450, 800] },
+  armor: { name: 'Hull plating', desc: 'Every hull block takes more hits before it breaks, so shells punch smaller holes.', price: [300, 650, 1100], fx: lv => lv ? `+${Math.round(lv * ARMOR_PER_LVL * 100)} % hull toughness` : 'standard hull' },
+  pump: { name: 'Bilge pump', desc: 'Pumps the water out of the hold by itself, all the time.', price: [250, 550, 950], fx: lv => lv ? `pumps ${PUMP_RATES[lv]} m³/s` : 'no pump' },
+  engine: { name: 'Engine tuning', desc: 'More top speed, faster acceleration and tighter turns.', price: [200, 450, 800], fx: lv => lv ? `+${Math.round(lv * ENGINE_LVL.speed * 100)} % speed · +${Math.round(lv * ENGINE_LVL.acc * 100)} % acceleration · +${Math.round(lv * ENGINE_LVL.turn * 100)} % turning` : 'stock engine' },
 };
-export const PUMP_RATE = [0, 0.6, 1.2, 2];
 export const gunPrice = n => 150 + 150 * n;
+
+// ---------- crew you hire (per mode). Each has a rank 1..3 (train them for FT); your ship has def.crew berths ----------
+// fx(rank) = what they do at that rank (shown in the Garage); the game reads the numbers from CREW_FX
+export const CREW_FX = {
+  marine: { dmg: [0, 8, 11, 15], acc: [0, 1, 1.25, 1.5] },
+  gunner: { err: [0, 1.4, 1.0, 0.6], reload: [0, 1, 0.9, 0.8] },
+  carpenter: { every: [0, 1.0, 0.7, 0.45] },
+  bailer: { rate: [0, 0.6, 1.0, 1.5] },
+  helmsman: { gain: [0, 0.8, 1.1, 1.4] },
+};
+export const CREW_ROLES = {
+  marine: { name: 'Marine', icon: '🎯', level: 2, price: 300, desc: 'Stands on deck and shoots enemy sailors, boarders and sharks.', fx: r => `${CREW_FX.marine.dmg[r]} damage a shot · aim ×${CREW_FX.marine.acc[r]}` },
+  gunner: { name: 'Gunner', icon: '💥', level: 4, price: 400, desc: 'Mans the gun pair (or turret) you post him to, and fires at enemy ships. He moves to the side that faces the enemy.', fx: r => `aim ${['', 'rough', 'good', 'sharp'][r]} · reload ×${CREW_FX.gunner.reload[r]}` },
+  carpenter: { name: 'Carpenter', icon: '🔨', level: 5, price: 450, desc: 'Works in the hold and puts broken hull blocks back, the ones under water first. Free, no planks needed.', fx: r => `1 block every ${CREW_FX.carpenter.every[r]} s` },
+  bailer: { name: 'Bilge hand', icon: '🪣', level: 3, price: 350, desc: 'Bails water out of the fullest compartment all the time.', fx: r => `${CREW_FX.bailer.rate[r]} m³/s` },
+  helmsman: { name: 'Helmsman', icon: '🧭', level: 7, price: 500, desc: 'When nobody is at the helm, he steers: turns your broadside to the nearest enemy and keeps off the rocks.', fx: r => `${['', 'steady', 'skilled', 'expert'][r]} hand on the wheel` },
+};
+export const TRAIN_PRICE = [0, 0, 300, 700];      // to reach rank 2 / 3
+const CREW_NAMES = ['Abe', 'Bo', 'Cass', 'Dex', 'Edda', 'Finn', 'Gus', 'Hana', 'Ivo', 'Jules', 'Kip', 'Lou', 'Mags', 'Nell', 'Ozzy', 'Pip', 'Quinn', 'Rory', 'Sven', 'Tilda', 'Ugo', 'Vera', 'Wes', 'Yuri', 'Zed'];
+export function crewOf(mode) { const k = kit(mode); if (!Array.isArray(k.crew)) k.crew = []; return k.crew; }
+export const berths = key => SHIP_TYPES[key]?.crew || 2;
+export function hireCrew(mode, role) {
+  const R = CREW_ROLES[role];
+  if (!R) return 'no';
+  if (mode !== 'sandbox' && level(mode) < R.level) return 'locked';
+  const list = crewOf(mode);
+  if (list.length >= 8) return 'full';
+  if (mode !== 'sandbox') { const p = prog(mode); if (p.ft < R.price) return 'poor'; p.ft -= R.price; }
+  const used = new Set(list.map(c => c.name));
+  const name = CREW_NAMES.find(n => !used.has(n) && Math.random() < 0.5) || CREW_NAMES.find(n => !used.has(n)) || 'Sailor';
+  list.push({ id: Date.now().toString(36) + Math.floor(Math.random() * 1e4), role, rank: 1, name, post: role === 'gunner' ? 0 : null });
+  saveProfile();
+  return 'ok';
+}
+export function trainCrew(mode, id) {
+  const c = crewOf(mode).find(x => x.id === id);
+  if (!c || c.rank >= 3) return 'max';
+  const price = TRAIN_PRICE[c.rank + 1];
+  if (mode !== 'sandbox') { const p = prog(mode); if (p.ft < price) return 'poor'; p.ft -= price; }
+  c.rank++; saveProfile();
+  return 'ok';
+}
+export function dismissCrew(mode, id) { const k = kit(mode); k.crew = crewOf(mode).filter(x => x.id !== id); saveProfile(); }
+export function moveCrew(mode, id, dir) {
+  const list = crewOf(mode), i = list.findIndex(x => x.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]]; saveProfile();
+}
+export function setCrewPost(mode, id, post) { const c = crewOf(mode).find(x => x.id === id); if (c) { c.post = post; saveProfile(); } }
 
 export function kindOf(id) {
   if (WEAPONS[id]) return 'weapon';
@@ -79,6 +130,7 @@ export function kit(mode) {
   const k = mode === 'sandbox' ? P.sandbox : prog(mode).kit;
   if (!k.ships) k.ships = {};
   if (!k.att) k.att = {};
+  if (!Array.isArray(k.crew)) k.crew = [];
   if (!k.ships[k.ship]) k.ships[k.ship] = { guns: 0, armor: 0, pump: 0, engine: 0 };
   return k;
 }

@@ -388,6 +388,8 @@ textarea { font: 13px monospace; background: rgba(0, 0, 0, 0.35); color: #cfe; b
 #gunsight .gs-info { position: absolute; left: calc(50% + 260px); top: calc(50% - 28px); text-align: left; font: 700 16px 'Barlow Condensed', sans-serif; letter-spacing: 2px; color: #fff; text-shadow: 0 1px 3px #000; min-width: 220px; }
 #gs-state { display: block; font-size: 13px; color: #ffcf4a; }
 #gs-zoom { display: block; font-size: 12px; opacity: 0.8; margin-top: 3px; }
+#gunsight.mortar .gs-h, #gunsight.mortar .gs-v, #gunsight.mortar .gs-ticks { display: none; }
+#gunsight.mortar .gs-ring { width: 34px; height: 34px; margin: -17px 0 0 -17px; border-style: dashed; }
 .gs-meter { height: 5px; background: rgba(0, 0, 0, 0.55); border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .gs-meter i { display: block; height: 100%; width: 0; background: #ffcf4a; }
 .gs-meter i.ok { background: #6ad46a; }
@@ -578,3 +580,21 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 24px; border-radius: 
 .lb-player .ping { font-family: var(--label); font-size: 13px; font-weight: 700; padding: 1px 6px; border-radius: 2px; background: #0d1215; border: 1px solid var(--weld); }
 .lb-player .ping.good { color: var(--lamp); } .lb-player .ping.ok { color: var(--paint); } .lb-player .ping.bad { color: var(--rust); }
 @media (max-width: 700px) { .lb-ts-grid { grid-template-columns: 1fr; } }
+
+/* ---- v0.6.6: Garage ship categories, upgrade effects ---- */
+.g2-cats { display: flex; margin: 2px 0 10px; }
+.g2-cats button { flex: 1; padding: 8px 10px; }
+.g2-fx { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; color: #c3ccd3; }
+.g2-fx b { color: #f2efe6; }
+.g2-fx .next b { color: var(--paint); }
+
+/* ---- v0.6.7: crew ---- */
+.g2-crew { cursor: pointer; }
+.g2-crew.ashore { opacity: 0.55; }
+.g2-posts { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; }
+.g2-posts small { opacity: 0.7; margin-right: 2px; }
+.g2-posts button { font: 700 12px var(--label, sans-serif); letter-spacing: 1px; text-transform: uppercase; padding: 4px 9px; color: #aeb8c0; background: linear-gradient(180deg, #3b4650, #2a333b); border: 1px solid var(--weld); border-radius: 2px; }
+.g2-posts button.on { color: #1a1406; background: linear-gradient(180deg, #ffd650, var(--paint)); }
+.g2-mount.g2-crewb { border-color: #6ad46a !important; }
+.g2-mount.g2-crewb .lbl { text-transform: none; }
+.g2-mount.turret { border-style: dashed !important; }

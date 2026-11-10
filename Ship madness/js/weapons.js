@@ -137,6 +137,7 @@ export const PSPEC = {
   ball: { grav: 9.8, r: 1.3, power: 8, dmg: 70, hit: 90, fire: 0.25, near: 5 },
   ac: { grav: 6, r: 0.55, power: 5, dmg: 22, hit: 28, fire: 0.05, small: true },
   mortar: { grav: 9.8, r: 2.3, power: 11, dmg: 120, hit: 110, fire: 0.5, near: 7 },
+  heavy: { grav: 9.8, r: 1.9, power: 11, dmg: 100, hit: 130, fire: 0.3, near: 6 },     // the warships' naval gun
   rocket: { grav: 1.5, r: 1.15, power: 7, dmg: 65, hit: 70, fire: 0.35 },
   torpedo: { grav: 9.8, r: 2.1, power: 13, dmg: 150, hit: 0, fire: 0, run: 24 },
   bomb: { grav: 4, r: 2.6, power: 10, dmg: 150, fire: 0.6 },
@@ -155,7 +156,7 @@ export function fireCannon(ship, c, owner, reloadMul = 1) {
     c.cd = T.reload * reloadMul; heat();
     G.netAct?.('fireCannon', ship.id, ship.cannons.indexOf(c), c.yaw, c.pitch, reloadMul);
   } else {
-    c.cd = T.reload * reloadMul * (owner?.isBot ? (T.heat ? 1.6 : 1.7) : 1);
+    c.cd = T.reload * reloadMul * (owner?.isBot && !owner.crew ? (T.heat ? 1.6 : 1.7) : 1);     // enemy crews are slow; your hired gunners aren't
     heat();
   }
   // when a guest's shot is fired here, the shells and the bang are tagged with them: they already saw their own
@@ -183,7 +184,7 @@ export function addProjectile(kind, pos, vel, owner, extra = {}) {
   if (kind === 'bomb') { geo = new THREE.CylinderGeometry(0.25, 0.25, 1.4, 8); mat = bombMat; }
   else if (kind === 'grenade') { geo = new THREE.SphereGeometry(0.07, 8, 6); mat = nadeMat; }
   else if (kind === 'flare') mat = flareMat;
-  else if (kind === 'ball') mat = shellMat;
+  else if (kind === 'ball' || kind === 'heavy') mat = shellMat;
   else if (kind === 'ac') mat = acMat;
   else if (kind === 'mortar') mat = bombMat;
   else if (kind === 'rocket') { geo = new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8); mat = rocketMat; }
@@ -191,6 +192,7 @@ export function addProjectile(kind, pos, vel, owner, extra = {}) {
   const mesh = new THREE.Mesh(geo, mat);
   if (kind === 'flare') mesh.scale.setScalar(0.5);
   if (kind === 'ball') mesh.scale.set(0.6, 0.6, 1.4);
+  if (kind === 'heavy') mesh.scale.set(0.85, 0.85, 2);
   if (kind === 'ac') mesh.scale.set(0.25, 0.25, 1.2);
   if (kind === 'mortar') mesh.scale.setScalar(1.25);
   mesh.position.copy(pos); mesh.castShadow = true;
@@ -254,7 +256,7 @@ export function updateProjectiles(dt) {
     }
     if (pr.kind === 'flare') FX.fire(pr.pos.x, pr.pos.y, pr.pos.z, 0.5);
     if (pr.kind === 'bomb') FX.smoke(pr.pos.x, pr.pos.y + 0.8, pr.pos.z, 0.3);
-    if ((pr.kind === 'ball' || pr.kind === 'mortar') && Math.random() < 0.6) FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.25);
+    if ((pr.kind === 'ball' || pr.kind === 'mortar' || pr.kind === 'heavy') && Math.random() < 0.6) FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.25);
     if (pr.kind === 'rocket') { FX.smoke(pr.pos.x, pr.pos.y, pr.pos.z, 0.45); if (Math.random() < 0.7) FX.fire(pr.pos.x - dir.x * 0.5, pr.pos.y - dir.y * 0.5, pr.pos.z - dir.z * 0.5, 0.35); }
     if (pr.kind === 'ac' && Math.random() < 0.5) FX.spark(pr.pos.x, pr.pos.y, pr.pos.z);
     const sea = waveHeight(pr.pos.x, pr.pos.z);
