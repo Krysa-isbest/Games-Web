@@ -167,7 +167,7 @@ export class Bot {
   update(dt) {
     const s = this.ship;
     if (isGuest()) {      // mirror only: the host decides who shoots and who dies
-      if (this.alive) { if (this.netRot != null) this.mesh.rotation.y = this.netRot; return; }
+      if (this.alive) { if (this.netRot != null) this.mesh.rotation.y += angDiff(this.mesh.rotation.y, this.netRot) * Math.min(1, dt * 10); return; }
       this.deadT += dt;
       this.mesh.rotation.x = Math.min(Math.PI / 2, this.deadT * 4);
       this.mesh.position.y = this.lp.y + 0.15;
@@ -196,10 +196,10 @@ export class Bot {
     this.mesh.rotation.y = Math.atan2(lt.x - this.lp.x, lt.z - this.lp.z);
     this.cd -= dt;
     if (this.cd > 0) return;
+    // only shoot what can actually be seen: no shots through hulls, decks or walls
+    const head = pc.clone(); head.y += 0.6;
+    if (!seen(c, pc) && !seen(c, head)) { this.cd = 0.6; return; }
     this.cd = rand(0.9, 2.0) * (s.ghost ? 0.8 : 1);
-    const dir = pc.clone().sub(c).normalize();
-    const hit = hitscan(c.clone().addScaledVector(dir, 0.6), dir, bd + 1, this);
-    if (hit && hit.kind === 'ship' && hit.dist < bd - 1.5) return;
     sfx.shot('ak', c);
     const chance = clamp(0.5 - bd / 200, 0.12, 0.5) * (target.swimming ? 0.6 : 1) / DIFF.aim;
     const end = Math.random() < chance ? pc : pc.clone().add(v3.set(rand(-2, 2), rand(-1, 1.5), rand(-2, 2)));
@@ -207,5 +207,18 @@ export class Bot {
     G.netFx?.({ k: 'tr', a: [c.x, c.y, c.z], b: [end.x, end.y, end.z] });
     if (end === pc) target.hurt(7 * DIFF.dmg, this, 'bullet');
   }
+}
+// a clear line between two world points: no ship block in the way (the last 0.35 m is the target's own body)
+function seen(from, to) {
+  const d = to.clone().sub(from), len = d.length();
+  if (len < 0.8) return true;
+  d.divideScalar(len);
+  const o = from.clone().addScaledVector(d, 0.4);
+  for (const s of G.ships) {
+    if (s.gone || s.sunk) continue;
+    if (Math.hypot(s.x - from.x, s.z - from.z) > s.hl + s.hw + len + 2) continue;
+    if (s.raycast(o, d, len - 0.4 - 0.35)) return false;
+  }
+  return true;
 }
 export function clearBots() { for (const b of G.bots) b.mesh.parent?.remove(b.mesh); G.bots = []; }

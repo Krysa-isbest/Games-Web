@@ -150,13 +150,16 @@ export function fireCannon(ship, c, owner, reloadMul = 1) {
   const T = cannonOf(c);
   if (c.cd > 0 || c.over) return false;
   const heat = () => { if (T.heat) { c.heat = (c.heat || 0) + 1; if (c.heat >= T.heat) c.over = true; } };
-  if (isGuest()) {       // the host fires it; we only predict the reload
+  const guest = isGuest();
+  if (guest) {       // the host fires the real shot; we show ours right away (it's only for the eyes)
     c.cd = T.reload * reloadMul; heat();
     G.netAct?.('fireCannon', ship.id, ship.cannons.indexOf(c), c.yaw, c.pitch, reloadMul);
-    return true;
+  } else {
+    c.cd = T.reload * reloadMul * (owner?.isBot ? (T.heat ? 1.6 : 1.7) : 1);
+    heat();
   }
-  c.cd = T.reload * reloadMul * (owner?.isBot ? (T.heat ? 1.6 : 1.7) : 1);
-  heat();
+  // when a guest's shot is fired here, the shells and the bang are tagged with them: they already saw their own
+  const by = guest ? null : G.fxBy ?? null;
   const [pos, dir] = ship.cannonMuzzle(c);
   const base = ship.velocity(tmp).clone(); base.y = 0;
   const n = T.salvo || 1;
@@ -164,14 +167,14 @@ export function fireCannon(ship, c, owner, reloadMul = 1) {
     const d = dir.clone();
     if (n > 1) { d.x += rand(-0.02, 0.02); d.y += rand(-0.012, 0.02); d.z += rand(-0.02, 0.02); d.normalize(); }
     if (T.proj === 'ac') { d.x += rand(-0.006, 0.006); d.y += rand(-0.006, 0.006); d.normalize(); }
-    const fire = () => addProjectile(T.proj, pos.clone().addScaledVector(d, i * 0.1), d.clone().multiplyScalar(T.speed).add(base), owner, { from: ship });
+    const fire = () => addProjectile(T.proj, pos.clone().addScaledVector(d, i * 0.1), d.clone().multiplyScalar(T.speed).add(base), guest ? null : owner, { from: ship, by, visual: guest });
     if (i === 0) fire(); else setTimeout(fire, i * 110);
   }
   const big = T.proj === 'ac' ? 0.35 : T.proj === 'torpedo' ? 0.5 : 1;
   for (let i = 0; i < 8 * big; i++) FX.smoke(pos.x + dir.x * i * 0.3, pos.y, pos.z + dir.z * i * 0.3, 1.1 * big);
   FX.flash(pos.x, pos.y, pos.z, 14 * big);
   sfx.cannon(pos, T.proj);
-  G.netFx?.({ k: 'cannon', p: [pos.x, pos.y, pos.z], d: [dir.x, dir.y, dir.z], t: T.proj });
+  if (!guest) G.netFx?.({ k: 'cannon', p: [pos.x, pos.y, pos.z], d: [dir.x, dir.y, dir.z], t: T.proj, by });
   if (G.me && G.camera.position.distanceTo(pos) < 6) G.shake = Math.max(G.shake || 0, 0.5 * big);
   return true;
 }
@@ -193,7 +196,7 @@ export function addProjectile(kind, pos, vel, owner, extra = {}) {
   mesh.position.copy(pos); mesh.castShadow = true;
   G.scene.add(mesh);
   PROJ.push({ kind, spec: PSPEC[kind] || PSPEC.ball, pos: pos.clone(), vel: vel.clone(), owner, mesh, life: kind === 'grenade' ? 2.6 : kind === 'torpedo' ? 16 : 12, ...extra });
-  if (isHost()) G.netFx?.({ k: 'proj', kind, p: [pos.x, pos.y, pos.z], v: [vel.x, vel.y, vel.z] });
+  if (isHost()) G.netFx?.({ k: 'proj', kind, p: [pos.x, pos.y, pos.z], v: [vel.x, vel.y, vel.z], by: extra.by ?? undefined });
 }
 // the flight path of a shot (for the dashed aiming line); `grav` per gun type
 export function arcPoints(pos, vel, grav = 9.8, n = 70) {
@@ -469,7 +472,11 @@ const c4Mat = new THREE.MeshStandardMaterial({ color: '#c9b98d', roughness: 0.8 
 const ledMat = new THREE.MeshBasicMaterial({ color: '#ff2222' });
 export function placeC4(owner, hit) {
   if (isGuest() && owner) {
-    G.netAct?.('c4', hit.ship?.id ?? null, [hit.point.x, hit.point.y, hit.point.z], [hit.normal?.x ?? 0, hit.normal?.y ?? 1, hit.normal?.z ?? 0]);
+    // on a ship, send ship-space coordinates: the host's copy of a moving ship is a little elsewhere (lag)
+    const nrm = (hit.normal || new THREE.Vector3(0, 1, 0)).clone();
+    const pt = hit.ship ? hit.ship.toLocal(hit.point.clone()) : hit.point;
+    if (hit.ship) hit.ship.dirToLocal(nrm);
+    G.netAct?.('c4', hit.ship?.id ?? null, [pt.x, pt.y, pt.z], [nrm.x, nrm.y, nrm.z]);
     return;
   }
   const mesh = new THREE.Group();
@@ -882,13 +889,14 @@ export class Gunner {
       const vel = dir.clone().multiplyScalar(under ? 7 : 17); vel.y += under ? 1 : 3.5;
       if (p.frame) vel.add(p.frame.velocity(tmp));
       const at = origin.clone().addScaledVector(dir, 0.5);
-      if (isGuest()) G.netAct?.('throw', 'grenade', [at.x, at.y, at.z], [vel.x, vel.y, vel.z]); else addProjectile('grenade', at, vel, p);
+      // guests: the host throws the real one, we see ours leave the hand at once
+      if (isGuest()) { G.netAct?.('throw', 'grenade', [at.x, at.y, at.z], [vel.x, vel.y, vel.z]); addProjectile('grenade', at, vel, null, { visual: true }); } else addProjectile('grenade', at, vel, p);
       out(); this.equip = 1; this.cd = 0.8;
     } else if (s.id === 'flare') {
       const vel = dir.clone().multiplyScalar(20); vel.y += 4;
       if (p.frame) vel.add(p.frame.velocity(tmp));
       const at = origin.clone().addScaledVector(dir, 0.6);
-      if (isGuest()) G.netAct?.('throw', 'flare', [at.x, at.y, at.z], [vel.x, vel.y, vel.z]); else addProjectile('flare', at, vel, p);
+      if (isGuest()) { G.netAct?.('throw', 'flare', [at.x, at.y, at.z], [vel.x, vel.y, vel.z]); addProjectile('flare', at, vel, null, { visual: true }); } else addProjectile('flare', at, vel, p);
       s.count--;
     } else if (s.id === 'nuke') {
       const hit = hitscan(origin, dir, 500, p);

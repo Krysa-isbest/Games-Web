@@ -18,7 +18,7 @@ import { kit, shipCfg } from './progression.js';
 import { setGarageHook, garageMode, garageCamera, leaveGarageCamera, initGarage3D } from './garage.js';
 import { renderWorld, resizeUnderwater, setUnderwaterPixelRatio } from './underwater.js';
 import { NET, leaveNet } from './net.js';
-import { Avatar, installHooks, installActions, installGuestHandlers, installSharedHandlers, hostTick, sendMyState, sendChat, startVoice, voiceTick, stopVoice, byId } from './online.js';
+import { Avatar, installHooks, installActions, installGuestHandlers, installSharedHandlers, hostTick, sendMyState, sendChat, startVoice, voiceTick, stopVoice, byId, resetNetState } from './online.js';
 import { initLobby, lobbyBack, renderPlayers } from './lobby.js';
 import { Player } from './player.js';
 import { initMusic, musicTick } from './music.js';
@@ -123,6 +123,7 @@ function clearWorld() {
   if (G.me) { G.me.dispose(); for (const ch of [...G.camera.children]) G.camera.remove(ch); }
   for (const p of G.players) if (p.isRemote) p.remove();
   G.me = null; G.players = []; G.game = null; G.voxOut = [];
+  resetNetState();
   showcase = null; G.showcase = null;
 }
 
@@ -287,6 +288,12 @@ addEventListener('keydown', e => {
 });
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); resizeUnderwater(innerWidth, innerHeight); });
 
+// guests: the round trip to the host; the host: the worst of its guests
+function pingText() {
+  const v = isGuest() ? [NET.ping.get('p0')].filter(x => x != null) : [...NET.ping.values()];
+  return v.length ? ` · ping ${Math.max(...v)} ms` : '';
+}
+
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const tmp = new THREE.Vector3();
@@ -341,7 +348,7 @@ function frame() {
   renderWorld(renderer, scene, camera, kind, depth, airFog);
   // count real frames per real second (dt above is capped, so it can't be used here)
   const now = performance.now(); fpsN++; fpsT += Math.min(1, (now - (G.lastFrame || now)) / 1000); G.lastFrame = now;
-  if (fpsT >= 0.5) { document.getElementById('fps').textContent = `${Math.round(fpsN / fpsT)} FPS${isOnline() ? ` · ${NET.conns.size} link${NET.conns.size === 1 ? '' : 's'}` : ''}`; fpsN = 0; fpsT = 0; }
+  if (fpsT >= 0.5) { document.getElementById('fps').textContent = `${Math.round(fpsN / fpsT)} FPS${isOnline() ? ` · ${NET.conns.size} link${NET.conns.size === 1 ? '' : 's'}${pingText()}` : ''}`; fpsN = 0; fpsT = 0; }
   endFrame();
 }
 

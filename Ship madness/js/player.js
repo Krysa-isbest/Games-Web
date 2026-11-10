@@ -16,8 +16,8 @@ import { FX } from './fx.js';
 import { sfx } from './sfx.js';
 import { showRepair, showLeaks } from './repairfx.js';
 
-const HALF = 0.3, HEIGHT = 1.7, EYE = 1.6;
-const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
+const HALF = 0.3, STAND_H = 1.7, CROUCH_H = 1.15, STAND_EYE = 1.6, CROUCH_EYE = 1.05;
+const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), vT = new THREE.Vector3(), vO = new THREE.Vector3();
 const act = (...a) => G.netAct(...a);
 const arr = v => [Math.round(v.x * 100) / 100, Math.round(v.y * 100) / 100, Math.round(v.z * 100) / 100];
 const pct = v => Math.round(v) + '%';
@@ -30,6 +30,7 @@ export class Player {
     this.hp = 100; this.alive = true; this.respawnT = 0; this.oxygen = 1; this.out = false;
     this.swimming = false; this.inSea = false; this.underwater = false; this.onGround = false; this.climbing = false;
     this.groundT = 0; this.jumpBuf = 0; this.ladder = null; this.toolT = 0; this.gunZoom = 1;
+    this.crouch = 0; this.height = STAND_H; this.eye = STAND_EYE;
     this.mode = 'walk'; this.station = null; this.holding = null; this.chase = false; this.busy = false;
     this.inv = makeInventory(kit); this.slot = 'primary';
     this.kills = 0; this.sunk = 0; this.home = null; this.fireT = 0;
@@ -45,8 +46,8 @@ export class Player {
 
   // ---------- frames ----------
   worldPos(out = new THREE.Vector3()) { out.copy(this.pos); return this.frame ? this.frame.toWorld(out) : out; }
-  eyeWorld(out = new THREE.Vector3()) { out.copy(this.pos); out.y += EYE; return this.frame ? this.frame.toWorld(out) : out; }
-  center(out = new THREE.Vector3()) { out.copy(this.pos); out.y += 1.0; return this.frame ? this.frame.toWorld(out) : out; }
+  eyeWorld(out = new THREE.Vector3()) { out.copy(this.pos); out.y += this.eye; return this.frame ? this.frame.toWorld(out) : out; }
+  center(out = new THREE.Vector3()) { out.copy(this.pos); out.y += this.height * 0.59; return this.frame ? this.frame.toWorld(out) : out; }
   worldYaw() { return this.yaw + (this.frame ? this.frame.yaw : 0); }
   forwardLocal(out) { return out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
   attach(ship) {
@@ -80,7 +81,7 @@ export class Player {
   hitTest(o, d, max) {
     const c = this.center(v1);
     const t = raySphere(o, d, c, 0.45);
-    const h = raySphere(o, d, v2.copy(c).add(v3.set(0, 0.62, 0)), 0.22);
+    const h = raySphere(o, d, v2.copy(c).add(v3.set(0, this.height * 0.365, 0)), 0.22);
     if (h != null && h <= max && (t == null || h < t)) return { dist: h, head: true };
     return t != null && t <= max ? { dist: t } : null;
   }
@@ -199,7 +200,7 @@ export class Player {
       const eye = this.eyeWorld(new THREE.Vector3()), dir = new THREE.Vector3(0, 0, -1).applyQuaternion(G.camera.quaternion);
       const spot = this.repairSpot(eye, dir);
       const carp = this.skill === 'carpenter';
-      if (spot) showRepair(spot.ship, h.kind === 'plank' ? spot.ship.repairPreview(spot.p, 1.2, PLANK_FIX) : spot.ship.repairPreview(spot.p, 0.9, Math.round(h.def.fix * 4 * FURN_K * (carp ? 2 : 1))));
+      if (spot) showRepair(spot.ship, h.kind === 'plank' ? spot.ship.repairPreview(spot.lp, 1.2, PLANK_FIX, true) : spot.ship.repairPreview(spot.lp, 0.9, Math.round(h.def.fix * 4 * FURN_K * (carp ? 2 : 1)), true));
       else showRepair(null, []);
     } else if (hammer && this.hamTarget) showRepair(this.hamTarget.ship, [this.hamTarget.n]);
     else showRepair(null, []);
@@ -234,15 +235,23 @@ export class Player {
       const c = this.frame.compAtLocal(this.pos);
       if (c && c.vol > 0.05) surface = c.level;
     } else if (wp.y < sea) { surface = this.frame ? this.pos.y + (sea - wp.y) : sea; inSea = true; }
-    const eyeY = this.pos.y + EYE;
+    const eyeY = this.pos.y + this.eye;
     return { surface, inSea, swim: surface != null && this.pos.y + 1.15 < surface, under: surface != null && eyeY < surface };
   }
 
   updateWalk(dt) {
+    // never stay inside blocks: if we somehow ended up in a wall (or in another ship), step out first
+    if (this.frame && this.collides(this.frame, this.pos.x, this.pos.y, this.pos.z)) this.unstick(this.frame);
+    else this.unstickOthers();
     const s = this.frame;
     const m = this.medium();
     this.swimming = m.swim; this.inSea = m.inSea && m.swim; this.underwater = m.under;
-    this.underKind = m.under ? (m.inSea ? 'sea' : 'hull') : null; this.underDepth = m.under ? m.surface - (this.pos.y + EYE) : 0;
+    this.underKind = m.under ? (m.inSea ? 'sea' : 'hull') : null; this.underDepth = m.under ? m.surface - (this.pos.y + this.eye) : 0;
+    // crouching (hold C): lower, slower and harder to hit. You can't stand up under something. In water C dives.
+    let crouchTo = down('crouch') && !this.swimming ? 1 : 0;
+    if (!crouchTo && this.crouch > 0.02 && s && this.collides(s, this.pos.x, this.pos.y, this.pos.z, STAND_H)) crouchTo = 1;
+    this.crouch = damp(this.crouch, crouchTo, 14, dt);
+    this.height = lerp(STAND_H, CROUCH_H, this.crouch); this.eye = lerp(STAND_EYE, CROUCH_EYE, this.crouch);
     const f = this.forwardLocal(v2), r = v3.set(-f.z, 0, f.x);
     let wx = 0, wz = 0;
     if (down('forward')) { wx += f.x; wz += f.z; }
@@ -251,10 +260,11 @@ export class Player {
     if (down('left')) { wx -= r.x; wz -= r.z; }
     const wl = Math.hypot(wx, wz) || 1; wx /= wl; wz /= wl;
     const heavy = this.holding && HEAVY.has(this.holding.kind) && this.skill !== 'strong';
-    const sprint = down('sprint') && !heavy;
+    const sprint = down('sprint') && !heavy && this.crouch < 0.5;
     const legs = this.skill === 'sealegs' ? 1.4 : 1;
     let speed = this.swimming ? (sprint ? 4.4 : 3.2) * legs : (sprint ? 7 : 4.6);
     if (heavy) speed *= 0.75;
+    speed *= 1 - this.crouch * 0.5;
     speed *= 1 - this.gun.ads * 0.4;
     const w = this.inv[this.slot] && WEAPONS[this.inv[this.slot].id];
     if (w?.slow && !this.holding) speed *= w.slow;
@@ -285,7 +295,7 @@ export class Player {
     this.jumped = false;
     if (this.swimming) {
       let target = m.surface - 1.35;
-      if (down('dive')) target = m.surface - 6;
+      if (down('crouch')) target = m.surface - 6;      // C dives deeper
       if (down('jump')) target = m.surface - 0.9;
       this.vel.y += ((target - this.pos.y) * 4 - this.vel.y * 2.5) * dt;
     } else {
@@ -306,10 +316,10 @@ export class Player {
     this.useHands();
   }
 
-  collides(s, x, y, z) {
+  collides(s, x, y, z, height = this.height) {
     const i0 = Math.floor((x - HALF) / VS + s.nx / 2), i1 = Math.floor((x + HALF) / VS + s.nx / 2);
     const k0 = Math.floor((z - HALF) / VS + s.nz / 2), k1 = Math.floor((z + HALF) / VS + s.nz / 2);
-    const j0 = Math.floor((y + 0.01) / VS), j1 = Math.floor((y + HEIGHT) / VS);
+    const j0 = Math.floor((y + 0.01) / VS), j1 = Math.floor((y + height) / VS);
     let worst = 0;
     for (let k = k0; k <= k1; k++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const t = s.get(i, j, k);
@@ -318,30 +328,78 @@ export class Player {
     }
     return worst;
   }
+  // would the body at world point `wp` be inside the blocks of any ship other than `skip`?
+  hitsOtherShip(wp, skip) {
+    for (const o of G.ships) {
+      if (o === skip || o.sunk || o.gone) continue;
+      if (Math.abs(o.x - wp.x) > o.hl + o.hw + 3 || Math.abs(o.z - wp.z) > o.hl + o.hw + 3) continue;
+      const lp = o.toLocal(vO.copy(wp));
+      if (o.inBox(lp, 1) && this.collides(o, lp.x, lp.y, lp.z)) return true;
+    }
+    return false;
+  }
+  // the nearest place around `p` (ship space) where the body fits, or null
+  nearestFree(s, p) {
+    for (let r = 0.2; r <= 3.01; r += 0.2) {
+      const d = r * 0.7;
+      for (const [dx, dy, dz] of [[0, r, 0], [r, 0, 0], [-r, 0, 0], [0, 0, r], [0, 0, -r], [d, 0, d], [-d, 0, d], [d, 0, -d], [-d, 0, -d], [0, -r, 0], [r, r * 0.5, 0], [-r, r * 0.5, 0]])
+        if (!this.collides(s, p.x + dx, p.y + dy, p.z + dz)) return new THREE.Vector3(p.x + dx, p.y + dy, p.z + dz);
+    }
+    return null;
+  }
+  unstick(s) {
+    const f = this.nearestFree(s, this.pos);
+    this.pos.copy(f || this.freeSpot(s, this.pos));
+    this.vel.y = Math.max(0, this.vel.y);
+  }
+  // inside the blocks of a ship we are not standing on (swimming into a hull, boarding): push out in that ship's space
+  unstickOthers() {
+    const wp = this.worldPos(vT);
+    for (const o of G.ships) {
+      if (o === this.frame || o.sunk || o.gone || Math.abs(o.x - wp.x) > o.hl + o.hw + 3 || Math.abs(o.z - wp.z) > o.hl + o.hw + 3) continue;
+      const lp = o.toLocal(vO.copy(wp));
+      if (!o.inBox(lp, 1) || !this.collides(o, lp.x, lp.y, lp.z)) continue;
+      const f = this.nearestFree(o, lp);
+      if (!f) continue;
+      const w = o.toWorld(f);
+      if (this.frame) this.pos.copy(this.frame.toLocal(w)); else this.pos.copy(w);
+      this.vel.set(0, Math.max(0, this.vel.y), 0);
+      return;
+    }
+  }
   moveInShip(s, dt) {
     const p = this.pos;
+    // blocked by our own ship's blocks, or by another ship's (boarding, ramming, swimming alongside)
+    const blocked = (x, y, z) => this.collides(s, x, y, z) || this.hitsOtherShip(s.toWorld(vT.set(x, y, z)), s);
     for (const ax of ['x', 'z']) {
       const d = this.vel[ax] * dt;
       if (!d) continue;
       const nx = ax === 'x' ? p.x + d : p.x, nz = ax === 'z' ? p.z + d : p.z;
-      const h = this.collides(s, nx, p.y, nz);
-      if (!h) { p[ax] += d; continue; }
-      const canStep = (this.onGroundPrev || this.swimming || this.groundT > 0) && h !== T.RAIL && !this.collides(s, nx, p.y + VS + 0.02, nz) && !this.collides(s, p.x, p.y + VS + 0.02, p.z);
-      if (canStep) { p.y += VS + 0.02; p[ax] += d; }
-      else this.vel[ax] = 0;
+      if (!blocked(nx, p.y, nz)) { p[ax] += d; continue; }
+      // step up a block or two (stairs, a lower deck next to ours), but never through a railing
+      let stepped = false;
+      if ((this.onGroundPrev || this.swimming || this.groundT > 0) && this.collides(s, nx, p.y, nz) !== T.RAIL)
+        for (const up of [VS + 0.02, 2 * VS + 0.02]) if (!blocked(nx, p.y + up, nz) && !blocked(p.x, p.y + up, p.z)) { p.y += up; p[ax] += d; stepped = true; break; }
+      if (!stepped) this.vel[ax] = 0;
     }
     const dy = this.vel.y * dt;
-    if (this.collides(s, p.x, p.y + dy, p.z)) {
-      if (dy < 0) { this.onGround = true; p.y = (Math.floor((p.y + dy) / VS) + 1) * VS; }
+    if (blocked(p.x, p.y + dy, p.z)) {
+      if (dy < 0) { this.onGround = true; if (this.collides(s, p.x, p.y + dy, p.z)) p.y = (Math.floor((p.y + dy) / VS) + 1) * VS; }
       this.vel.y = 0;
     } else p.y += dy;
     // standing on something counts as ground even on frames where gravity hasn't pulled us into it yet
-    if (!this.onGround && this.vel.y <= 0.01 && this.collides(s, p.x, p.y - 0.06, p.z)) this.onGround = true;
+    if (!this.onGround && this.vel.y <= 0.01 && blocked(p.x, p.y - 0.06, p.z)) this.onGround = true;
     this.onGroundPrev = this.onGround;
   }
   moveInWorld(dt) {
     const p = this.pos;
-    p.x += this.vel.x * dt; p.z += this.vel.z * dt; p.y += this.vel.y * dt;
+    // in the sea or on an island: ship hulls are solid too
+    for (const ax of ['x', 'z', 'y']) {
+      const d = this.vel[ax] * dt;
+      if (!d) continue;
+      p[ax] += d;
+      if (this.hitsOtherShip(p, null)) { p[ax] -= d; if (ax === 'y' && d < 0) this.onGround = true; this.vel[ax] = 0; }
+    }
     const g = groundHeight(p.x, p.z);
     if (p.y < g + 0.05) { if (p.y < g) p.y = g; if (this.vel.y < 0) this.vel.y = 0; this.onGround = true; }
     this.onGroundPrev = this.onGround;
@@ -388,7 +446,7 @@ export class Player {
     this.pos.y += dy * dt;
     if (dy && Math.random() < dt * 3) sfx.knock(this.worldPos(new THREE.Vector3()));
     const m = this.medium();
-    this.underwater = m.under; this.underKind = m.under ? 'sea' : null; this.underDepth = m.under ? m.surface - (this.pos.y + EYE) : 0;
+    this.underwater = m.under; this.underKind = m.under ? 'sea' : null; this.underDepth = m.under ? m.surface - (this.pos.y + this.eye) : 0;
     this.swimming = false; this.inSea = false; this.climbing = true;
     this.prompt = `🪜 Ladder · ${kn('forward')} climb up · ${kn('back')} climb down · ${kn('jump')} let go`;
     if (this.pos.y >= L.top - 0.3 && down('forward')) {          // over the edge onto the deck
@@ -533,26 +591,25 @@ export class Player {
     let fixed;
     if (guest) {
       this.busy = true;
-      fixed = await act('repair', h.id, spot.ship.id, arr(spot.p), h.kind === 'plank', carp);
+      fixed = await act('repair', h.id, spot.ship.id, arr(spot.lp), h.kind === 'plank', carp);
       this.busy = false;
       if (fixed) { h.mesh.parent?.remove(h.mesh); if (this.holding === h) this.holding = null; }
     } else {
-      fixed = h.kind === 'plank' ? spot.ship.repairAt(spot.p, 1.2, PLANK_FIX, carp ? 1 : 0.9) : spot.ship.repairAt(spot.p, 0.9, Math.round(h.def.fix * 4 * FURN_K * (carp ? 2 : 1)), 1);
+      fixed = h.kind === 'plank' ? spot.ship.repairAt(spot.lp, 1.2, PLANK_FIX, carp ? 1 : 0.9, true) : spot.ship.repairAt(spot.lp, 0.9, Math.round(h.def.fix * 4 * FURN_K * (carp ? 2 : 1)), 1, true);
       if (fixed) { destroyItem(h); this.holding = null; }
     }
     if (fixed) { sfx.hammer(spot.p); G.toast?.(`Patched ${fixed} blocks.`); }
   }
+  // the hole the crosshair points at (the nearest one along the aim, on whichever ship): { ship, n, lp (ship space), p (world) }
   repairSpot(eye, dir) {
+    let best = null;
     for (const s of G.ships) {
-      if (s.sunk || Math.hypot(s.x - eye.x, s.z - eye.z) > s.hl + 5) continue;
-      const h = s.raycast(eye, dir, 3.2);
-      const lim = h ? Math.min(3.2, h.dist + 0.4) : 3.2;
-      for (let t = 0.3; t <= lim; t += 0.1) {
-        const p = eye.clone().addScaledVector(dir, t);
-        if (s.missingNear(p, 0.4)) return { ship: s, p };
-      }
+      if (s.sunk || s.gone || Math.hypot(s.x - eye.x, s.z - eye.z) > s.hl + s.hw + 5) continue;
+      const h = s.rayHole(eye, dir, 3.2);
+      if (h && (!best || h.dist < best.dist)) best = { ship: s, n: h.n, lp: h.lp, dist: h.dist };
     }
-    return null;
+    if (best) best.p = best.ship.toWorld(best.lp.clone());
+    return best;
   }
 
   // ---------- tools (always with you: 5 bucket, 6 hammer, 7 wrench) ----------
@@ -616,7 +673,7 @@ export class Player {
         const lp = s.toLocal(v2.copy(p));
         if (!s.inBox(lp, 0.5)) continue;
         if (s.fires.some(f => f.lp.distanceTo(lp) < 1.8)) {
-          if (guest) act('extinguish', s.id, arr(p)); else s.extinguish(p, 2.2);
+          if (guest) act('extinguish', s.id, arr(lp)); else s.extinguish(lp, 2.2, true);
           for (let i = 0; i < 7; i++) FX.steam(p.x + rand(-1, 1), p.y, p.z + rand(-1, 1));
           G.toast?.('🔥 Fire put out!', 'good');
           return;
@@ -637,7 +694,7 @@ export class Player {
   // the hammer puts one block back at a time, for free; it just takes a moment
   useHammer(dt, eye, dir) {
     const spot = this.repairSpot(eye, dir);
-    const n = spot ? spot.ship.repairPreview(spot.p, 0.5, 1)[0] : null;
+    const n = spot ? spot.n : null;          // exactly the block under the crosshair
     if (n == null) { this.toolT = 0; if (IN.lmbHit) G.toast?.('Look at a missing block up close to hammer it back in.'); return; }
     this.hamTarget = { ship: spot.ship, n };
     if (!IN.lmb) { this.toolT = 0; return; }

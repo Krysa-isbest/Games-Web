@@ -2,8 +2,8 @@
 // guests ~15 times a second plus every voxel change. Every client moves its own player and tells the others.
 // Guests ask the host to do things (take the helm, open a crate, repair...) with act().
 import * as THREE from 'three';
-import { G, P, S, isGuest, isHost, isOnline, rand } from './state.js';
-import { NET, on, send, broadcast, act } from './net.js';
+import { G, P, S, isGuest, isHost, isOnline, rand, damp, angDiff, clamp } from './state.js';
+import { NET, on, send, broadcast, sendFast, act } from './net.js';
 import { spawnShip, PLANK_FIX, FURN_K } from './ship.js';
 import { makeItem, destroyItem, placeMesh, holdItem, setBucket, spawnCrate, removeCrate, placeCrate, spawnShark, updateStorage, hookCrate, releaseCrate, crateWorld, ITEMS, raySphere } from './entities.js';
 import { Bot } from './ai.js';
@@ -16,6 +16,8 @@ import { kit, shipCfg } from './progression.js';
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
 export const LOBBY = { players: [], mode: 'ffa', opts: {} };
 const r2 = x => Math.round(x * 100) / 100;
+const INTERP = 0.1;        // remote players are drawn this far in the past (2 updates), so they move smoothly
+let lastSnap = -1;         // guests: the newest ship snapshot so far (they can arrive out of order)
 
 // ---------- who is who ----------
 export const byId = {
@@ -46,6 +48,7 @@ export class Avatar {
     this.id = id; this.name = info.name || 'Sailor'; this.isPlayer = true; this.isRemote = true;
     this.alive = true; this.hp = 100; this.team = 'player';
     this.frame = null; this.pos = new THREE.Vector3(); this.tpos = new THREE.Vector3(); this.yaw = 0; this.pitch = 0;
+    this.buf = []; this.off = null; this.lastQ = null;      // recent updates, for smooth movement
     this.inSea = false; this.underwater = false; this.swimming = false; this.mode = 'walk'; this.talk = false; this.kills = 0; this.sunk = 0;
     const shirt = new THREE.MeshStandardMaterial({ color: info.shirt || '#2f6fb3', roughness: 0.85 });
     const g = new THREE.Group();
@@ -64,14 +67,14 @@ export class Avatar {
   }
   worldPos(out = new THREE.Vector3()) { out.copy(this.pos); return this.frame ? this.frame.toWorld(out) : out; }
   eyeWorld(out = new THREE.Vector3()) { out.copy(this.pos); out.y += 1.6; return this.frame ? this.frame.toWorld(out) : out; }
-  center(out = new THREE.Vector3()) { out.copy(this.pos); out.y += 1.0; return this.frame ? this.frame.toWorld(out) : out; }
+  center(out = new THREE.Vector3()) { out.copy(this.pos); out.y += this.crouched ? 0.68 : 1.0; return this.frame ? this.frame.toWorld(out) : out; }
   worldYaw() { return this.yaw + (this.frame ? this.frame.yaw : 0); }
   forwardLocal(out) { return out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
   stationShip() { return this.frame; }
   hitTest(o, d, max) {
     if (!this.alive) return null;
     const c = this.center(v1);
-    const t = raySphere(o, d, c, 0.45), h = raySphere(o, d, v2.copy(c).add(new THREE.Vector3(0, 0.62, 0)), 0.22);
+    const t = raySphere(o, d, c, 0.45), h = raySphere(o, d, v2.copy(c).add(new THREE.Vector3(0, this.crouched ? 0.42 : 0.62, 0)), 0.22);
     if (h != null && h <= max && (t == null || h < t)) return { dist: h, head: true };
     return t != null && t <= max ? { dist: t } : null;
   }
@@ -81,23 +84,53 @@ export class Avatar {
     if (isHost()) send(this.id, { t: 'dmg', amount, by: by?.id ?? null, byBot: !!by?.isBot, kind, from: from ? [from.x, from.y, from.z] : null });
     else G.netHit('player', this.id, amount, kind);
   }
+  // a state update from this player. Returns false for an old one that came in after a newer one.
   apply(ps) {
+    if (ps.q != null) {
+      if (this.lastQ != null && ps.q <= this.lastQ && ps.q > this.lastQ - 2000) return false;
+      this.lastQ = ps.q;
+    }
     const ship = ps.s ? byId.ship(ps.s) : null;
-    if (ship !== this.frame) { this.frame = ship; this.pos.fromArray(ps.p); (ship ? ship.group : G.scene).add(this.mesh); }
-    this.tpos.fromArray(ps.p); this.yaw = ps.yaw; this.pitch = ps.pitch;
+    if (ship !== this.frame) { this.frame = ship; this.pos.fromArray(ps.p); (ship ? ship.group : G.scene).add(this.mesh); this.buf.length = 0; }
+    // their clock vs. ours: follows the fastest packets at once, slower ones only slowly
+    const now = performance.now() / 1000, ts = ps.ts ?? now, off = now - ts;
+    if (this.off == null || off < this.off || off - this.off > 1) this.off = off; else this.off += (off - this.off) * 0.01;
+    const last = this.buf[this.buf.length - 1];
+    if (!last || ts > last.t) { this.buf.push({ t: ts, p: new THREE.Vector3().fromArray(ps.p), yaw: ps.yaw, pitch: ps.pitch }); if (this.buf.length > 20) this.buf.shift(); }
+    this.tpos.fromArray(ps.p); this.netYaw = ps.yaw; this.netPitch = ps.pitch;
     this.mode = ps.mode; this.alive = ps.alive; this.hp = ps.hp; this.inSea = ps.sea; this.underwater = ps.uw; this.swimming = ps.sw; this.talk = ps.talk;
     this.mesh.visible = ps.alive;
+    this.crouched = !!ps.cr; this.mesh.scale.y = ps.cr ? 0.68 : 1;
+    this.tag.scale.y = ps.cr ? 0.4 / 0.68 : 0.4; this.mic.scale.y = ps.cr ? 0.2 / 0.68 : 0.2;     // keep the name tag unsquashed
     this.gun.visible = !ps.hold;
     this.lastPs = ps;
+    return true;
   }
+  // drawn ~100 ms in the past, smoothly between two real updates; a short guess ahead if one is late
   update(dt) {
-    const k = Math.min(1, dt * 12);
-    if (this.pos.distanceTo(this.tpos) > 6) this.pos.copy(this.tpos); else this.pos.lerp(this.tpos, k);
+    const b = this.buf, rt = performance.now() / 1000 - (this.off ?? 0) - INTERP;
+    v2.copy(this.pos);
+    if (b.length) {
+      while (b.length > 2 && b[1].t <= rt) b.shift();
+      const a = b[0], c = b[1];
+      if (rt <= a.t || !c) { this.pos.copy(a.p); this.yaw = a.yaw; this.pitch = a.pitch; }
+      else if (rt <= c.t) {
+        const f = (rt - a.t) / (c.t - a.t);
+        if (a.p.distanceToSquared(c.p) > 36) this.pos.copy(c.p); else this.pos.lerpVectors(a.p, c.p, f);
+        this.yaw = a.yaw + angDiff(a.yaw, c.yaw) * f; this.pitch = a.pitch + (c.pitch - a.pitch) * f;
+      } else {
+        const ahead = Math.min(rt - c.t, 0.2);
+        if (a.p.distanceToSquared(c.p) > 36) this.pos.copy(c.p); else this.pos.copy(c.p).addScaledVector(v1.subVectors(c.p, a.p), ahead / (c.t - a.t));
+        this.yaw = c.yaw; this.pitch = c.pitch;
+      }
+    }
+    const spd = dt > 0 ? v2.distanceTo(this.pos) / dt : 0;
+    this.spd = damp(this.spd || 0, spd, 8, dt);
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.yaw + Math.PI;
     this.head.rotation.x = -this.pitch * 0.6;
     this.hand.rotation.x = -this.pitch;
-    const moving = this.pos.distanceToSquared(this.tpos) > 0.0004;
+    const moving = this.spd > 0.4;
     const sw = moving ? Math.sin(G.t * 10) * 0.5 : 0;
     this.legL.rotation.x = sw; this.legR.rotation.x = -sw;
     this.mic.visible = this.talk;
@@ -131,35 +164,78 @@ function spawnData(kind, o) {
 }
 
 // ---------- host side ----------
-let snapT = 0, psT = 0;
+// Three streams go out:
+//  * 'snap' 20x a second on the fast channel: where the ships, crates and sharks are (full every time, so a lost
+//    one doesn't matter);
+//  * 'st' 10x a second on the reliable channel: only what CHANGED since the last one (flooding, fires, guns,
+//    bots, items, the mode's HUD...), plus everything every 2 s;
+//  * 'vox' every 50 ms: the blocks that broke or were fixed, packed per ship.
+let snapT = 0, stT = 0, voxT = 0, fullT = 0, psT = 0, snapN = 0, psN = 0;
+const sentSt = new Map();        // what the guests already have, per thing
 const HUMAN = () => G.players.filter(p => p.isPlayer);
+const V3 = p => [r2(p.x), r2(p.y), r2(p.z)];
+export function resetNetState() { sentSt.clear(); snapT = stT = voxT = fullT = 0; lastSnap = -1; G.voxOut = []; }
 export function hostTick(dt) {
-  if (G.voxOut.length) { broadcast({ t: 'vox', d: G.voxOut }); G.voxOut = []; }
+  voxT -= dt;
+  if (G.voxOut.length && voxT <= 0) { voxT = 0.05; broadcast({ t: 'vox', v: packVox(G.voxOut) }); G.voxOut = []; }
   snapT -= dt;
-  if (snapT > 0) return;
-  snapT = 1 / 15;
-  const V = p => [r2(p.x), r2(p.y), r2(p.z)];
-  broadcast({
-    t: 'snap', time: r2(G.t), sea: G.seaAmp, adm: G.admin.everyone,
-    ships: G.ships.filter(s => !s.gone).map(s => s.netState()),
-    bots: G.bots.map(b => [b.id, b.alive ? 1 : 0, r2(b.mesh.rotation.y)]),
-    sharks: G.sharks.map(s => [s.id, r2(s.pos.x), r2(s.pos.z), r2(s.yaw), r2(s.speed), s.stunT > 0 ? 1 : 0]),
-    crates: G.crates.map(c => [c.id, c.state, c.state === 'deck' ? c.ship?.id : null, V(c.state === 'deck' && c.ship ? c.lp : c.wp)]),
-    items: G.items.map(i => [i.id, i.ship?.id ?? null, i.holder ? null : V(i.ship ? i.lp : i.wp), i.holder?.id ?? null, i.full ? 1 : 0]),
-    game: G.game?.netState?.() ?? null,
-  });
+  if (snapT <= 0) {
+    snapT = 1 / 20;
+    sendFast('*', {
+      t: 'snap', n: ++snapN, time: r2(G.t),
+      ships: G.ships.filter(s => !s.gone).map(s => s.netPose()),
+      sharks: G.sharks.map(s => [s.id, r2(s.pos.x), r2(s.pos.z), r2(s.yaw), r2(s.speed), s.stunT > 0 ? 1 : 0]),
+      crates: G.crates.map(c => [c.id, c.state, c.state === 'deck' ? c.ship?.id : null, V3(c.state === 'deck' && c.ship ? c.lp : c.wp)]),
+    });
+  }
+  stT -= dt; fullT -= dt;
+  if (stT > 0) return;
+  stT = 0.1;
+  const full = fullT <= 0;
+  if (full) { fullT = 2; sentSt.clear(); }
+  // keep only the entries that changed
+  const pick = (key, arr) => { const s = JSON.stringify(arr); if (sentSt.get(key) === s) return false; sentSt.set(key, s); return true; };
+  const m = { t: 'st' };
+  if (pick('sea', [G.seaAmp, G.admin.everyone])) { m.sea = G.seaAmp; m.adm = G.admin.everyone; }
+  const sh = G.ships.filter(s => !s.gone).map(s => s.netSlow()).filter(a => pick('s' + a[0], a));
+  const bo = G.bots.map(b => [b.id, b.alive ? 1 : 0, r2(b.mesh.rotation.y)]).filter(a => pick('b' + a[0], a));
+  const it = G.items.map(i => [i.id, i.ship?.id ?? null, i.holder ? null : V3(i.ship ? i.lp : i.wp), i.holder?.id ?? null, i.full ? 1 : 0]).filter(a => pick('i' + a[0], a));
+  const game = G.game?.netState?.() ?? null;
+  if (sh.length) m.ships = sh;
+  if (bo.length) m.bots = bo;
+  if (it.length) m.items = it;
+  if (game && pick('game', game)) m.game = game;
+  if (Object.keys(m).length > 1) broadcast(m);
 }
-// my own player -> everyone (host and guests)
+// voxel changes: the last change of each block wins, then per ship two sorted lists (broken / fixed) sent as
+// gaps between the block numbers, which keeps even a big explosion small
+function packVox(list) {
+  const per = new Map();
+  for (let i = 0; i < list.length; i += 3) {
+    let m = per.get(list[i]);
+    if (!m) per.set(list[i], m = new Map());
+    m.set(list[i + 1], list[i + 2]);
+  }
+  const gaps = a => { a.sort((x, y) => x - y); let p = 0; return a.map(n => { const d = n - p; p = n; return d; }); };
+  const out = [];
+  for (const [sid, m] of per) {
+    const rem = [], add = [];
+    for (const [n, f] of m) (f ? add : rem).push(n);
+    out.push([sid, gaps(rem), gaps(add)]);
+  }
+  return out;
+}
+// my own player -> everyone (host and guests), 20x a second on the fast channel
 export function sendMyState(dt) {
   psT -= dt;
   const me = G.me;
   if (psT > 0 || !me) return;
-  psT = 1 / 15;
-  const ps = { t: 'ps', id: G.net.id, s: me.frame?.id ?? null, p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yaw: r2(me.yaw), pitch: r2(me.pitch), mode: me.mode, alive: me.alive, hp: Math.round(me.hp), sea: me.inSea, uw: me.underwater, sw: me.swimming, talk: talking(), hold: me.holding?.id ?? null };
+  psT = 1 / 20;
+  const ps = { t: 'ps', id: G.net.id, q: ++psN, ts: Math.round(performance.now()) / 1000, s: me.frame?.id ?? null, p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yaw: r2(me.yaw), pitch: r2(me.pitch), mode: me.mode, alive: me.alive, hp: Math.round(me.hp), sea: me.inSea, uw: me.underwater, sw: me.swimming, talk: talking(), hold: me.holding?.id ?? null, cr: me.crouch > 0.5 ? 1 : 0 };
   if (me.mode === 'wheel' && me.station) { const s = me.station; ps.drive = [s.id, r2(s.throttle), r2(s.rudderIn)]; }
   if (me.mode === 'crane' && me.station) { const s = me.station, c = s.crane; ps.crane = [s.id, r2(c.yaw), r2(c.reach), r2(c.drop)]; }
   if (me.mode === 'cannon') { const { ship, c } = me.station; ps.gun = [ship.id, ship.cannons.indexOf(c), r2(c.yaw), r2(c.pitch)]; }
-  send('*', ps);
+  sendFast('*', ps);
 }
 
 // actions guests can ask the host to do
@@ -203,7 +279,9 @@ export function installActions() {
     const s = byId.ship(sid), c = s?.cannons[ci];
     if (!c) return false;
     c.yaw = yaw; c.pitch = pitch;
-    return fireCannon(s, c, avatarOf(pid), mul);
+    if (c.cd < 0.25) c.cd = 0;      // the guest's reload ran out a moment before ours: lag, let it fire
+    G.fxBy = pid;                  // the guest already shows this shot: don't send it back to them
+    try { return fireCannon(s, c, avatarOf(pid), mul); } finally { G.fxBy = null; }
   };
   A.grab = (pid, sid) => {
     const s = byId.ship(sid);
@@ -245,18 +323,19 @@ export function installActions() {
   A.repair = (pid, iid, sid, p, plank, carp) => {
     const s = byId.ship(sid), it = byId.item(iid);
     if (!s) return 0;
-    const wp = new THREE.Vector3(...p);
-    const fix = plank ? s.repairAt(wp, 1.2, PLANK_FIX, carp ? 1 : 0.9) : s.repairAt(wp, 0.9, Math.round((it?.def.fix || 3) * 4 * FURN_K * (carp ? 2 : 1)), 1);
+    const lp = new THREE.Vector3(...p);            // ship space: lag can't move where it lands
+    const fix = plank ? s.repairAt(lp, 1.2, PLANK_FIX, carp ? 1 : 0.9, true) : s.repairAt(lp, 0.9, Math.round((it?.def.fix || 3) * 4 * FURN_K * (carp ? 2 : 1)), 1, true);
     if (fix && it) destroyItem(it);
-    if (fix) sfx.hammer(wp);
+    if (fix) sfx.hammer(s.toWorld(lp.clone()));
     return fix;
   };
   A.bail = (pid, sid, ci, amount) => { const c = byId.ship(sid)?.comps[ci]; if (!c || c.vol < 0.05) return false; c.vol = Math.max(0, c.vol - Math.min(6, amount)); return true; };
   A.pour = (pid, sid, ci, amount) => { const c = byId.ship(sid)?.comps[ci]; if (c) c.vol += Math.max(0, Math.min(6, amount)); return true; };
   A.bucket = (pid, iid, full) => { const it = byId.item(iid); if (it) setBucket(it, full); return true; };
-  A.extinguish = (pid, sid, p) => byId.ship(sid)?.extinguish(new THREE.Vector3(...p), 2.6) || 0;
-  A.throw = (pid, kind, p, vel) => { addProjectile(kind, new THREE.Vector3(...p), new THREE.Vector3(...vel), avatarOf(pid)); return true; };
-  A.c4 = (pid, sid, p, n) => { placeC4(avatarOf(pid), { ship: sid ? byId.ship(sid) : null, point: new THREE.Vector3(...p), normal: new THREE.Vector3(...n) }); return true; };
+  A.extinguish = (pid, sid, p) => byId.ship(sid)?.extinguish(new THREE.Vector3(...p), 2.6, true) || 0;
+  A.throw = (pid, kind, p, vel) => { addProjectile(kind, new THREE.Vector3(...p), new THREE.Vector3(...vel), avatarOf(pid), { by: pid }); return true; };
+  // on a ship the point and normal come in ship space (local), so the charge sticks where the guest put it
+  A.c4 = (pid, sid, p, n) => { const s = sid ? byId.ship(sid) : null; placeC4(avatarOf(pid), { ship: s, point: new THREE.Vector3(...p), normal: new THREE.Vector3(...n), local: !!s }); return true; };
   A.detonate = pid => detonateC4(avatarOf(pid));
   A.nuke = (pid, p) => armNuke(new THREE.Vector3(...p), avatarOf(pid));
   A.died = (pid, by, kind) => {
@@ -295,15 +374,18 @@ export function installGuestHandlers() {
     else if (m.k === 'c4') { const c = G.c4s.find(x => x.id === m.id); if (c) { c.mesh.parent?.remove(c.mesh); G.c4s = G.c4s.filter(x => x !== c); } }
   });
   on('vox', m => {
-    const d = m.d;
-    let s = null, sid = null;
-    for (let i = 0; i < d.length; i += 3) {
-      if (d[i] !== sid) { sid = d[i]; s = byId.ship(sid); }
+    let fx = 0;
+    for (const [sid, rem, add] of m.v || []) {
+      const s = byId.ship(sid);
       if (!s) continue;
-      if (d[i + 2]) s.restoreCell(d[i + 1]); else s.removeCell(d[i + 1]);
+      let n = 0;
+      for (const d of rem) { n += d; s.removeCell(n, ++fx < 160); }     // debris for the first ones only
+      n = 0;
+      for (const d of add) { n += d; s.restoreCell(n); }
     }
   });
   on('snap', applySnap);
+  on('st', applyState);
   on('you', m => G.onPlaced?.(m));
   on('cmap', m => G.ui.campaignMap(m, false));
   on('cvote', m => G.ui.campaignVotes(m.votes));
@@ -340,16 +422,24 @@ function spawnFromNet(kind, d) {
     placeC4(null, { ship: d.s ? byId.ship(d.s) : null, point: new THREE.Vector3(...d.p), normal: new THREE.Vector3(0, 0, 0), local: !!d.s, id: d.id });
   }
 }
+// fast channel: where things are right now
 function applySnap(m) {
+  if (m.n <= lastSnap && m.n > lastSnap - 2000) return;      // an older one that arrived late
+  lastSnap = m.n;
   // keep our clock (and so the waves) in step with the host
   const err = m.time - G.t;
   G.t += Math.abs(err) > 2 ? err : err * 0.1;
-  G.seaAmp = m.sea; G.admin.everyone = m.adm;
-  for (const a of m.ships) { const s = byId.ship(a[0]); if (s) { s.netApply(a); updateStorage(s); } }
-  for (const [id, alive, ry] of m.bots) { const b = byId.bot(id); if (b) { if (!alive && b.alive) b.alive = false; b.netRot = ry; } }
+  const lead = clamp(G.t - m.time, -0.1, 0.3);       // how old this snapshot is by our clock
+  for (const a of m.ships) { const s = byId.ship(a[0]); if (s) s.applyPose(a, lead); }
   for (const [id, x, z, yaw, speed, stun] of m.sharks) { const s = byId.shark(id); if (s) s.net = { x, z, yaw, speed, stun }; }
   for (const [id, state, sid, p] of m.crates) { const c = byId.crate(id); if (c && p) placeCrate(c, state, sid ? byId.ship(sid) : null, v1.fromArray(p)); }
-  for (const [id, sid, p, holder, full] of m.items) {
+}
+// reliable channel: what changed (flooding, fires, guns, bots, items, the mode)
+function applyState(m) {
+  if (m.sea != null) { G.seaAmp = m.sea; G.admin.everyone = m.adm; }
+  for (const a of m.ships || []) { const s = byId.ship(a[0]); if (s) { s.applySlow(a); updateStorage(s); } }
+  for (const [id, alive, ry] of m.bots || []) { const b = byId.bot(id); if (b) { if (!alive && b.alive) b.alive = false; b.netRot = ry; } }
+  for (const [id, sid, p, holder, full] of m.items || []) {
     const it = byId.item(id);
     if (!it) continue;
     if (it.kind === 'bucket' && it.full !== !!full && it.holder !== G.me) setBucket(it, !!full);
@@ -357,7 +447,7 @@ function applySnap(m) {
     if (it.holder === G.me) continue;       // I dropped it a moment ago
     const s = sid ? byId.ship(sid) : null;
     if (it.holder || s !== it.ship) { it.holder = null; it.ship = s; it.lp = s ? new THREE.Vector3(...p) : null; it.wp = s ? null : new THREE.Vector3(...p); placeMesh(it); }
-    else if (p) { (s ? it.lp : it.wp).fromArray(p); it.mesh.position.copy(s ? it.lp : it.wp); }
+    else if (p) { (s ? it.lp : it.wp).fromArray(p); if (s) it.mesh.position.copy(it.lp); }     // in the sea: updateItems glides it there
   }
   if (m.game) G.game?.netApply?.(m.game);
 }
@@ -368,7 +458,7 @@ export function installSharedHandlers() {
     const id = m.id || from;
     let a = byId.player(id);
     if (!a || !a.isRemote) return;
-    a.apply(m);
+    if (!a.apply(m)) return;          // an old update that came in late
     if (isHost()) {     // drivers and gunners steer through their state
       if (m.drive) { const s = byId.ship(m.drive[0]); if (s && s.driver === a) { s.throttle = m.drive[1]; s.rudderIn = m.drive[2]; } }
       if (m.crane) { const s = byId.ship(m.crane[0]); if (s && s.crane.user === a) { s.crane.yaw = m.crane[1]; s.crane.reach = m.crane[2]; s.crane.drop = m.crane[3]; } }
@@ -391,6 +481,7 @@ function playFx(m) {
   const P3 = a => new THREE.Vector3(...a);
   if (m.k === 'shot') { const a = P3(m.a), b = P3(m.b); FX.tracer(a, b); sfx.shot(m.w, a, m.q); if (!m.q) FX.flash(a.x, a.y, a.z, 2); }
   else if (m.k === 'tr') { const a = P3(m.a), b = P3(m.b); FX.tracer(a, b); sfx.shot(m.w || 'ak', a); }
+  else if ((m.k === 'cannon' || m.k === 'proj') && m.by && m.by === G.net.id) return;     // my own shot: I showed it already
   else if (m.k === 'cannon') { const p = P3(m.p), d = P3(m.d), big = m.t === 'ac' ? 0.35 : 1; for (let i = 0; i < 8 * big; i++) FX.smoke(p.x + d.x * i * 0.3, p.y, p.z + d.z * i * 0.3, 1.1 * big); FX.flash(p.x, p.y, p.z, 14 * big); sfx.cannon(p, m.t || 'ball'); }
   else if (m.k === 'proj') { if (isGuest()) addProjectile(m.kind, P3(m.p), P3(m.v), null, { visual: true }); }
   else if (m.k === 'boom') { if (isGuest()) explode(P3(m.p), { r: m.r, visualOnly: true, sound: m.s || true }); }

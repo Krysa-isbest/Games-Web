@@ -8,7 +8,7 @@ export const ACTIONS = {
   right: { def: 'KeyD', name: 'Move right / steer right', group: 'Move' },
   jump: { def: 'Space', name: 'Jump / swim up', group: 'Move' },
   sprint: { def: 'ShiftLeft', name: 'Sprint', group: 'Move' },
-  dive: { def: 'KeyC', name: 'Dive (in water)', group: 'Move' },
+  crouch: { def: 'KeyC', name: 'Crouch / dive deeper in water', group: 'Move' },
   use: { def: 'KeyE', name: 'Use / take the helm / let go', group: 'Actions' },
   drop: { def: 'KeyG', name: 'Drop what you hold', group: 'Actions' },
   reload: { def: 'KeyR', name: 'Reload', group: 'Combat' },

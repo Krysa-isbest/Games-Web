@@ -182,13 +182,23 @@
       <div class="card-glass"><h3 class="set-h">Join a game</h3><input id="lb-join-code" class="code-in" maxlength="5" placeholder="CODE"><button id="lb-join" class="primary">Join</button></div>
     </div>
     <div id="lb-lan" class="lb-cols hidden">
-      <div class="card-glass"><h3 class="set-h">Host (one code per friend)</h3><button id="lb-dh-make">1. Make an invite code</button><textarea id="lb-dh-code" readonly rows="3"></textarea><textarea id="lb-dh-reply" rows="3" placeholder="2. Paste their reply code here"></textarea><button id="lb-dh-accept">3. Connect</button></div>
-      <div class="card-glass"><h3 class="set-h">Join</h3><textarea id="lb-dj-code" rows="3" placeholder="1. Paste the invite code from the host"></textarea><button id="lb-dj-make">2. Make my reply code</button><textarea id="lb-dj-reply" readonly rows="3" placeholder="3. Send this back to the host"></textarea></div>
+      <div class="card-glass"><h3 class="set-h">Host</h3><p class="note">Invite your first friend here. The lobby opens once they're in, and you can invite more from there.</p><button id="lb-dh-make">1. Make an invite code</button><div class="lb-code-row"><textarea id="lb-dh-code" readonly rows="3" placeholder="Your invite code appears here: send it to your friend"></textarea><button id="lb-dh-copy" class="small-btn">Copy</button></div><textarea id="lb-dh-reply" rows="3" placeholder="2. Paste their reply code here"></textarea><button id="lb-dh-accept">3. Connect</button></div>
+      <div class="card-glass"><h3 class="set-h">Join</h3><textarea id="lb-dj-code" rows="3" placeholder="1. Paste the invite code from the host"></textarea><button id="lb-dj-make">2. Make my reply code</button><div class="lb-code-row"><textarea id="lb-dj-reply" readonly rows="3" placeholder="3. Send this back to the host"></textarea><button id="lb-dj-copy" class="small-btn">Copy</button></div></div>
     </div>
   </div>
   <div id="lb-room" class="hidden">
     <div id="lb-codebox" class="lb-codebox hidden">Room code <b id="lb-code"></b><button id="lb-copy" class="small-btn">Copy</button></div>
     <div id="lb-players" class="lb-players"></div>
+    <details id="lb-ts" class="lb-ts card-glass hidden">
+      <summary>➕ Invite another friend via LAN / Tailscale</summary>
+      <p class="note">One code per friend: make an invite code, send it to them, then paste the reply code they send back.</p>
+      <div class="lb-ts-grid">
+        <button id="lb-ts-make">1. Make an invite code</button>
+        <div class="lb-code-row"><textarea id="lb-ts-code" readonly rows="2" placeholder="The invite code appears here"></textarea><button id="lb-ts-copy" class="small-btn">Copy</button></div>
+        <textarea id="lb-ts-reply" rows="2" placeholder="2. Paste their reply code here"></textarea>
+        <button id="lb-ts-accept">3. Connect</button>
+      </div>
+    </details>
     <div id="lb-hostctl">
       <div class="opt"><span>Mode</span><div class="seg" id="lb-mode" data-value="ffa"><button data-v="ffa">⚔️ FFA</button><button data-v="camp">🧭 Co-op campaign</button><button data-v="sandbox">🏝️ Sandbox</button></div></div>
       <div id="lb-o-ffa">

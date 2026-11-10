@@ -2,7 +2,7 @@
 // that flood through holes, buoyancy, driving (momentum, drift, anchor), the engine room, collisions, fires,
 // the stern crane and the bought deck guns.
 import * as THREE from 'three';
-import { G, P, clamp, damp, rand, MAP_HALF, isGuest, isHost } from './state.js';
+import { G, P, clamp, damp, rand, angDiff, MAP_HALF, isGuest, isHost } from './state.js';
 import { waveHeight, NORMAL_TEX, SKY } from './ocean.js';
 import { groundHeight, ISLANDS } from './islands.js';
 import { FX, voxelMaterial, VOXEL } from './fx.js';
@@ -304,12 +304,7 @@ export class Ship {
       const solid = zN > 0.7, post = side ? k % M(1.2) === 0 : i % M(1.2) === 0;
       for (let j = H + 1; j <= H + R; j++) if (solid || post || j === H + R) set(i, j, k, T.RAIL);
     }
-    // a railing around the stairwell (open only at the top, where you step on)
-    for (let k = sk - 1; k < sk + SL - 1; k++) for (const i of [stairI[0] - 1, stairI.at(-1) + 1]) {
-      if (!In(i, H, k)) continue;
-      for (let j = H + 1; j <= H + R; j++) if (j === H + R || k % M(0.8) === 0 || k === sk - 1) set(i, j, k, T.RAIL);
-    }
-    for (const i of stairI) for (let j = H + 1; j <= H + R; j++) set(i, j, sk - 1, T.RAIL);
+    // (no railing around the stairwell: players got stuck on it)
     // raised forecastle at the bow, with steps up its back
     if (def.fore) {
       const kf = Math.round(def.fore.z0 * nz), fh = M(def.fore.h);
@@ -792,9 +787,11 @@ export class Ship {
     }
   }
   repairEngine(amount) { if (isGuest()) return; const was = this.engineHp; this.engineHp = Math.min(100, this.engineHp + amount); return was <= 0 && this.engineHp > 0; }
-  repairAt(wp, radius, max, chance = 1) {
+  // `local` = the point is already in ship space (aiming and online repairs use ship space, so a moving ship
+  // or network lag can't shift where the repair lands)
+  repairAt(p, radius, max, chance = 1, local = false) {
     if (isGuest()) return 0;
-    const list = this.repairPreview(wp, radius, 9999);
+    const list = this.repairPreview(p, radius, 9999, local);
     let fixed = 0;
     for (const n of list) {
       if (fixed >= max) break;
@@ -804,8 +801,8 @@ export class Ship {
     return fixed;
   }
   // the blocks a repair at this point would restore (for the green preview)
-  repairPreview(wp, radius, max) {
-    const lp = this.toLocal(v2.copy(wp));
+  repairPreview(p, radius, max, local = false) {
+    const lp = local ? v2.copy(p) : this.toLocal(v2.copy(p));
     const [ci, cj, ck] = this.cellOf(lp.x, lp.y, lp.z), rc = Math.ceil(radius / VS);
     const list = [];
     for (let k = ck - rc; k <= ck + rc; k++) for (let j = cj - rc; j <= cj + rc; j++) for (let i = ci - rc; i <= ci + rc; i++) {
@@ -853,8 +850,8 @@ export class Ship {
     if (this.fires.some(f => f.lp.distanceTo(p) < 0.8)) return;
     this.fires.push({ lp: p, t: 0 });
   }
-  extinguish(wp, radius) {
-    const lp = this.toLocal(v1.copy(wp));
+  extinguish(p, radius, local = false) {
+    const lp = local ? v1.copy(p) : this.toLocal(v1.copy(p));
     const before = this.fires.length;
     this.fires = this.fires.filter(f => f.lp.distanceTo(lp) > radius);
     return before - this.fires.length;
@@ -912,6 +909,43 @@ export class Ship {
       if (tx < ty && tx < tz) { i += sx; tc = tx; tx += dx; axis = 0; }
       else if (ty < tz) { j += sy; tc = ty; ty += dy; axis = 1; }
       else { k += sz; tc = tz; tz += dz; axis = 2; }
+    }
+    return null;
+  }
+
+  // the hole the crosshair points at: walk the ray block by block and return the first missing block it passes
+  // through. If it hits solid first, take the missing block right next to that spot (aiming at the rim of a hole).
+  rayHole(origin, dir, maxDist) {
+    const o = this.toLocal(v1.copy(origin)), d = this.dirToLocal(v2.copy(dir));
+    const bx = this.hw, by = this.ny * VS, bz = this.hl;
+    let t0 = 0, t1 = maxDist;
+    for (const [oo, dd, lo, hi] of [[o.x, d.x, -bx, bx], [o.y, d.y, 0, by], [o.z, d.z, -bz, bz]]) {
+      if (Math.abs(dd) < 1e-9) { if (oo < lo || oo > hi) return null; continue; }
+      let a = (lo - oo) / dd, b = (hi - oo) / dd;
+      if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+      if (t0 > t1) return null;
+    }
+    const t = t0 + 1e-4;
+    let [i, j, k] = this.cellOf(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
+    i = clamp(i, 0, this.nx - 1); j = clamp(j, 0, this.ny - 1); k = clamp(k, 0, this.nz - 1);
+    const sx = Math.sign(d.x), sy = Math.sign(d.y), sz = Math.sign(d.z);
+    const next = (c, s, half, oo, dd) => s === 0 ? Infinity : ((c + (s > 0 ? 1 : 0)) * VS - half - oo) / dd;
+    let tx = next(i, sx, bx, o.x, d.x), ty = next(j, sy, 0, o.y, d.y), tz = next(k, sz, bz, o.z, d.z);
+    const dx = sx ? VS / Math.abs(d.x) : Infinity, dy = sy ? VS / Math.abs(d.y) : Infinity, dz = sz ? VS / Math.abs(d.z) : Infinity;
+    let tc = t0;
+    const at = n => { const [a, b, c] = this.ijk(n); return { n, dist: tc, lp: new THREE.Vector3(this.xOf(a), this.yOf(b), this.zOf(c)) }; };
+    for (let guard = 0; guard < 400; guard++) {
+      if (i < 0 || j < 0 || k < 0 || i >= this.nx || j >= this.ny || k >= this.nz || tc > t1) return null;
+      const n = this.idx(i, j, k);
+      if (this.cells[n]) {           // solid: is there a hole right at the rim?
+        const m = this.repairPreview(v3.set(o.x + d.x * tc, o.y + d.y * tc, o.z + d.z * tc), 0.35, 1, true)[0];
+        return m == null ? null : at(m);
+      }
+      if (this.orig[n]) return at(n);   // a missing block on the ray
+      if (tx < ty && tx < tz) { i += sx; tc = tx; tx += dx; }
+      else if (ty < tz) { j += sy; tc = ty; ty += dy; }
+      else { k += sz; tc = tz; tz += dz; }
     }
     return null;
   }
@@ -1046,19 +1080,7 @@ export class Ship {
     this.z += (Math.cos(this.yaw) * sp + rz * this.side + this.kz) * dt;
     for (const ax of ['x', 'z']) if (Math.abs(this[ax]) > MAP_HALF) { this[ax] = Math.sign(this[ax]) * MAP_HALF; this.speed *= 0.9; }
 
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
-    const L = this.hl * 0.7, W = this.hw * 0.8;
-    const hB = waveHeight(this.x + fx * L, this.z + fz * L), hS = waveHeight(this.x - fx * L, this.z - fz * L);
-    const hP = waveHeight(this.x + rx * W, this.z + rz * W), hR = waveHeight(this.x - rx * W, this.z - rz * W);
-    const big = clamp(this.hl / 10, 1, 3);      // big ships rock less
-    const sinkOff = Math.pow(this.flood, 1.25) * (this.deckTop - this.draft + 0.8) + (this.sinking ? this.sinkT * this.sinkT * 0.35 : 0);
-    const heave = (hB + hS + hP + hR) / 4 - this.draft - sinkOff;
-    const [st, , bw] = this.comps;
-    const floodPitch = (st.vol / st.cap - bw.vol / bw.cap) * 0.14 + (this.sinking ? -Math.min(0.5, this.sinkT * 0.04) * Math.sign(bw.vol - st.vol || 1) : 0);
-    let holeRoll = 0;
-    for (const n of this.holes) { const i = n % this.nx, j = ((n / this.nx) | 0) % this.ny; if (this.yOf(j) < this.draft + 0.5) holeRoll += Math.sign(this.xOf(i)); }
-    const pitchT = Math.atan2(hB - hS, 2 * L) * 0.85 / Math.sqrt(big) + floodPitch;
-    const rollT = Math.atan2(hP - hR, 2 * W) * 0.85 / big - clamp(holeRoll * 0.001 / AREA * this.flood * 4, -0.25, 0.25) + this.yr * sp * 0.012;
+    const [heave, pitchT, rollT] = this.waveTargets();
     this.vy += ((heave - this.y) * 6 - this.vy * 3) * dt; this.y += this.vy * dt;
     this.vp += ((pitchT - this.pitch) * 5 - this.vp * 3) * dt; this.pitch += this.vp * dt;
     this.vr += ((rollT - this.roll) * 5 - this.vr * 2.6) * dt; this.roll += this.vr * dt;
@@ -1067,6 +1089,26 @@ export class Ship {
     if (this.sinking && !this.sunk && this.y + this.deckTop < waveHeight(this.x, this.z) - 3) { this.sunk = true; this.fires.length = 0; this.onSunk?.(this); }
     if (this.sunk && this.y < -50) { this.gone = true; G.scene.remove(this.group); }
     this.updateVisuals(dt);
+  }
+
+  // where the waves (and the flooding) want the hull: [height, pitch, roll]. Guests work this out themselves
+  // from the same waves, so the rocking is smooth on every screen.
+  waveTargets() {
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    const L = this.hl * 0.7, W = this.hw * 0.8;
+    const hB = waveHeight(this.x + fx * L, this.z + fz * L), hS = waveHeight(this.x - fx * L, this.z - fz * L);
+    const hP = waveHeight(this.x + rx * W, this.z + rz * W), hR = waveHeight(this.x - rx * W, this.z - rz * W);
+    const big = clamp(this.hl / 10, 1, 3);      // big ships rock less
+    const sinkT = this.sinkT || 0;
+    const sinkOff = Math.pow(this.flood, 1.25) * (this.deckTop - this.draft + 0.8) + (this.sinking ? sinkT * sinkT * 0.35 : 0);
+    const heave = (hB + hS + hP + hR) / 4 - this.draft - sinkOff;
+    const [st, , bw] = this.comps;
+    const floodPitch = (st.vol / st.cap - bw.vol / bw.cap) * 0.14 + (this.sinking ? -Math.min(0.5, sinkT * 0.04) * Math.sign(bw.vol - st.vol || 1) : 0);
+    let holeRoll = 0;
+    for (const n of this.holes) { const i = n % this.nx, j = ((n / this.nx) | 0) % this.ny; if (this.yOf(j) < this.draft + 0.5) holeRoll += Math.sign(this.xOf(i)); }
+    const pitchT = Math.atan2(hB - hS, 2 * L) * 0.85 / Math.sqrt(big) + floodPitch;
+    const rollT = Math.atan2(hP - hR, 2 * W) * 0.85 / big - clamp(holeRoll * 0.001 / AREA * this.flood * 4, -0.25, 0.25) + this.yr * this.speed * 0.012;
+    return [heave, pitchT, rollT];
   }
 
   // which holes are under the sea right now (for the red leak markers and the ship panel)
@@ -1171,24 +1213,51 @@ export class Ship {
   }
 
   // ---------- networking ----------
-  netState() {
+  // the pose goes 20x a second on the fast channel; the rest only when it changes (reliable)
+  netPose() {
     const r = v => Math.round(v * 100) / 100, cr = this.crane;
-    return [this.id, r(this.x), r(this.y), r(this.z), r(this.yaw), r(this.pitch), r(this.roll), r(this.speed), r(this.throttle), r(this.rudder),
-      this.comps.map(c => r(c.vol)), this.sinking ? 1 : 0, this.sunk ? 1 : 0, this.fires.map(f => [r(f.lp.x), r(f.lp.y), r(f.lp.z)]),
-      [r(cr.yaw), r(cr.reach), r(cr.drop), cr.user?.id ?? null], this.cannons.map(c => [r(c.yaw), r(c.pitch), r(c.cd), r(c.heat), c.over ? 1 : 0]), this.driver?.id ?? null, this.storage?.planks ?? 0, this.team,
-      Math.round(this.engineHp), ANCHOR.indexOf(this.anchor.state), r(this.side), r(this.yr)];
+    return [this.id, r(this.x), r(this.y), r(this.z), Math.round(this.yaw * 1000) / 1000, r(this.pitch), r(this.roll), r(this.speed), r(this.throttle), r(this.rudder),
+      Math.round(this.side * 1000) / 1000, Math.round(this.yr * 1000) / 1000, r(this.kx), r(this.kz), r(cr.yaw), r(cr.reach), r(cr.drop)];
   }
-  netApply(a) {
-    const [, x, y, z, yaw, pitch, roll, speed, thr, rud, vols, sinking, sunk, fires, cr, guns, driver, planks, team, eng, anch, side, yr] = a;
-    this.net = { x, y, z, yaw, pitch, roll, t: 0 };
-    this.speed = speed; this.rudder = rud; this.side = side || 0; this.yr = yr || 0;
-    if (driver !== G.net.id) this.throttle = thr;     // when I'm at the helm, my own throttle wins
+  netSlow() {
+    const r = v => Math.round(v * 100) / 100, h = v => Math.floor(v * 2) / 2;      // reload and heat in half steps (guests count them down)
+    return [this.id, this.comps.map(c => r(c.vol)), this.sinking ? 1 : 0, this.sunk ? 1 : 0, this.fires.map(f => [r(f.lp.x), r(f.lp.y), r(f.lp.z)]),
+      this.crane.user?.id ?? null, this.cannons.map(c => [r(c.yaw), r(c.pitch), h(c.cd), h(c.heat || 0), c.over ? 1 : 0]), this.driver?.id ?? null, this.storage?.planks ?? 0, this.team,
+      Math.round(this.engineHp), ANCHOR.indexOf(this.anchor.state)];
+  }
+  // dead reckoning: move a pose on by dt with its speed, turn rate, side slip and knockback
+  reckon(n, dt) {
+    n.yaw += n.yr * dt;
+    const rx = Math.cos(n.yaw), rz = -Math.sin(n.yaw);
+    n.x += (Math.sin(n.yaw) * n.sp + rx * n.side + n.kx) * dt;
+    n.z += (Math.cos(n.yaw) * n.sp + rz * n.side + n.kz) * dt;
+    const f = Math.exp(-0.8 * dt); n.kx *= f; n.kz *= f;
+  }
+  // guests: a new pose from the host. `lead` = how old it is by our clock, so it's carried forward to now.
+  // We don't jump to it: the difference to where we show the ship fades out over a moment.
+  applyPose(a, lead = 0) {
+    const [, x, y, z, yaw, pitch, roll, speed, thr, rud, side, yr, kx, kz, cy, cre, cdr] = a;
+    const n = { x, z, yaw, sp: speed, side: side || 0, yr: yr || 0, kx: kx || 0, kz: kz || 0, age: 0 };
+    if (lead > 0) this.reckon(n, lead);
+    if (!this.net || Math.hypot(n.x - this.x, n.z - this.z) > 8) {
+      this.x = n.x; this.z = n.z; this.yaw = n.yaw; this.ex = this.ez = this.eyaw = 0;
+      if (!this.net) { this.by = y; this.pitch = pitch; this.roll = roll; this.dy = 0; this.vy = this.vp = this.vr = 0; }
+    } else { this.ex = this.x - n.x; this.ez = this.z - n.z; this.eyaw = angDiff(n.yaw, this.yaw); }
+    this.dyT = y - (this.by ?? y);
+    if (Math.abs(this.dyT - (this.dy || 0)) > 3) this.dy = this.dyT;
+    this.net = n;
+    this.speed = speed; this.rudder = rud; this.side = n.side; this.yr = n.yr;
+    if (this.driverId !== G.net.id) this.throttle = thr;     // when I'm at the helm, my own throttle wins
+    if (this.crane.user !== G.me) { this.crane.yaw = cy; this.crane.reach = cre; this.crane.drop = cdr; }
+  }
+  applySlow(a) {
+    const [, vols, sinking, sunk, fires, craneUser, guns, driver, planks, team, eng, anch] = a;
     vols.forEach((v, i) => { if (this.comps[i]) this.comps[i].vol = v; });
     if (sinking && !this.sinking) { this.sinking = true; this.onSink?.(this); }
+    else if (!sinking && this.sinking && !sunk) { this.sinking = false; this.sinkT = 0; }     // pumped out at the dock
     if (sunk && !this.sunk) { this.sunk = true; this.onSunk?.(this); }
     this.fires = fires.map(f => ({ lp: new THREE.Vector3(f[0], f[1], f[2]), t: 0 }));
-    if (this.crane.user !== G.me) { this.crane.yaw = cr[0]; this.crane.reach = cr[1]; this.crane.drop = cr[2]; }
-    this.craneUserId = cr[3];
+    this.craneUserId = craneUser;
     guns.forEach((g, i) => { const c = this.cannons[i]; if (!c) return; if (c.user !== G.me) { c.yaw = g[0]; c.pitch = g[1]; c.heat = g[3] || 0; c.over = !!g[4]; } c.cd = Math.max(c.user === G.me ? c.cd : 0, g[2]); });
     this.driverId = driver;
     if (this.storage) this.storage.planks = planks;
@@ -1199,14 +1268,21 @@ export class Ship {
   netUpdate(dt) {
     const n = this.net;
     if (n) {
-      n.t += dt;
-      const ex = Math.min(n.t, 0.25);
-      const tx = n.x + Math.sin(n.yaw) * this.speed * ex, tz = n.z + Math.cos(n.yaw) * this.speed * ex;
-      const k = Math.min(1, dt * 8);
-      if (Math.hypot(tx - this.x, tz - this.z) > 8) { this.x = tx; this.z = tz; this.y = n.y; this.yaw = n.yaw; }
-      this.x += (tx - this.x) * k; this.z += (tz - this.z) * k; this.y += (n.y - this.y) * k;
-      let dy = n.yaw - this.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
-      this.yaw += dy * k; this.pitch += (n.pitch - this.pitch) * k; this.roll += (n.roll - this.roll) * k;
+      // the host's pose moves on with its last known motion (for up to 0.75 s without news)...
+      if (n.age < 0.75) this.reckon(n, dt);
+      n.age += dt;
+      // ...and the gap left by the last correction fades out
+      const f = Math.exp(-dt * 4);
+      this.ex *= f; this.ez *= f; this.eyaw *= f;
+      this.x = n.x + this.ex; this.z = n.z + this.ez; this.yaw = n.yaw + this.eyaw;
+      // the rocking comes from our own copy of the same waves; only the height is nudged toward the host's
+      if (this.sinking) this.sinkT = (this.sinkT || 0) + dt;
+      const [heave, pitchT, rollT] = this.waveTargets();
+      this.vy += ((heave - this.by) * 6 - this.vy * 3) * dt; this.by += this.vy * dt;
+      this.vp += ((pitchT - this.pitch) * 5 - this.vp * 3) * dt; this.pitch += this.vp * dt;
+      this.vr += ((rollT - this.roll) * 5 - this.vr * 2.6) * dt; this.roll += this.vr * dt;
+      this.dy = damp(this.dy, this.dyT, 2, dt);
+      this.y = this.by + this.dy;
     }
     if (this.anchor.state === 'dropping' || this.anchor.state === 'raising') this.anchor.t += dt;
     this.updateMatrices();

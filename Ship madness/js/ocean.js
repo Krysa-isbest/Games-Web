@@ -136,12 +136,13 @@ const frag = /* glsl */`
       float sp = clamp(abs(dm.w) / 9.0, 0.0, 1.3);
       float hwW = hullHalf(0.48, clamp(lp.z / dm.y, -1.0, 1.0), dm.x, sh);
       if (abs(lp.z) < dm.y) wake += smoothstep(0.9 + sp, 0.0, abs(lp.x) - hwW) * (0.3 + sp * 0.6);
+      // a short, soft trail of churned water behind the stern (no long straight lines: they swing with the ship)
       float zb = -lp.z - dm.y * 0.9;
-      if (zb > 0.0 && zb < 90.0) {
-        float fade = 1.0 - zb / 90.0;
-        float wd = dm.x * 0.45 + zb * 0.11;
-        wake += (1.0 - smoothstep(wd * 0.4, wd, abs(lp.x))) * fade * sp * 0.85;
-        wake += smoothstep(1.4, 0.0, abs(abs(lp.x) - zb * 0.36)) * fade * fade * sp * 0.55;
+      float len = 18.0 + dm.y * 1.2;
+      if (zb > 0.0 && zb < len) {
+        float fade = 1.0 - zb / len; fade *= fade;
+        float wd = dm.x * 0.55 + zb * 0.07;
+        wake += (1.0 - smoothstep(wd * 0.3, wd, abs(lp.x))) * fade * sp * 0.7;
       }
       float zf = lp.z - dm.y * 0.86;
       wake += smoothstep(2.6, 0.0, length(vec2(lp.x, zf))) * sp;
@@ -249,9 +250,9 @@ export function buildOcean(scene, islands) {
 
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
-    uniforms: { uZenith: { value: SKY.zenith }, uHorizon: { value: SKY.horizon }, uSun: { value: SKY.sunDir }, uTime: { value: 0 } },
+    uniforms: { uZenith: { value: SKY.zenith }, uHorizon: { value: SKY.horizon }, uSun: { value: SKY.sunDir }, uTime: { value: 0 }, uUnder: { value: 0 }, uUnderCol: { value: new THREE.Color(0.06, 0.29, 0.34) } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w; }`,
-    fragmentShader: `uniform vec3 uZenith, uHorizon, uSun; uniform float uTime; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uZenith, uHorizon, uSun, uUnderCol; uniform float uTime, uUnder; varying vec3 vDir;
       float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 45758.5); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
       void main(){ vec3 d = normalize(vDir); float y = max(d.y, 0.0);
@@ -265,6 +266,12 @@ export function buildOcean(scene, islands) {
           cl = smoothstep(0.55, 0.85, cl) * smoothstep(0.0, 0.25, d.y);
           c = mix(c, vec3(1.0) * (0.92 + 0.08 * s), cl * 0.75);
         } else c = uHorizon;
+        // under water there is no sky: deep water all around, lighter towards the surface, dark below
+        if (uUnder > 0.0) {
+          vec3 w = mix(uUnderCol * 0.18, uUnderCol * 1.25, smoothstep(-0.7, 0.75, d.y));
+          w += uUnderCol * 0.6 * pow(max(dot(d, uSun), 0.0), 6.0) * smoothstep(0.0, 0.6, d.y);
+          c = mix(c, w, uUnder);
+        }
         gl_FragColor = vec4(c, 1.0);
         #include <colorspace_fragment>
       }`,
@@ -281,6 +288,13 @@ export function setOceanDetail(level) {
   ocean.geometry = oceanGeometry(DETAIL[level] || 320);
 }
 export function setFogDensity(d) { if (uniforms) uniforms.uFogDen.value = d; }
+// under water the sky dome turns into deep water (k = 0 above the surface, 1 below)
+export function setSkyUnderwater(k, color) {
+  if (!sky) return;
+  const u = sky.material.uniforms;
+  u.uUnder.value = k;
+  if (color) u.uUnderCol.value.copy(color);
+}
 
 export function updateOcean(camera) {
   if (!ocean) return;

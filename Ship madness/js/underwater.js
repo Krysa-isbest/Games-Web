@@ -7,6 +7,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { G } from './state.js';
 import { FX } from './fx.js';
+import { setSkyUnderwater } from './ocean.js';
 
 const Shader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uDark: { value: 0 }, uRays: { value: 0 }, uMurk: { value: 0 }, uTint: { value: new THREE.Color() } },
@@ -61,6 +62,7 @@ export function setUnderwaterPixelRatio(r) { composer?.setPixelRatio(r); }
 export function renderWorld(renderer, scene, camera, kind, depth, airFog) {
   if (!kind) {
     scene.fog = airFog;
+    setSkyUnderwater(0);
     if (motes) motes.visible = false;
     renderer.render(scene, camera);
     return;
@@ -70,6 +72,7 @@ export function renderWorld(renderer, scene, camera, kind, depth, airFog) {
   const fog = sea ? seaFog : hullFog;
   if (sea) { fog.color.setRGB(0.06, 0.29, 0.34).lerp(new THREE.Color(0.01, 0.07, 0.1), Math.min(1, depth / 30)); fog.density = 0.045 + depth * 0.0015; }
   scene.fog = fog;
+  setSkyUnderwater(1, fog.color);      // no sky down here: blue water in every direction
   const u = pass.uniforms;
   u.uTime.value = G.t;
   u.uTint.value.copy(sea ? SEA_TINT : HULL_TINT);

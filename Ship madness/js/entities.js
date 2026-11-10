@@ -129,7 +129,11 @@ export function setBucketAmount(it, amount) {
 }
 
 export function updateItems(dt) {
-  if (isGuest()) return;      // positions come from the host
+  if (isGuest()) {            // positions come from the host: things in the sea glide to them
+    const k = 1 - Math.exp(-dt * 10);
+    for (const it of G.items) if (!it.holder && !it.ship && it.wp && it.mesh.parent === G.scene) it.mesh.position.lerp(it.wp, k);
+    return;
+  }
   for (const it of G.items) {
     if (it.holder) continue;
     if (it.ship && (it.ship.sunk || it.ship.gone)) { it.wp = it.ship.toWorld(it.lp.clone()); it.ship = null; it.lp = null; placeMesh(it); }
@@ -261,15 +265,15 @@ function toWorldState(c, state) {
 export function hookCrate(c, ship) { toWorldState(c, 'hook'); c.hookShip = ship; c.chute = false; c.mesh.userData.chute.visible = false; }
 export function releaseCrate(c) { c.state = 'fall'; c.vy = 0; c.hookShip = null; }
 // guests: put a crate where the host says it is
+// (the mesh glides there in updateCrates)
 export function placeCrate(c, state, ship, p) {
   if (state === 'deck' && ship) {
-    if (c.mesh.parent !== ship.group) { c.mesh.parent?.remove(c.mesh); ship.group.add(c.mesh); }
-    c.ship = ship; c.lp = (c.lp || new THREE.Vector3()).copy(p);
-    c.mesh.position.lerp(c.lp, 0.5);
+    c.lp = (c.lp || new THREE.Vector3()).copy(p);
+    if (c.mesh.parent !== ship.group) { c.mesh.parent?.remove(c.mesh); ship.group.add(c.mesh); c.mesh.position.copy(c.lp); }
+    c.ship = ship;
   } else {
     if (c.mesh.parent !== G.scene) { c.mesh.parent?.remove(c.mesh); G.scene.add(c.mesh); c.mesh.position.copy(p); }
     c.ship = null; c.wp.copy(p);
-    c.mesh.position.lerp(c.wp, 0.5);
   }
   if (state !== 'fall') { c.chute = false; c.mesh.userData.chute.visible = false; }
   c.state = state;
@@ -277,7 +281,11 @@ export function placeCrate(c, state, ship, p) {
 
 export function updateCrates(dt) {
   for (const c of G.crates) c.mesh.userData.beacon.visible = Math.sin(G.t * 6 + c.id) > 0;
-  if (isGuest()) return;
+  if (isGuest()) {
+    const k = 1 - Math.exp(-dt * 14);
+    for (const c of G.crates) { const t = c.state === 'deck' && c.ship ? c.lp : c.wp; if (t) c.mesh.position.lerp(t, k); }
+    return;
+  }
   for (const c of [...G.crates]) {
     c.age += dt;
     if (c.state === 'fall') {

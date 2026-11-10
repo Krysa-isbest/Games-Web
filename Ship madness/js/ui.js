@@ -55,7 +55,7 @@ const segVal = id => $(id).dataset.value;
 
 export function buildHelp() {
   $('help').innerHTML = `<h3>Controls</h3>
-    <p><b>${kn('forward')}${kn('left')}${kn('back')}${kn('right')}</b> move · <b>${kn('sprint')}</b> sprint · <b>${kn('jump')}</b> jump / swim up · <b>${kn('dive')}</b> dive · walk into a ladder to climb it</p>
+    <p><b>${kn('forward')}${kn('left')}${kn('back')}${kn('right')}</b> move · <b>${kn('sprint')}</b> sprint · <b>${kn('jump')}</b> jump / swim up · <b>${kn('crouch')}</b> crouch / dive deeper · walk into a ladder to climb it</p>
     <p><b>${kn('use')}</b> use (helm, deck gun, crane, planks, items, crates) · <b>${kn('drop')}</b> drop</p>
     <p><b>LMB</b> shoot · <b>RMB</b> aim · <b>${kn('reload')}</b> reload · <b>${kn('slot1')}–${kn('slot4')}</b> weapons · <b>${kn('detonate')}</b> detonate C4</p>
     <p><b>Tools:</b> ${kn('slot5')} bucket · ${kn('slot6')} hammer (one block at a time, free) · ${kn('slot7')} wrench (the engine in the stern hold)</p>

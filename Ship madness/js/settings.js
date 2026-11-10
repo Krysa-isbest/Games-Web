@@ -55,7 +55,7 @@ function controls() {
   const used = {};
   for (const [a, c] of Object.entries(BINDS)) (used[c] ||= []).push(a);
   // keys that are allowed to share (they are used in different situations)
-  const pairs = [['dive', 'crane'], ['jump', 'grab'], ['reload', 'anchor'], ['reload', 'craneUp'], ['anchor', 'craneUp']];
+  const pairs = [['crouch', 'crane'], ['jump', 'grab'], ['reload', 'anchor'], ['reload', 'craneUp'], ['anchor', 'craneUp']];
   const okShare = new Set(pairs.flatMap(([a, b]) => [a + '|' + b, b + '|' + a]));
   const groups = {};
   for (const [a, d] of Object.entries(ACTIONS)) (groups[d.group] ||= []).push(a);
