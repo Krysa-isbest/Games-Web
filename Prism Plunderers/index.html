@@ -128,20 +128,28 @@
 
 <!-- controls -->
 <section id="s-controls" class="screen hidden">
-  <div class="panel">
-    <header class="p-head"><button class="back" data-back aria-label="Back">&lsaquo;</button><h2>Controls</h2><span class="p-sub">Changes are saved right away</span></header>
+  <div class="board"><div class="clip"></div><div class="sheet">
+    <header class="p-head">
+      <button class="back" data-back>&larr; back</button>
+      <div class="p-title"><small>FORM C-3 &middot; FIELD SETTINGS</small><h2>Controls</h2></div>
+      <span class="p-sub">saved as you change it</span>
+    </header>
     <div class="p-body" id="ct-body"></div>
     <footer class="p-foot">
-      <span class="note">Click a key, then press the new one. Esc cancels, Delete clears. A key already in use swaps places.</span>
-      <button class="btn ghost" id="ct-reset">Reset keys</button>
+      <span class="note">click a key, then press the new one. Esc cancels, Delete clears. A key that's taken swaps places.</span>
+      <button class="btn" id="ct-reset">Reset keys</button>
     </footer>
-  </div>
+  </div></div>
 </section>
 
 <!-- save data -->
 <section id="s-save" class="screen hidden">
-  <div class="panel">
-    <header class="p-head"><button class="back" data-back aria-label="Back">&lsaquo;</button><h2>Save data</h2><span class="p-sub">What the game remembers</span></header>
+  <div class="board"><div class="clip"></div><div class="sheet">
+    <header class="p-head">
+      <button class="back" data-back>&larr; back</button>
+      <div class="p-title"><small>FORM S-1 &middot; PLUNDERER RECORD</small><h2>Save data</h2></div>
+      <span class="p-sub">what the game remembers</span>
+    </header>
     <div class="p-body">
       <div class="stats" id="sv-stats"></div>
       <p class="note" id="sv-where"></p>
@@ -158,7 +166,7 @@
       </div>
       <p class="note">Add credits, reload the page, and they should still be here: that is the save system working.</p>
     </div>
-  </div>
+  </div></div>
 </section>
 
 <!-- test range HUD -->
@@ -169,6 +177,7 @@
 </div>
 <div id="pause" class="hidden">
   <div class="pz">
+    <div class="tape"></div>
     <div class="kicker">Test range</div>
     <h2>Paused</h2>
     <button class="btn primary" id="pz-resume">Resume</button>
