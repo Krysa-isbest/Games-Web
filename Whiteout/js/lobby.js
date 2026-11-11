@@ -64,7 +64,7 @@ export function initLobby(h) {
   on('start', m => { G.lobby.opts = m.opts; H.starting(G.lobby); });
   NET.onConn = pid => { if (G.net.role === 'host') send(pid, { t: 'welcome', id: pid }); };
   NET.onDrop = pid => {
-    if (G.net.role === 'guest' && pid === 'p0') { H.toast('Lost the connection to the host.', 'bad'); leave(true); return; }
+    if (G.net.role === 'guest' && pid === 'p0') { H.toast('Lost the connection to the host. ' + (NET.why || 'The host closed it or left the room.'), 'bad'); leave(true); return; }
     const p = G.lobby.players.find(x => x.id === pid);
     G.lobby.players = G.lobby.players.filter(x => x.id !== pid);
     if (p) { chatLine(null, `${p.name} left.`); push(); }

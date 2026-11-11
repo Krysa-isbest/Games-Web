@@ -62,6 +62,17 @@ const niceErr = e => {
   if (t === 'unavailable-id') return 'That room code is taken. Try again.';
   return e?.message || 'Something went wrong with the connection.';
 };
+// why a link closed, so the "lost the connection" message can say it (and the console shows the details)
+function watchLink(dc, who) {
+  dc.on('iceStateChanged', s => {
+    console.info(`[net] ${who}: network path is now "${s}"`);
+    if (s === 'disconnected') NET.why = 'The network path between you dropped out.';
+    if (s === 'failed') NET.why = 'Your computers could not keep a direct link (a router or firewall blocks it). LAN / Tailscale invite codes may work better.';
+    if (s === 'connected' && NET.why === 'The network path between you dropped out.') NET.why = '';
+  });
+  dc.on('error', e => { console.warn(`[net] ${who}: link error`, e); NET.why ||= `Link error: ${e?.type || e?.message || e}.`; });
+  dc.on('close', () => console.info(`[net] ${who}: link closed.${NET.why ? ' Reason: ' + NET.why : ' No reason given (the other side closed it, or left the room).'}`));
+}
 export async function hostPeerJS() {
   await loadPeerJS();
   const code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random() * 32 | 0]).join('');
@@ -74,11 +85,13 @@ export async function hostPeerJS() {
     dc.on('open', () => {
       const pid = freePid();
       if (!pid || G.started) { dc.send(JSON.stringify({ t: 'full', why: G.started ? 'The game already started.' : `The crew is full (${MAX} players).` })); setTimeout(() => dc.close(), 300); return; }
+      watchLink(dc, pid);
       dc.on('data', d => receive(pid, d));
       dc.on('close', () => dropConn(pid));
       addConn(pid, { send: s => dc.send(s), close: () => dc.close() });
     });
   });
+  peer.on('error', e => console.warn('[net] host: peer error', e?.type, e));
   return code;
 }
 export async function joinPeerJS(code) {
@@ -91,8 +104,12 @@ export async function joinPeerJS(code) {
     peer.on('error', e => rej(new Error(niceErr(e))));
     setTimeout(() => rej(new Error('Timed out. Check the code.')), 15000);
   });
-  Object.assign(NET, { peer, mode: 'peerjs', code: code.toUpperCase() });
+  Object.assign(NET, { peer, mode: 'peerjs', code: code.toUpperCase(), why: '' });
   G.net.role = 'guest';
+  // the room server link can blip; the game link to the host doesn't need it, but stay registered (the host does the same)
+  peer.on('disconnected', () => { console.info('[net] guest: lost the room server, reconnecting'); try { peer.reconnect(); } catch { /* gone */ } });
+  peer.on('error', e => { console.warn('[net] guest: peer error', e?.type, e); if (e?.type === 'network' || e?.type === 'socket-error') return; NET.why ||= niceErr(e); });
+  watchLink(dc, 'host');
   dc.on('data', d => receive('p0', d));
   dc.on('close', () => dropConn('p0'));
   addConn('p0', { send: s => dc.send(s), close: () => dc.close() });
@@ -170,6 +187,6 @@ export function leaveNet() {
   for (const c of NET.conns.values()) try { c.close(); } catch { /* closed */ }
   NET.conns.clear();
   try { NET.peer?.destroy?.(); } catch { /* gone */ }
-  Object.assign(NET, { mode: null, peer: null, pending: null, code: '' });
+  Object.assign(NET, { mode: null, peer: null, pending: null, code: '', why: '' });
   G.net.role = 'solo'; G.net.id = 'p0'; G.started = false;
 }
