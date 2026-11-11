@@ -59,7 +59,7 @@ function renderKeys() {
 
 async function listen(action, btn) {
   btn.classList.add('listening');
-  btn.textContent = 'press a key';
+  btn.textContent = 'Press a key';
   uiSfx.click();
   const r = await capture(action);
   if (!r) { renderKeys(); return; }                        // cancelled (a changed binding redraws by itself)

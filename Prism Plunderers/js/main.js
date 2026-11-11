@@ -34,9 +34,7 @@ Scenes.add('menu', () => import('./scenes/menu.js').then(m => m.default()));
 Scenes.add('test', () => import('./scenes/test.js').then(m => m.default()));
 
 $('ver').textContent = `${VERSION} · ${BUILD}`;
-$('mi-test').onclick = () => Scenes.go('test');
-
-initMainMenu();
+initMainMenu({ play: () => Scenes.go('test') });          // Play opens the test range until raids exist
 
 // sound starts with the first click or key press (browser rule), then hover and click blips on every button
 const wake = () => Sound.init();
@@ -48,7 +46,7 @@ document.addEventListener('pointerover', e => {
   if (b && b !== lastHover) uiSfx.hover();
   lastHover = b;
 });
-document.addEventListener('click', e => { if (e.target.closest?.('.m-item, .btn')) uiSfx.click(); });
+document.addEventListener('click', e => { if (e.target.closest?.('.btn, .play, .dest, .bb-btn, .slot, .sq-row, .tb-me')) uiSfx.click(); });
 
 bus.on('save:error', () => UI.toast('Could not save: the browser storage is full or blocked.', 'bad'));
 bus.on('scene:error', () => UI.toast('That could not be loaded. Check your internet connection and try again.', 'bad'));

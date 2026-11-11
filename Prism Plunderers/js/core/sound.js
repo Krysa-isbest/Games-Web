@@ -63,12 +63,12 @@ Sound.noise = (dur, { freq = 2000, q = 1, vol = 0.1, filter = 'bandpass', to = 0
   src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
 };
 
-// The menu is made of paper, tape and spray paint, so it sounds like that too.
+// Short, dry interface sounds: a soft tick on hover, a click with a little body, a whoosh when the menu opens.
 export const uiSfx = {
-  hover: () => Sound.noise(0.06, { freq: 3200, q: 3, vol: 0.05, to: 2200 }),                          // a marker scratch
-  click: () => { Sound.tone(150, 0.12, { vol: 0.28, to: 55 }); Sound.noise(0.05, { freq: 1200, q: 1, vol: 0.1 }); },   // a stamp
-  back: () => { Sound.tone(110, 0.1, { vol: 0.2, to: 50 }); Sound.noise(0.08, { freq: 700, q: 1, vol: 0.07 }); },
-  ok: () => { Sound.tone(180, 0.1, { vol: 0.22, to: 70 }); Sound.noise(0.18, { freq: 5000, filter: 'highpass', vol: 0.05 }); },
-  spray: () => Sound.noise(0.55, { freq: 6500, filter: 'highpass', vol: 0.09, to: 4200 }),            // a spray can hiss
+  hover: () => Sound.noise(0.03, { freq: 4200, q: 2, vol: 0.035 }),
+  click: () => { Sound.noise(0.04, { freq: 2600, q: 1.2, vol: 0.09 }); Sound.tone(240, 0.08, { vol: 0.16, to: 120 }); },
+  back: () => { Sound.noise(0.04, { freq: 1600, q: 1.2, vol: 0.07 }); Sound.tone(180, 0.08, { vol: 0.12, to: 90 }); },
+  ok: () => { Sound.tone(520, 0.08, { type: 'triangle', vol: 0.1 }); Sound.tone(780, 0.12, { type: 'triangle', vol: 0.1, delay: 0.07 }); },
+  whoosh: () => { Sound.noise(0.7, { freq: 300, q: 0.8, vol: 0.12, to: 2400 }); Sound.tone(70, 0.6, { vol: 0.18, to: 45 }); },
   error: () => Sound.tone(180, 0.16, { type: 'sawtooth', vol: 0.09, to: 120 }),
 };

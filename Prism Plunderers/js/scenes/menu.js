@@ -5,13 +5,14 @@ import { Engine, disposeTree, fitCamera } from '../core/engine.js';
 import { UI } from '../ui/screens.js';
 import { rng, damp } from '../core/util.js';
 
-// a soft round glow, made from numbers so it needs no canvas
-function glowTexture(size = 64) {
+// a soft round glow, made from numbers so it needs no canvas. gray = true puts the falloff in the colour too,
+// so it also works as an alphaMap (the contact shadow).
+function glowTexture(size = 64, gray = false) {
   const d = new Uint8Array(size * size * 4), h = size / 2;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const r = Math.hypot(x + 0.5 - h, y + 0.5 - h) / h, a = Math.max(0, 1 - r);
+    const r = Math.hypot(x + 0.5 - h, y + 0.5 - h) / h, a = Math.max(0, 1 - r), v = Math.round(255 * a * a * a);
     const i = (y * size + x) * 4;
-    d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(255 * a * a * a);
+    d[i] = d[i + 1] = d[i + 2] = gray ? v : 255; d[i + 3] = v;
   }
   const t = new THREE.DataTexture(d, size, size);
   t.needsUpdate = true;
@@ -59,11 +60,64 @@ function makeFink(tex) {
   return g;
 }
 
+// A placeholder raider for the lobby, built from simple shapes (about 1.8 m). Part 2 (the player) replaces it
+// with the real character. Faces +z (the camera). userData: { upper, head } for the idle animation.
+function makeRaider(shadowTex) {
+  const std = (color, rough = 0.8, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+  const suit = std(0x8f8a80), dark = std(0x2a2a2e, 0.7), vest = std(0x4b4f44, 0.85), helm = std(0xdcd8d0, 0.42);
+  const acc = new THREE.MeshStandardMaterial({ color: 0xffb224, emissive: 0xff8a00, emissiveIntensity: 0.25, roughness: 0.5 });
+  const visor = new THREE.MeshStandardMaterial({ color: 0x173634, roughness: 0.1, metalness: 0.9, emissive: 0x0b2b2a, emissiveIntensity: 0.6 });
+  const root = new THREE.Group(), upper = new THREE.Group(), head = new THREE.Group();
+  const add = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.rotation.set(rx, ry, rz);
+    parent.add(m);
+    return m;
+  };
+  for (const s of [-1, 1]) {
+    add(root, new THREE.BoxGeometry(0.14, 0.12, 0.27), dark, s * 0.11, 0.06, 0.03);                       // boots
+    add(root, new THREE.CylinderGeometry(0.075, 0.068, 0.36, 10), dark, s * 0.11, 0.25, 0.01);           // boot shafts
+    add(root, new THREE.CylinderGeometry(0.095, 0.078, 0.5, 10), suit, s * 0.11, 0.66, 0, 0, 0, s * 0.03);  // legs
+    add(root, new THREE.BoxGeometry(0.06, 0.13, 0.12), dark, s * 0.2, 0.7, 0.02);                        // thigh pouches
+  }
+  root.add(upper);
+  upper.position.y = 0.9;                                    // the upper body breathes around the hips
+  add(upper, new THREE.BoxGeometry(0.38, 0.12, 0.23), dark, 0, 0.03, 0);                                 // belt
+  for (const x of [-0.12, 0, 0.12]) add(upper, new THREE.BoxGeometry(0.09, 0.1, 0.06), vest, x, 0.02, 0.13);
+  add(upper, new THREE.CylinderGeometry(0.2, 0.17, 0.5, 12), suit, 0, 0.32, 0).scale.z = 0.7;           // torso
+  add(upper, new THREE.BoxGeometry(0.4, 0.34, 0.28), vest, 0, 0.34, 0.005);                              // vest
+  add(upper, new THREE.BoxGeometry(0.03, 0.03, 0.01), acc, 0.1, 0.44, 0.15);                             // status light
+  add(upper, new THREE.BoxGeometry(0.33, 0.44, 0.2), dark, 0, 0.34, -0.23);                              // backpack
+  add(upper, new THREE.CylinderGeometry(0.075, 0.075, 0.36, 10), suit, 0, 0.6, -0.23, 0, 0, Math.PI / 2); // bedroll
+  for (const s of [-1, 1]) {
+    add(upper, new THREE.SphereGeometry(0.085, 10, 8), suit, s * 0.24, 0.53, 0);                          // shoulders
+    add(upper, new THREE.CylinderGeometry(0.058, 0.052, 0.3, 8), suit, s * 0.265, 0.36, 0, 0, 0, s * 0.12);
+    add(upper, new THREE.CylinderGeometry(0.052, 0.046, 0.28, 8), suit, s * 0.295, 0.09, 0.03, 0.12, 0, s * 0.06);
+    add(upper, new THREE.SphereGeometry(0.058, 8, 6), dark, s * 0.305, -0.07, 0.05);                      // gloves
+  }
+  add(upper, new THREE.BoxGeometry(0.02, 0.28, 0.118), acc, 0.32, 0.37, 0, 0, 0, 0.12);                  // the stripe on the left arm
+  add(upper, new THREE.CylinderGeometry(0.06, 0.065, 0.08, 10), dark, 0, 0.6, 0);                        // neck
+  upper.add(head);
+  head.position.y = 0.73;
+  add(head, new THREE.SphereGeometry(0.165, 16, 12), suit, 0, 0.01, -0.055).scale.set(1, 1.05, 1);      // hood
+  add(head, new THREE.SphereGeometry(0.14, 18, 14), helm, 0, 0.01, 0.01);                               // helmet
+  add(head, new THREE.SphereGeometry(0.146, 24, 10, Math.PI / 2 - 0.95, 1.9, 1.12, 0.52), visor, 0, 0.01, 0.012);
+  add(head, new THREE.CylinderGeometry(0.045, 0.055, 0.07, 10), dark, 0, -0.1, 0.11, Math.PI / 2.4);     // respirator
+  add(head, new THREE.CylinderGeometry(0.025, 0.025, 0.06, 8), dark, 0.14, 0.06, 0.03, 0, 0, Math.PI / 2); // side lamp
+  add(head, new THREE.CircleGeometry(0.02, 10), new THREE.MeshBasicMaterial({ color: 0xfff1c9 }), 0.171, 0.06, 0.03, 0, Math.PI / 2, 0);
+  // a soft contact shadow under the feet
+  const shadow = add(root, new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, opacity: 0.7, depthWrite: false }), 0, 0.012, 0, -Math.PI / 2);
+  shadow.renderOrder = -1;
+  root.userData = { upper, head };
+  return root;
+}
+
 export default function createMenu() {
   const scene = new THREE.Scene();
   const HORIZON = 0x6e4660;
   scene.fog = new THREE.FogExp2(HORIZON, 0.011);
   const camera = new THREE.PerspectiveCamera(42, Engine.w / Engine.h, 0.1, 600);
+  const RZ = 2;                               // where the raider stands
   const tex = glowTexture();
   const R = rng(3000);
 
@@ -140,6 +194,7 @@ export default function createMenu() {
     const slab = R.chance(0.4);
     s.set(slab ? R.range(2, 6) : R.range(0.4, 2), slab ? R.range(0.25, 0.6) : R.range(0.3, 1.6), slab ? R.range(1.5, 4) : R.range(0.4, 2));
     p.set(R.range(-14, 14), s.y / 2 - 0.1, 4 - R() * 150);
+    if (Math.abs(p.x) < 3.5 && p.z > -9) p.x += p.x < 0 ? -4 : 4;      // keep the space around the raider clear
     eu.set(R.range(-0.3, 0.3), R() * Math.PI, R.range(-0.3, 0.3));
     c.setHSL(0.06, 0.08, 0.16 + R() * 0.14);
   }, concrete);
@@ -181,8 +236,23 @@ export default function createMenu() {
     scene.add(s); drones.push(s);
   }
 
-  // ---------- the Fink ----------
+  // ---------- your raider, centre stage, lit warm from the front ----------
+  const shadowTex = glowTexture(64, true);
+  const raider = makeRaider(shadowTex);
+  raider.position.set(0, 0, RZ);
+  raider.rotation.y = -0.22;
+  scene.add(raider);
+  const key = new THREE.DirectionalLight(0xffe2c4, 2.2);
+  key.position.set(-2.5, 3.5, RZ + 5);
+  key.target = raider;
+  scene.add(key);
+  const rim = new THREE.PointLight(0xa36bff, 5, 6, 1.5);
+  rim.position.set(1.3, 2.2, RZ - 1.4);
+  scene.add(rim);
+
+  // ---------- the Fink, behind your raider ----------
   const fink = makeFink(tex);
+  fink.scale.setScalar(0.8);
   scene.add(fink);
   const scanRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), new THREE.MeshBasicMaterial({ color: 0xc49bff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
   scanRing.rotation.x = -Math.PI / 2;
@@ -196,7 +266,7 @@ export default function createMenu() {
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xd9b9a0, size: 0.06, transparent: true, opacity: 0.5, depthWrite: false }));
   scene.add(dust);
 
-  let t = 0, mx = 0, my = 0, cx = 0, cy = 0, shift = 2.4;
+  let t = 0, mx = 0, my = 0, cx = 0, cy = 0, look = 0;
   const onMove = e => { mx = e.clientX / innerWidth - 0.5; my = e.clientY / innerHeight - 0.5; };
   const tmp = new THREE.Vector3();
 
@@ -210,12 +280,20 @@ export default function createMenu() {
     exit() {
       removeEventListener('pointermove', onMove);
       disposeTree(scene);
-      tex.dispose();
+      tex.dispose(); shadowTex.dispose();
     },
     frame(dt) {
       t += dt;
-      // the Fink bobs, turns, and sweeps the street
-      fink.position.set(shift, 3.1 + Math.sin(t * 0.9) * 0.16, 1.5);
+      // your raider breathes, shifts their weight and glances towards the mouse now and then
+      const ru = raider.userData;
+      ru.upper.scale.set(1, 1 + Math.sin(t * 1.6) * 0.008, 1 + Math.sin(t * 1.6) * 0.012);
+      ru.upper.rotation.z = Math.sin(t * 0.4) * 0.015;
+      raider.rotation.y = -0.22 + Math.sin(t * 0.23) * 0.05;
+      look = damp(look, mx * 0.9 + Math.sin(t * 0.31) * 0.15, 2, dt);
+      ru.head.rotation.set(Math.sin(t * 0.5) * 0.03 - my * 0.2, look + 0.18, 0);
+
+      // the Fink bobs, turns, and sweeps the street behind them
+      fink.position.set(1.8, 2.4 + Math.sin(t * 0.9) * 0.16, RZ - 4.2);
       fink.rotation.y = Math.sin(t * 0.25) * 0.6;
       fink.rotation.z = Math.sin(t * 0.6) * 0.05;
       const u = fink.userData, f = 0.85 + Math.sin(t * 31) * 0.08 + Math.sin(t * 17) * 0.07;
@@ -243,13 +321,11 @@ export default function createMenu() {
       dust.position.x = ((t * 1.4) % 20) - 10;
       dust.position.y = Math.sin(t * 0.3) * 0.4;
 
+      // the camera frames the raider head to boots, and drifts a little with the mouse
       cx = damp(cx, mx, 2.5, dt); cy = damp(cy, my, 2.5, dt);
-      camera.position.set(cx * 1.4, 2.2 - cy * 0.6 + Math.sin(t * 0.2) * 0.08, 10.5);
-      camera.lookAt(shift * 0.35 + cx * 0.5, 3.4, -20);
+      camera.position.set(cx * 0.35, 1.05 - cy * 0.12 + Math.sin(t * 0.2) * 0.02, RZ + 3.5);
+      camera.lookAt(cx * 0.1, 0.98, RZ);
     },
-    resize(w, h) {
-      fitCamera(camera, w, h);
-      shift = w / h > 1.25 ? 2.6 : 0;          // beside the menu on a wide window, centred on a narrow one
-    },
+    resize(w, h) { fitCamera(camera, w, h); },
   };
 }

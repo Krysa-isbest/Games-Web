@@ -38,7 +38,10 @@ export function toggle(key, onChange) {
 export function slider(key, { min, max, step, fmt = v => String(v) }, onChange) {
   const box = el('div', 'slider'), inp = el('input'), out = el('span', 'val', esc(fmt(S[key])));
   inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = S[key];
-  inp.oninput = () => { commit(key, +inp.value, onChange); out.textContent = fmt(S[key]); };
+  // --p = how full the bar is, for browsers that cannot colour the filled part by themselves
+  const fill = () => inp.style.setProperty('--p', ((S[key] - min) / (max - min) * 100).toFixed(1) + '%');
+  inp.oninput = () => { commit(key, +inp.value, onChange); out.textContent = fmt(S[key]); fill(); };
+  fill();
   box.append(inp, out);
   return box;
 }

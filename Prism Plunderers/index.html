@@ -6,12 +6,7 @@
 <title>Prism Plunderers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- one link per family: if one ever fails, the others still load -->
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -23,132 +18,167 @@
 <body data-mode="menu" data-ui="">
 <canvas id="view"></canvas>
 <div id="vignette"></div>
-<div id="grain"></div>
 <div id="fade" class="on"></div>
 
-<!-- SVG filters: spray paint, rough edges, rubber stamp -->
+<!-- icons, drawn once and reused with <use> -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <filter id="f-paint" x="-5%" y="-10%" width="110%" height="120%">
-    <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="7" result="n"/>
-    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 1.75" result="holes"/>
-    <feComposite in="SourceGraphic" in2="holes" operator="in" result="eroded"/>
-    <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="2" result="w"/>
-    <feDisplacementMap in="eroded" in2="w" scale="3.5" xChannelSelector="R" yChannelSelector="G"/>
-  </filter>
-  <filter id="f-rough" x="-10%" y="-10%" width="120%" height="120%">
-    <feTurbulence type="fractalNoise" baseFrequency=".06" numOctaves="3" seed="4" result="w"/>
-    <feDisplacementMap in="SourceGraphic" in2="w" scale="5" xChannelSelector="R" yChannelSelector="G"/>
-  </filter>
-  <filter id="f-mist" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4"/></filter>
-  <filter id="f-stamp" x="-10%" y="-10%" width="120%" height="120%">
-    <feTurbulence type="fractalNoise" baseFrequency=".6" numOctaves="3" seed="11" result="n"/>
-    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -3 2.1" result="holes"/>
-    <feComposite in="SourceGraphic" in2="holes" operator="in"/>
-  </filter>
+  <symbol id="i-logo" viewBox="0 0 48 44"><path d="M24 2 46 42H2Z" fill="#fff"/><path d="M24 19 33 36H15Z" fill="#0b0c0f"/><path d="M6 42 30 2h7L13 42Z" fill="var(--acc)"/></symbol>
+  <symbol id="i-cr" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 5.5v13M8.5 9h7M8.5 15h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-sp" viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.6 5.7 21.1l1.5-7L2 9.3l7-.8z" fill="currentColor"/></symbol>
+  <symbol id="i-prism" viewBox="0 0 24 24"><path d="M12 2 22 20H2Z" fill="currentColor"/><path d="M12 10 16.5 18h-9Z" fill="#0b0c0f"/></symbol>
+  <symbol id="i-quest" viewBox="0 0 24 24"><path d="M12 1 23 12 12 23 1 12Z" fill="#141518"/><path d="M12 5 19 12 12 19 5 12Z" fill="var(--acc)"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 10H5z" fill="currentColor"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 8.5A3.5 3.5 0 1 0 12 15.5 3.5 3.5 0 0 0 12 8.5Zm8.4 5.3-.2-3.6 2-1.6-2-3.4-2.4.9-3-1.8L14.4 2h-4l-.4 2.3-3 1.8-2.4-.9-2 3.4 2 1.6-.2 3.6-1.8 1.6 2 3.4 2.4-.9 3 1.8.4 2.3h4l.4-2.3 3-1.8 2.4.9 2-3.4z" fill="currentColor"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4" fill="currentColor"/><path d="M2.5 20c0-3.8 2.9-6.3 6.5-6.3s6.5 2.5 6.5 6.3z" fill="currentColor"/><circle cx="17" cy="9" r="2.7" fill="currentColor"/><path d="M16.2 13.6c3 .1 5.3 2.3 5.3 5.6h-4.6c0-2.2-.3-3.9-.7-5.6z" fill="currentColor"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="1.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V3M5 4h12l-2.5 4L17 12H5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
 </svg>
 
-<!-- splash: two typed lines, then the title is sprayed on -->
+<!-- splash: two typed lines, then the title -->
 <div id="splash">
   <div class="sp-in">
     <p class="sp-type" id="sp-type"></p>
-    <h1 class="logotype sp-title"><span class="l1">PRISM</span><span class="l2">PLUNDERERS</span></h1>
-    <div class="sp-go">click anywhere
-      <svg viewBox="0 0 40 24" aria-hidden="true"><path d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
-    </div>
+    <div class="sp-title"><svg class="sp-logo"><use href="#i-logo"/></svg><h1><span>PRISM</span> PLUNDERERS</h1></div>
+    <div class="sp-go">Press any key</div>
   </div>
 </div>
 
-<!-- main menu -->
-<section id="s-main" class="screen hidden">
-  <div class="m-left">
-    <div class="mark">
-      <svg class="sigil" viewBox="0 0 120 112" aria-hidden="true">
-        <path class="tri" d="M60 6 112 100H8Z"/>
-        <path class="tri-cut" d="M60 50 82 90H38Z"/>
-        <g class="x-mist" filter="url(#f-mist)"><path d="M16 20Q62 56 104 98"/><path d="M102 16Q58 62 20 100"/></g>
-        <g class="x-paint" filter="url(#f-rough)"><path d="M16 20Q62 56 104 98"/><path d="M102 16Q58 62 20 100"/><path class="drip" d="M21 100v9"/><path class="drip" d="M60 60v12"/><path class="drip" d="M104 98v6"/></g>
-      </svg>
-      <div>
-        <h1 class="logotype"><span class="l1">PRISM</span><span class="l2">PLUNDERERS</span></h1>
-        <div class="byline">scavenge. survive. get out.</div>
-      </div>
-    </div>
-    <nav class="m-menu">
-      <button class="m-item" id="mi-test">
-        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
-        <span class="m-tw"><span class="m-t">Test range</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 7C50 3 90 10 140 6s70-2 97 2"/></svg></span>
-        <span class="m-note">fly around, try every key</span>
-      </button>
-      <button class="m-item" data-go="controls">
-        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
-        <span class="m-tw"><span class="m-t">Controls</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 6c40 4 80-2 130 2s80 1 104-3"/></svg></span>
-        <span class="m-note">your keys, your rules</span>
-      </button>
-      <button class="m-item" data-go="save">
-        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
-        <span class="m-tw"><span class="m-t">Save data</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 8C60 4 100 9 150 5s60 0 86 3"/></svg></span>
-        <span class="m-note">credits, stash, backups</span>
-      </button>
+<!-- the lobby (main menu) -->
+<section id="s-main" class="screen hidden" data-tab="play">
+  <header class="topbar">
+    <svg class="tb-logo"><use href="#i-logo"/></svg>
+    <nav class="tabs" id="tabs">
+      <button data-tab="play" class="on">Play</button>
+      <button data-tab="workshop">Workshop</button>
+      <button data-tab="raider">Raider</button>
+      <button data-tab="skills">Skills</button>
+      <button data-tab="trader">Trader</button>
     </nav>
-  </div>
-
-  <!-- the player's paper ID tag, hanging on a string -->
-  <div class="tag-wrap">
-    <div class="tag-string"></div>
-    <div class="tag">
-      <div class="tag-hole"></div>
-      <div class="tag-h">PLUNDERER ID</div>
-      <div class="tag-row"><span>Name</span><b id="tg-name"></b></div>
-      <div class="tag-row"><span>Scrap cr</span><b id="tg-cr"></b></div>
-      <div class="tag-row"><span>Raids</span><b id="tg-raids"></b></div>
-      <div class="tag-row"><span>Got out</span><b id="tg-out"></b></div>
-      <div class="tag-stamp" id="tg-stamp"></div>
+    <div class="tb-right">
+      <span class="tb-threat" title="Prism activity in The Ruins: high"><svg><use href="#i-prism"/></svg></span>
+      <span class="tb-cur" title="Scrap Credits"><svg><use href="#i-cr"/></svg><b id="tb-cr">0</b></span>
+      <span class="tb-cur sp" title="Skill points"><svg><use href="#i-sp"/></svg><b id="tb-sp">0</b></span>
+      <button class="tb-me" id="tb-me" title="Your record and save data"><span id="tb-init">P</span></button>
     </div>
+  </header>
+
+  <div class="nameplate">
+    <div class="np-name"><svg><use href="#i-crown"/></svg><span id="np-name">Plunderer</span></div>
+    <div class="np-loc">At the edge of The Ruins</div>
   </div>
 
-  <!-- a note taped over the scene -->
-  <div class="scrap">
-    <div class="tape"></div>
-    <div class="scrap-h">next up</div>
-    <ul>
-      <li>raids in the ruins</li>
-      <li>the workshop</li>
-      <li>skill tree</li>
-      <li>co-op, 4 of us</li>
-    </ul>
-  </div>
+  <!-- PLAY tab -->
+  <aside class="col-l page" data-page="play">
+    <article class="event">
+      <svg class="ev-art" viewBox="0 0 416 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="evs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#140f1d"/><stop offset="1" stop-color="#4d2f37"/></linearGradient>
+          <radialGradient id="evg" cx=".74" cy=".5" r=".45"><stop offset="0" stop-color="#a36bff" stop-opacity=".75"/><stop offset="1" stop-color="#a36bff" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="416" height="170" fill="url(#evs)"/><rect width="416" height="170" fill="url(#evg)"/>
+        <g fill="#0e0a10"><path d="M0 170v-64h22v-22h16v22h14v-40h20v40h12l6-12v76z"/><path d="M110 170v-48h18l6-10h22v58z"/><path d="M360 170v-70h14v-16h20v20l22 8v58z"/></g>
+        <g transform="translate(300 74)">
+          <path d="M0-58 26 4 0 14-26 4z" fill="#f2eff8"/><path d="M0-58 26 4 0 14z" fill="#c8c1db"/>
+          <path d="M-26 4 0 14 26 4 13 24H-13z" fill="#d8d2e8"/><path d="M0 14 26 4 13 24z" fill="#a49cbd"/>
+          <path d="M-7 28h14l-7 22z" fill="#e8dcff"/><circle cy="40" r="16" fill="#b98aff" opacity=".35"/>
+        </g>
+        <path d="M0 150q80-8 160 0t256-4v24H0z" fill="#1a1116"/>
+      </svg>
+      <div class="ev-body">
+        <span class="chip">Prototype</span>
+        <h3>Road to the first raid</h3>
+        <div class="steps" id="ev-steps"></div>
+        <p class="ev-note" id="ev-note"></p>
+      </div>
+    </article>
+    <section class="quests">
+      <header><svg><use href="#i-quest"/></svg>Quests</header>
+      <ul>
+        <li><svg><use href="#i-flag"/></svg><div><b>First Drop</b><small>Drop into The Ruins and get out alive</small></div><em>Soon</em></li>
+        <li><svg><use href="#i-flag"/></svg><div><b>Snitches Get Stitches</b><small>Bring down a Fink before it calls for help</small></div><em>Soon</em></li>
+        <li><svg><use href="#i-flag"/></svg><div><b>Scrap Run</b><small>Extract with 500 cr of valuables</small></div><em>Soon</em></li>
+      </ul>
+      <footer>Quests open with the first raids</footer>
+    </section>
+  </aside>
 
-  <!-- intercepted radio chatter -->
-  <div class="radio">
-    <div class="rd-l"><i class="rd-led"></i>FIELD RADIO <span>CH 03</span></div>
-    <div class="rd-tick"><span id="rd-text"></span></div>
-    <div class="rd-r" id="ver"></div>
-  </div>
+  <aside class="col-r page" data-page="play">
+    <article class="map">
+      <header><h3>The Ruins</h3><span class="tag-lock"><svg><use href="#i-lock"/></svg>Not open yet</span></header>
+      <svg class="map-art" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="mps" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1430"/><stop offset=".55" stop-color="#6b3c4f"/><stop offset=".8" stop-color="#d0805a"/><stop offset="1" stop-color="#e9a36a"/></linearGradient>
+          <linearGradient id="mpb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b98aff" stop-opacity="0"/><stop offset="1" stop-color="#b98aff" stop-opacity=".75"/></linearGradient>
+        </defs>
+        <rect width="400" height="250" fill="url(#mps)"/>
+        <circle cx="300" cy="196" r="70" fill="#ffc28a" opacity=".25"/>
+        <rect x="104" y="0" width="10" height="160" fill="url(#mpb)"/>
+        <path d="M109 92 136 160H82Z" fill="#120b17"/><path d="M109 92 136 160" stroke="#b98aff" stroke-width="1.5"/><path d="M109 92 82 160" stroke="#8a5fd0" stroke-width="1"/>
+        <g fill="#3a2432"><path d="M0 250v-90h18v-24h14v30h22v-12h16v96z"/><path d="M150 250v-80h20v-14h14l12 20v74z"/><path d="M230 250v-110l18 6v-10l14 4v110z"/><path d="M300 250v-70h30v-16h12v86z"/><path d="M350 250v-96h22v12h28v84z"/></g>
+        <path d="M256 250 286 130l10 4-16 116z" fill="#2a1924"/>
+        <g fill="#1a1016"><path d="M0 250v-46h40l8-14h30v60z"/><path d="M90 250v-30h50l10 8h40v22z"/><path d="M220 250v-24h60v-10h40l20 34z"/><path d="M330 250v-38h70v38z"/></g>
+        <g fill="#b98aff"><circle cx="196" cy="70" r="2"/><circle cx="252" cy="52" r="1.6"/><circle cx="330" cy="84" r="1.8"/></g>
+      </svg>
+      <dl class="map-info">
+        <div><dt>Size</dt><dd>1.2 km</dd></div>
+        <div><dt>Prism</dt><dd class="hi">High</dd></div>
+        <div><dt>Zones</dt><dd><i class="zr"></i>Red <i class="zy"></i>Yellow</dd></div>
+      </dl>
+    </article>
+
+    <div class="launch">
+      <button class="dest" id="dest"><span><small>Destination</small><b>Test range</b></span><svg><use href="#i-chev"/></svg></button>
+      <div class="squad">
+        <div class="slots" id="slots"></div>
+        <button class="sq-row" id="sq-invite"><span>Invite friends</span><b>Soon</b></button>
+        <p class="sq-note">1 to 4 plunderers · room code or Tailscale invite</p>
+      </div>
+      <button class="play" id="btn-play"><span class="pl-chev"><svg><use href="#i-chev"/></svg></span><span class="pl-t">Play</span></button>
+    </div>
+  </aside>
+
+  <!-- the other tabs, filled in by mainmenu.js -->
+  <section class="tabpage page" id="tabpage"></section>
+
+  <footer class="botbar">
+    <div class="hints">
+      <span class="hint"><kbd>Q</kbd><kbd>E</kbd>Switch tabs</span>
+      <span class="hint"><kbd>Tab</kbd>Raider</span>
+    </div>
+    <div class="bb-right">
+      <button class="bb-btn" id="bb-chat"><kbd>T</kbd>Chat</button>
+      <button class="bb-btn round" id="bb-friends" title="Friends"><svg><use href="#i-people"/></svg><span>0</span></button>
+      <button class="bb-btn round" id="bb-settings" title="Settings"><svg><use href="#i-gear"/></svg></button>
+    </div>
+    <div class="build" id="ver"></div>
+  </footer>
 </section>
 
-<!-- controls -->
+<!-- settings: controls -->
 <section id="s-controls" class="screen hidden">
-  <div class="board"><div class="clip"></div><div class="sheet">
+  <div class="board">
     <header class="p-head">
-      <button class="back" data-back>&larr; back</button>
-      <div class="p-title"><small>FORM C-3 &middot; FIELD SETTINGS</small><h2>Controls</h2></div>
-      <span class="p-sub">saved as you change it</span>
+      <div class="p-title"><small>Settings</small><h2>Controls</h2></div>
+      <span class="p-sub">Changes are saved right away</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
     </header>
     <div class="p-body" id="ct-body"></div>
     <footer class="p-foot">
-      <span class="note">click a key, then press the new one. Esc cancels, Delete clears. A key that's taken swaps places.</span>
+      <span class="note">Click a key, then press the new one. Esc cancels, Delete clears. A key that is already taken swaps places.</span>
       <button class="btn" id="ct-reset">Reset keys</button>
     </footer>
-  </div></div>
+  </div>
 </section>
 
 <!-- save data -->
 <section id="s-save" class="screen hidden">
-  <div class="board"><div class="clip"></div><div class="sheet">
+  <div class="board">
     <header class="p-head">
-      <button class="back" data-back>&larr; back</button>
-      <div class="p-title"><small>FORM S-1 &middot; PLUNDERER RECORD</small><h2>Save data</h2></div>
-      <span class="p-sub">what the game remembers</span>
+      <div class="p-title"><small>Profile</small><h2>Save data</h2></div>
+      <span class="p-sub">What the game remembers</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
     </header>
     <div class="p-body">
       <div class="stats" id="sv-stats"></div>
@@ -156,17 +186,17 @@
       <h3 class="sect">Backup</h3>
       <textarea id="sv-code" rows="4" spellcheck="false" placeholder="A backup code appears here. To restore, paste one and press Restore."></textarea>
       <div class="btn-row">
-        <button class="btn" id="sv-copy">Make a backup code</button>
-        <button class="btn ghost" id="sv-restore">Restore</button>
+        <button class="btn primary" id="sv-copy">Make a backup code</button>
+        <button class="btn" id="sv-restore">Restore</button>
       </div>
       <h3 class="sect">Test tools</h3>
       <div class="btn-row">
-        <button class="btn ghost" id="sv-test">+100 credits</button>
-        <button class="btn ghost danger" id="sv-reset">Erase progress</button>
+        <button class="btn" id="sv-test">+100 credits</button>
+        <button class="btn danger" id="sv-reset">Erase progress</button>
       </div>
       <p class="note">Add credits, reload the page, and they should still be here: that is the save system working.</p>
     </div>
-  </div></div>
+  </div>
 </section>
 
 <!-- test range HUD -->
@@ -177,12 +207,11 @@
 </div>
 <div id="pause" class="hidden">
   <div class="pz">
-    <div class="tape"></div>
-    <div class="kicker">Test range</div>
+    <small>Test range</small>
     <h2>Paused</h2>
     <button class="btn primary" id="pz-resume">Resume</button>
     <button class="btn" id="pz-controls">Controls</button>
-    <button class="btn ghost" id="pz-quit">Back to the menu</button>
+    <button class="btn" id="pz-quit">Back to the lobby</button>
     <p class="note" id="pz-keys"></p>
   </div>
 </div>
