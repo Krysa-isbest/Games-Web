@@ -223,14 +223,18 @@
 
 <script>
 // If the game's code did not start, say why instead of showing a black page.
+function ppFatal(text) { var f = document.getElementById('fatal'); f.textContent = text; f.classList.remove('hidden'); }
+window.addEventListener('error', function (e) {
+  if (window.__ppStarted) return;
+  ppFatal('Prism Plunderers hit an error while starting: ' + (e.message || e.error) + (e.filename ? '  (' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno + ')' : '') +
+    '. If you just uploaded new files, press Ctrl+F5. Otherwise send this message to the developer.');
+});
 setTimeout(function () {
   if (window.__pp) return;
-  var f = document.getElementById('fatal');
-  f.textContent = location.protocol === 'file:'
+  ppFatal(location.protocol === 'file:'
     ? 'Prism Plunderers cannot run from a file opened directly. Open it through a web server (http://...), the same way as the other games.'
-    : 'Prism Plunderers could not start. It loads Three.js from the internet: check your connection and reload the page.';
-  f.classList.remove('hidden');
-}, 4000);
+    : 'Prism Plunderers could not start. It loads Three.js from the internet: check your connection, then press Ctrl+F5.');
+}, 6000);
 </script>
 <script type="module" src="js/main.js"></script>
 </body>

@@ -131,7 +131,7 @@ export default function createMenu() {
         float h = vP.y;
         vec3 c = mix(bot, mid, smoothstep(0.0, 0.18, h));
         c = mix(c, top, smoothstep(0.15, 0.6, h));
-        float s = pow(max(0.0, 1.0 - abs(h - 0.01) * 9.0), 3.0) * smoothstep(0.2, -1.0, vP.z) ;
+        float s = pow(max(0.0, 1.0 - abs(h - 0.01) * 9.0), 3.0) * (1.0 - smoothstep(-1.0, 0.2, vP.z));
         c += sun * s * 0.55;
         gl_FragColor = vec4(c, 1.0);
       }`,

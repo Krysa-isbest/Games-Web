@@ -17,11 +17,11 @@ let tab = 'play', onPlay = () => {};
 
 export function initMainMenu({ play }) {
   onPlay = play;
+  renderSlots();                        // first: renderTop writes your initial into the first slot
+  renderSteps();
+  renderTop();
   UI.onOpen('main', () => { renderTop(); setTab(tab, true); });
   bus.on('save:reset', renderTop);
-  renderTop();
-  renderSteps();
-  renderSlots();
 
   document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   $('btn-play').onclick = () => onPlay();
@@ -43,7 +43,7 @@ function renderTop() {
   $('tb-sp').textContent = P.skills.points;
   $('tb-init').textContent = (P.name[0] || 'P').toUpperCase();
   $('np-name').textContent = P.name;
-  $('slots').querySelector('.me span').textContent = (P.name[0] || 'P').toUpperCase();
+  if (meInit) meInit.textContent = (P.name[0] || 'P').toUpperCase();
 }
 
 // ---------- the "road to the first raid" card ----------
@@ -54,11 +54,23 @@ function renderSteps() {
 }
 
 // ---------- squad: you plus three free slots ----------
+let meInit = null;                      // the letter in your squad slot
 function renderSlots() {
   const box = $('slots');
-  box.innerHTML = '<div class="slot me" title="You, the squad leader"><svg><use href="#i-crown"/></svg><span></span></div>' +
-    '<button class="slot add" title="Invite a friend"><svg><use href="#i-plus"/></svg></button>'.repeat(3);
-  box.querySelectorAll('.add').forEach(b => { b.onclick = () => UI.toast(SOON); });
+  box.innerHTML = '';
+  const me = document.createElement('div');
+  me.className = 'slot me'; me.title = 'You, the squad leader';
+  me.innerHTML = '<svg><use href="#i-crown"/></svg>';
+  meInit = document.createElement('span');
+  me.append(meInit);
+  box.append(me);
+  for (let i = 0; i < 3; i++) {
+    const b = document.createElement('button');
+    b.className = 'slot add'; b.title = 'Invite a friend';
+    b.innerHTML = '<svg><use href="#i-plus"/></svg>';
+    b.onclick = () => UI.toast(SOON);
+    box.append(b);
+  }
 }
 
 // ---------- tabs ----------

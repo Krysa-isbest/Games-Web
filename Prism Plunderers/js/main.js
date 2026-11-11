@@ -34,7 +34,9 @@ Scenes.add('menu', () => import('./scenes/menu.js').then(m => m.default()));
 Scenes.add('test', () => import('./scenes/test.js').then(m => m.default()));
 
 $('ver').textContent = `${VERSION} · ${BUILD}`;
-initMainMenu({ play: () => Scenes.go('test') });          // Play opens the test range until raids exist
+// a broken menu part must never stop the whole game from starting
+try { initMainMenu({ play: () => Scenes.go('test') }); }   // Play opens the test range until raids exist
+catch (e) { console.error(e); setTimeout(() => UI.toast('Part of the menu failed to load: ' + e.message, 'bad'), 1500); }
 
 // sound starts with the first click or key press (browser rule), then hover and click blips on every button
 const wake = () => Sound.init();
@@ -58,6 +60,7 @@ Loop.start({
   frame: (dt, alpha) => { Scenes.frame(dt, alpha); Debug.frame(); },
 });
 Scenes.go('menu');
+window.__ppStarted = true;                             // from here on, errors no longer cover the screen
 
 // handy in the browser console while developing: PP.S, PP.P, PP.Stash.add('scrap', 5) ...
 window.PP = { S, P, Stores, Stash, Credits, Engine, Input, Loop, Scenes, Sound, UI, bus };
