@@ -6,7 +6,12 @@
 <title>Prism Plunderers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- one link per family: if one ever fails, the others still load -->
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -18,50 +23,107 @@
 <body data-mode="menu" data-ui="">
 <canvas id="view"></canvas>
 <div id="vignette"></div>
+<div id="grain"></div>
 <div id="fade" class="on"></div>
 
-<!-- splash: the first click also starts the sound -->
+<!-- SVG filters: spray paint, rough edges, rubber stamp -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="f-paint" x="-5%" y="-10%" width="110%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="7" result="n"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 1.75" result="holes"/>
+    <feComposite in="SourceGraphic" in2="holes" operator="in" result="eroded"/>
+    <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="2" result="w"/>
+    <feDisplacementMap in="eroded" in2="w" scale="3.5" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+  <filter id="f-rough" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".06" numOctaves="3" seed="4" result="w"/>
+    <feDisplacementMap in="SourceGraphic" in2="w" scale="5" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+  <filter id="f-mist" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4"/></filter>
+  <filter id="f-stamp" x="-10%" y="-10%" width="120%" height="120%">
+    <feTurbulence type="fractalNoise" baseFrequency=".6" numOctaves="3" seed="11" result="n"/>
+    <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -3 2.1" result="holes"/>
+    <feComposite in="SourceGraphic" in2="holes" operator="in"/>
+  </filter>
+</svg>
+
+<!-- splash: two typed lines, then the title is sprayed on -->
 <div id="splash">
   <div class="sp-in">
-    <div class="sp-kick">EARTH · YEAR 3000 · PRISM OCCUPATION</div>
-    <svg class="logo big" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 4 96 88H4Z"/><path class="cut" d="M50 40 70 76H30Z"/></svg>
-    <h1 class="sp-title"><span>PRISM</span><b>PLUNDERERS</b></h1>
-    <div class="sp-line"></div>
-    <div class="sp-click">Click to continue</div>
+    <p class="sp-type" id="sp-type"></p>
+    <h1 class="logotype sp-title"><span class="l1">PRISM</span><span class="l2">PLUNDERERS</span></h1>
+    <div class="sp-go">click anywhere
+      <svg viewBox="0 0 40 24" aria-hidden="true"><path d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
+    </div>
   </div>
 </div>
 
 <!-- main menu -->
 <section id="s-main" class="screen hidden">
-  <div class="main-left">
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 4 96 88H4Z"/><path class="cut" d="M50 40 70 76H30Z"/></svg>
+  <div class="m-left">
+    <div class="mark">
+      <svg class="sigil" viewBox="0 0 120 112" aria-hidden="true">
+        <path class="tri" d="M60 6 112 100H8Z"/>
+        <path class="tri-cut" d="M60 50 82 90H38Z"/>
+        <g class="x-mist" filter="url(#f-mist)"><path d="M16 20Q62 56 104 98"/><path d="M102 16Q58 62 20 100"/></g>
+        <g class="x-paint" filter="url(#f-rough)"><path d="M16 20Q62 56 104 98"/><path d="M102 16Q58 62 20 100"/><path class="drip" d="M21 100v9"/><path class="drip" d="M60 60v12"/><path class="drip" d="M104 98v6"/></g>
+      </svg>
       <div>
-        <div class="kicker">PvE extraction shooter · 1-4 players</div>
-        <h1 class="title"><span>PRISM</span><b>PLUNDERERS</b></h1>
+        <h1 class="logotype"><span class="l1">PRISM</span><span class="l2">PLUNDERERS</span></h1>
+        <div class="byline">scavenge. survive. get out.</div>
       </div>
     </div>
-    <nav class="menu">
-      <button class="mi" id="mi-test"><span class="mi-n">01</span><span class="mi-t">Test range</span><span class="mi-d">Fly the foundation build and try your keys</span><span class="mi-go">&rsaquo;</span></button>
-      <button class="mi" data-go="controls"><span class="mi-n">02</span><span class="mi-t">Controls</span><span class="mi-d">Rebind every key, mouse settings</span><span class="mi-go">&rsaquo;</span></button>
-      <button class="mi" data-go="save"><span class="mi-n">03</span><span class="mi-t">Save data</span><span class="mi-d">Credits, stash, backups</span><span class="mi-go">&rsaquo;</span></button>
+    <nav class="m-menu">
+      <button class="m-item" id="mi-test">
+        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
+        <span class="m-tw"><span class="m-t">Test range</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 7C50 3 90 10 140 6s70-2 97 2"/></svg></span>
+        <span class="m-note">fly around, try every key</span>
+      </button>
+      <button class="m-item" data-go="controls">
+        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
+        <span class="m-tw"><span class="m-t">Controls</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 6c40 4 80-2 130 2s80 1 104-3"/></svg></span>
+        <span class="m-note">your keys, your rules</span>
+      </button>
+      <button class="m-item" data-go="save">
+        <svg class="m-arrow" viewBox="0 0 40 24" aria-hidden="true"><path pathLength="1" d="M2 13c10-2 20-1 32-1M26 4c4 4 7 6 10 8-4 3-7 6-10 9"/></svg>
+        <span class="m-tw"><span class="m-t">Save data</span><svg class="m-line" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 8C60 4 100 9 150 5s60 0 86 3"/></svg></span>
+        <span class="m-note">credits, stash, backups</span>
+      </button>
     </nav>
-    <div class="soon">
-      <div class="soon-h">Coming in the next updates</div>
-      <div class="soon-list"><span>Raids</span><span>Workshop</span><span>Skill tree</span><span>Co-op</span></div>
+  </div>
+
+  <!-- the player's paper ID tag, hanging on a string -->
+  <div class="tag-wrap">
+    <div class="tag-string"></div>
+    <div class="tag">
+      <div class="tag-hole"></div>
+      <div class="tag-h">PLUNDERER ID</div>
+      <div class="tag-row"><span>Name</span><b id="tg-name"></b></div>
+      <div class="tag-row"><span>Scrap cr</span><b id="tg-cr"></b></div>
+      <div class="tag-row"><span>Raids</span><b id="tg-raids"></b></div>
+      <div class="tag-row"><span>Got out</span><b id="tg-out"></b></div>
+      <div class="tag-stamp" id="tg-stamp"></div>
     </div>
   </div>
-  <div class="card-me">
-    <div class="me-av" id="me-av"></div>
-    <div class="me-t"><small>Plunderer</small><b id="me-name"></b></div>
-    <div class="me-cr"><small>Scrap Credits</small><b id="me-cr"></b></div>
+
+  <!-- a note taped over the scene -->
+  <div class="scrap">
+    <div class="tape"></div>
+    <div class="scrap-h">next up</div>
+    <ul>
+      <li>raids in the ruins</li>
+      <li>the workshop</li>
+      <li>skill tree</li>
+      <li>co-op, 4 of us</li>
+    </ul>
   </div>
-  <div class="status">
-    <span class="st-dot"></span><span>Sector <b>The Ruins</b></span>
-    <span class="st-sep"></span><span>Prism activity <b class="st-bars"><i></i><i></i><i></i><i class="off"></i></b> <b>High</b></span>
-    <span class="st-sep"></span><span id="st-clock"></span>
+
+  <!-- intercepted radio chatter -->
+  <div class="radio">
+    <div class="rd-l"><i class="rd-led"></i>FIELD RADIO <span>CH 03</span></div>
+    <div class="rd-tick"><span id="rd-text"></span></div>
+    <div class="rd-r" id="ver"></div>
   </div>
-  <div class="corner"><span id="ver"></span></div>
 </section>
 
 <!-- controls -->
@@ -102,7 +164,7 @@
 <!-- test range HUD -->
 <div id="hud" class="hidden">
   <div class="cross"></div>
-  <div class="hud-top"><span class="tag">TEST RANGE</span><span id="hud-hint"></span></div>
+  <div class="hud-top"><span class="tag-label">TEST RANGE</span><span id="hud-hint"></span></div>
   <div class="chips" id="hud-chips"></div>
 </div>
 <div id="pause" class="hidden">
