@@ -147,6 +147,21 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
   {
+    file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
+    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: the foundation build, with a test range to try the controls. Online co-op for up to 4 comes in a later update.',
+    mp: null, lang: 'English', genre: 'Extraction shooter · PvE',
+    updating: true, changelog: [
+      { version: '0.1', date: '2026-11-11', notes: [
+        'The foundation build: the main menu, with a Fink (a Prism scout robot) hovering in the dark.',
+        'A test range: fly a free camera over a block city and try every key. Each of the 21 actions lights up on screen while you hold its key.',
+        'Controls: rebind every key and mouse button (a key already in use swaps places), mouse sensitivity, invert look, and hold or toggle for sprint, crouch and aim.',
+        'Your progress is saved in the browser, and a backup code moves it to another browser or computer.',
+        'F3 shows the debug overlay with FPS and frame times.',
+        'The player, the Prism robots, The Ruins map, the lobby, the workshop and online co-op come next.'
+      ] }
+    ]
+  },
+  {
     file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
     desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening cutscene and the first walk around the island, with the cold, day and night, storms and the ruined shack. Fire, wood and the axe come next.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
@@ -506,6 +521,20 @@ const GAMES = [
 
 /* Atmospheric card art: gradient sky + layered silhouettes */
 const ART = {
+  prism: `
+    <defs><linearGradient id="gpp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#140c24"/><stop offset=".65" stop-color="#3a2558"/><stop offset="1" stop-color="#6b4a3a"/></linearGradient>
+    <radialGradient id="gppg" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#c49bff" stop-opacity=".95"/><stop offset="1" stop-color="#a36bff" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#gpp)"/>
+    <g fill="#24183a"><path d="M0 200V120h26v-30h18v30h20V96h14l8-12v116z"/><path d="M96 200v-64h22l6-14h20v78z"/><path d="M262 200v-88h16v-14h22v16l12 6v80z"/><path d="M330 200v-56h20l10-18h12v20h28v54z"/></g>
+    <g fill="#1a1029"><path d="M150 200l6-26h18l-4-12h26l4 38z"/><path d="M226 200l4-20 14 4 6-16 10 32z"/></g>
+    <path d="M0 186q100-8 200-2t200-4v20H0z" fill="#4a3528"/>
+    <ellipse cx="200" cy="184" rx="60" ry="5" fill="#a36bff" opacity=".35"/>
+    <circle cx="200" cy="148" r="22" fill="url(#gppg)"/>
+    <g transform="translate(200 92)"><path d="M0-56L28 4 0 16-28 4z" fill="#f1eef8"/><path d="M0-56L28 4 0 16z" fill="#c9c2dc"/><path d="M-28 4L0 16 28 4 14 26H-14z" fill="#d9d3ea"/><path d="M0 16L28 4 14 26z" fill="#aaa2c2"/>
+      <path d="M0-56L28 4 0 16-28 4zM-28 4L-14 26H14L28 4" fill="none" stroke="#1a1426" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M-8 30h16l-8 26z" fill="#e6dcff"/></g>
+    <g fill="#a36bff" opacity=".7"><circle cx="60" cy="40" r="1.4"/><circle cx="120" cy="22" r="1"/><circle cx="300" cy="34" r="1.3"/><circle cx="350" cy="62" r="1"/></g>
+    <g fill="none" stroke="#a36bff" stroke-opacity=".5" stroke-width="2"><path d="M244 70q10 18 0 36"/><path d="M256 62q16 26 0 52"/><path d="M156 70q-10 18 0 36"/><path d="M144 62q-16 26 0 52"/></g>`,
   ships: `
     <defs><linearGradient id="g13" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb3d9"/><stop offset=".55" stop-color="#bfd9e8"/><stop offset=".56" stop-color="#2f6f8f"/><stop offset="1" stop-color="#123a52"/></linearGradient></defs>
     <rect width="400" height="200" fill="url(#g13)"/>
