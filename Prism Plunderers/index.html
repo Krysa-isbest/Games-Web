@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prism Plunderers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body data-mode="menu" data-ui="">
+<canvas id="view"></canvas>
+<div id="fade" class="on"></div>
+
+<!-- main menu -->
+<section id="s-main" class="screen hidden">
+  <div class="main-left">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 4 96 88H4Z"/><path class="cut" d="M50 40 70 76H30Z"/></svg>
+      <div>
+        <div class="kicker">PvE extraction shooter · 1-4 players</div>
+        <h1 class="title"><span>PRISM</span> PLUNDERERS</h1>
+      </div>
+    </div>
+    <nav class="menu">
+      <button class="mi" id="mi-test"><span class="mi-n">01</span><span class="mi-t">Test range</span><span class="mi-d">Fly around the foundation build and try your keys</span></button>
+      <button class="mi" data-go="controls"><span class="mi-n">02</span><span class="mi-t">Controls</span><span class="mi-d">Rebind every key, mouse settings</span></button>
+      <button class="mi" data-go="save"><span class="mi-n">03</span><span class="mi-t">Save data</span><span class="mi-d">Credits, stash, backups</span></button>
+    </nav>
+    <p class="build-note">This is the foundation build. The player, the Prism, The Ruins, the lobby and the workshop arrive in the next parts.</p>
+  </div>
+  <div class="corner"><span id="ver"></span></div>
+</section>
+
+<!-- controls -->
+<section id="s-controls" class="screen hidden">
+  <div class="panel">
+    <header class="p-head"><button class="back" data-back aria-label="Back">&lsaquo;</button><h2>Controls</h2><span class="p-sub">Changes are saved right away</span></header>
+    <div class="p-body" id="ct-body"></div>
+    <footer class="p-foot">
+      <span class="note">Click a key, then press the new one. Esc cancels, Delete clears. A key already in use swaps places.</span>
+      <button class="btn ghost" id="ct-reset">Reset keys</button>
+    </footer>
+  </div>
+</section>
+
+<!-- save data -->
+<section id="s-save" class="screen hidden">
+  <div class="panel">
+    <header class="p-head"><button class="back" data-back aria-label="Back">&lsaquo;</button><h2>Save data</h2><span class="p-sub">What the game remembers</span></header>
+    <div class="p-body">
+      <div class="stats" id="sv-stats"></div>
+      <p class="note" id="sv-where"></p>
+      <h3 class="sect">Backup</h3>
+      <textarea id="sv-code" rows="4" spellcheck="false" placeholder="A backup code appears here. To restore, paste one and press Restore."></textarea>
+      <div class="btn-row">
+        <button class="btn" id="sv-copy">Make a backup code</button>
+        <button class="btn ghost" id="sv-restore">Restore</button>
+      </div>
+      <h3 class="sect">Test tools</h3>
+      <div class="btn-row">
+        <button class="btn ghost" id="sv-test">+100 credits</button>
+        <button class="btn ghost danger" id="sv-reset">Erase progress</button>
+      </div>
+      <p class="note">Add credits, reload the page, and they should still be here: that is the save system working.</p>
+    </div>
+  </div>
+</section>
+
+<!-- test range HUD -->
+<div id="hud" class="hidden">
+  <div class="cross"></div>
+  <div class="hud-top"><span class="tag">TEST RANGE</span><span id="hud-hint"></span></div>
+  <div class="chips" id="hud-chips"></div>
+</div>
+<div id="pause" class="hidden">
+  <div class="pz">
+    <div class="kicker">Test range</div>
+    <h2>Paused</h2>
+    <button class="btn primary" id="pz-resume">Resume</button>
+    <button class="btn" id="pz-controls">Controls</button>
+    <button class="btn ghost" id="pz-quit">Back to the menu</button>
+    <p class="note" id="pz-keys"></p>
+  </div>
+</div>
+
+<pre id="debug" class="hidden"></pre>
+<div id="fps" class="hidden"></div>
+<div id="toasts"></div>
+<div id="fatal" class="hidden"></div>
+
+<script>
+// If the game's code did not start, say why instead of showing a black page.
+setTimeout(function () {
+  if (window.__pp) return;
+  var f = document.getElementById('fatal');
+  f.textContent = location.protocol === 'file:'
+    ? 'Prism Plunderers cannot run from a file opened directly. Open it through a web server (http://...), the same way as the other games.'
+    : 'Prism Plunderers could not start. It loads Three.js from the internet: check your connection and reload the page.';
+  f.classList.remove('hidden');
+}, 4000);
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
