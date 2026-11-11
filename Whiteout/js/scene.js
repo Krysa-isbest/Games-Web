@@ -24,8 +24,8 @@ function vnoise(x, y) {
   const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
-function fbm(x, y, o = 5) { let s = 0, a = 0.5, f = 1; for (let i = 0; i < o; i++) { s += a * vnoise(x * f, y * f); f *= 2.03; a *= 0.5; } return s; }
-const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+export function fbm(x, y, o = 5) { let s = 0, a = 0.5, f = 1; for (let i = 0; i < o; i++) { s += a * vnoise(x * f, y * f); f *= 2.03; a *= 0.5; } return s; }
+export const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 export const SHACK = new THREE.Vector3(0, 0, 0), WRECK = new THREE.Vector3(34, 0, -26), TOWER = new THREE.Vector3(-92, 0, 64);
 function rawHeight(x, z) {
   const r = Math.hypot(x, z), ang = Math.atan2(z, x);
@@ -60,7 +60,7 @@ const woodTex = () => canvasTex(512, 512, (x, w, h) => {
     for (let k = 0; k < 2; k++) { const nx = Math.random() * w; x.fillStyle = 'rgba(20,12,6,0.6)'; x.beginPath(); x.arc(nx, y + h / rows / 2, 2 + Math.random() * 3, 0, 7); x.fill(); }
   }
 });
-const iceTex = () => canvasTex(1024, 1024, (x, w, h) => {
+export const iceTex = () => canvasTex(1024, 1024, (x, w, h) => {
   const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#6f93a8'); g.addColorStop(1, '#7ea2b6'); x.fillStyle = g; x.fillRect(0, 0, w, h);
   for (let i = 0; i < 70; i++) { x.fillStyle = `rgba(${Math.random() < 0.3 ? '20,40,60' : '220,235,245'},${Math.random() * 0.12})`; x.beginPath(); x.ellipse(Math.random() * w, Math.random() * h, 30 + Math.random() * 160, 20 + Math.random() * 90, Math.random() * 3, 0, 7); x.fill(); }
   x.lineCap = 'round';
@@ -74,7 +74,7 @@ const iceTex = () => canvasTex(1024, 1024, (x, w, h) => {
 }, 30);
 const plankRoofTex = () => canvasTex(256, 256, (x, w, h) => { for (let i = 0; i < 8; i++) { x.fillStyle = `hsl(25, 18%, ${18 + Math.random() * 10}%)`; x.fillRect(i * w / 8, 0, w / 8, h); x.fillStyle = 'rgba(0,0,0,0.5)'; x.fillRect(i * w / 8, 0, 2, h); } });
 export const glowTex = (inner, outer) => canvasTex(128, 128, (x, w) => { const g = x.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); g.addColorStop(0, inner); g.addColorStop(0.35, outer); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, w); });
-const planeTex = () => canvasTex(512, 256, (x, w, h) => {
+export const planeTex = () => canvasTex(512, 256, (x, w, h) => {
   x.fillStyle = '#d9dde2'; x.fillRect(0, 0, w, h);
   x.fillStyle = '#1d3a5f'; x.fillRect(w * 0.18, 0, w * 0.035, h); x.fillRect(w * 0.82, 0, w * 0.035, h);
   x.fillStyle = '#9a2b22'; x.fillRect(w * 0.225, 0, w * 0.012, h); x.fillRect(w * 0.77, 0, w * 0.012, h);
@@ -199,7 +199,7 @@ function makeTrees() {
   scene.add(rocks);
 }
 // colour a geometry per vertex: fn(x, y, z, nx, ny, nz) -> [r, g, b]
-function paint(geo, fn) {
+export function paint(geo, fn) {
   geo = geo.index ? geo.toNonIndexed() : geo;
   geo.computeVertexNormals();
   const p = geo.attributes.position, n = geo.attributes.normal, c = new Float32Array(p.count * 3);
@@ -310,7 +310,7 @@ function makeTower() {
 }
 
 // ---------- smoke columns ----------
-class Smoke {
+export class Smoke {
   constructor(at, parent, size, color, n = 22) {
     this.at = at; this.size = size; this.list = [];
     const mat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,255,255,0.55)', 'rgba(255,255,255,0.18)'), color, transparent: true, depthWrite: false, opacity: 0.5 });

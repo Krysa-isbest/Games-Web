@@ -1,6 +1,6 @@
 // The Play screen: solo, host or join (room code or LAN / Tailscale invite codes), then the crew lobby with
-// four slots, ready checks, the host's options and a chat. Starting is wired up: everyone gets the message,
-// but the island itself isn't built yet.
+// four slots, ready checks, the host's options and a chat. Starting sends everyone into the opening cutscene
+// and then onto the island (main.js, game.js).
 import { G, S, saveSettings, esc } from './state.js';
 import { NET, MAX, on, send, broadcast, hostPeerJS, joinPeerJS, directHostCode, directHostAccept, directJoin, becomeDirectHost, leaveNet } from './net.js';
 import { ui } from './audio.js';

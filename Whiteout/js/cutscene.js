@@ -1,7 +1,7 @@
 // Whiteout: the opening cutscene (90 s). Flight 2207 over the northern sea: a calm private jet, the captain's
 // broken-off announcement, the power cut, turbulence and oxygen masks, the crash, ringing ears in the dark,
 // waking up in the burning cabin with the tail torn off, the radio coming alive, the host taking it, nobody
-// answering, and "Get out of the plane". Then a "Coming soon" card: the island is the next step.
+// answering, and "Get out of the plane". Then the screen goes black and the game starts on the island (game.js).
 // The picture follows the Web Audio clock, so it stays locked to the score (intro-audio.js).
 // Co-op: the host's Start begins it for everyone, everyone has their own seat and sees the others, and the
 // host takes the radio (push to talk). The host can skip once they have seen it; in solo, you can.
@@ -13,7 +13,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { G, S, clamp, lerp, rand, esc } from './state.js';
 import { BINDS, keyName } from './keys.js';
 import { on, broadcast } from './net.js';
-import { menuAudio, ui as uiSnd } from './audio.js';
+import { menuAudio } from './audio.js';
 import { SCN, canvasTex, glowTex } from './scene.js';
 import * as IA from './intro-audio.js';
 import { TL } from './intro-audio.js';
@@ -178,15 +178,13 @@ function showEnd(skipped) {
   IA.stop(skipped ? 0.8 : 3);
   const d = C.dom, args = C.args;
   d.root.classList.add('done');
-  d.end.innerHTML = `<div class="ce-box"><div class="kicker">Flight 2207</div><h2>Coming soon</h2>
-    <p>You made it through the crash. Getting out of the burning plane, the frozen island and the ruined shack come next.</p>
-    <div class="ce-btns">${C.coop ? '' : '<button class="btn" data-a="again">Watch again</button>'}<button class="btn primary" data-a="back">${C.coop ? 'Back to the lobby' : 'Back to the menu'}</button></div></div>`;
-  d.end.classList.add('show');
-  d.end.querySelector('[data-a="back"]').onclick = () => { uiSnd.click(); close(); args.onBack?.(); };
-  const again = d.end.querySelector('[data-a="again"]');
-  if (again) again.onclick = () => { uiSnd.click(); close(); setTimeout(() => playCutscene(args), 450); };
+  // straight on to the island: the screen goes black, then the game takes over (it fades in by the wreck)
+  d.black.style.transition = 'opacity 0.5s'; d.black.style.opacity = '1';
+  setTimeout(() => {
+    if (args.onDone) { close(true); args.onDone({ skipped }); } else { close(); args.onBack?.(); }
+  }, skipped ? 600 : 250);
 }
-function close() {
+function close(toGame = false) {
   if (!C) return;
   cancelAnimationFrame(C.raf);
   unlisten();
@@ -199,7 +197,7 @@ function close() {
   }
   const root = C.dom.root;
   root.classList.add('out'); setTimeout(() => root.remove(), 450);
-  SCN.paused = false; menuAudio(true); G.started = false;
+  if (!toGame) { SCN.paused = false; menuAudio(true); G.started = false; }      // going on to the game: the menu stays asleep
   C = null;
 }
 

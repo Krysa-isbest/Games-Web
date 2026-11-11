@@ -148,9 +148,19 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 const GAMES = [
   {
     file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
-    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now the main menu and the opening cutscene are here: the island comes next.',
+    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening cutscene and the first walk around the island, with the cold, day and night, storms and the ruined shack. Fire, wood and the axe come next.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
+      { version: '0.3', date: '2026-11-11', notes: [
+        'The island is playable: after the opening you stand in the snow by the burning wreck and can walk the whole island in first person. It takes about 6 to 8 minutes to cross.',
+        'You have a full body: look down and you see your coat, legs and boots. Walk, sprint, crouch, walk slowly and jump, with your own keys and settings (hold or toggle, field of view, sensitivity, head bob).',
+        'Real physics (Rapier): slopes and steps, steep banks you slide down, sea ice you slide on, deep snow that slows you, and logs, crates, luggage and wreck debris you can push around.',
+        'The cold: a body heat bar. The night, the wind and storms drain it; the ruined shack keeps some of the wind off; daylight and the wreck\'s fire warm you. When you get cold you shiver and slow down. The four difficulties change how fast it drains.',
+        'Day and night in 20 minutes (8 of daylight, 12 of night), with wind gusts, snowfall, storms that white out the view, and the aurora at night.',
+        'The shack as you find it: gaps in the walls, holes in the roof, a broken window, the door on one hinge and a cold stove with no pipe. You can go inside.',
+        'A small HUD (body heat, the clock and day) and a pause menu on Esc with Resume, Settings, Difficulty and Quit to menu.',
+        'Solo is the full thing. In co-op the crew stands on the same island and sees each other, but full co-op sync comes in a later update. Nothing can kill you yet.'
+      ] },
       { version: '0.2', date: '2026-11-10', notes: [
         'The opening cutscene (1.5 minutes): a calm night flight on a private jet, the captain\'s message breaking off, the power cut, turbulence and oxygen masks, the crash, and waking up in the burning plane with the tail torn off.',
         'The radio comes alive and the host takes it: hold the push-to-talk key (V) to answer. Stay silent and a line plays on its own. Nobody answers.',

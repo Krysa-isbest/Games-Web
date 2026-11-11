@@ -8,6 +8,7 @@ import { openHowto } from './howto.js';
 import { initLobby, openPlay, playBack, profileChanged } from './lobby.js';
 import { dressPanel } from './frost.js';
 import { playCutscene } from './cutscene.js';
+import { startGame, preloadGame, inGame, gameApply } from './game.js';
 
 const $ = id => document.getElementById(id);
 const SCREENS = ['main', 'play', 'howto', 'settings', 'credits'];
@@ -36,6 +37,7 @@ function go(id, push = true) {
   }
   current = G.screen = id;
   document.body.dataset.screen = id;
+  document.body.classList.toggle('game-settings', id === 'settings' && inGame());     // the settings, opened from the game's pause menu
   if (id === 'settings') openSettings();
   if (id === 'howto') openHowto();
   if (id === 'play') openPlay();
@@ -105,16 +107,19 @@ function drawFrost() {
   x.globalAlpha = 1; x.fillStyle = g; x.fillRect(0, 0, w, h);
 }
 
-// ---------- starting the game: the opening cutscene (the island itself comes next) ----------
+// ---------- starting the game: the opening cutscene, then the island ----------
+function toMenu() { playBack(); stack.length = 0; go('main', false); }      // leaves the crew too, if you were in one
 function starting(lobby) {
-  const coop = G.net.role !== 'solo';
-  playCutscene({ players: lobby.players, meId: G.net.id, coop, onBack: () => { if (!coop) go('main'); } });
+  const coop = G.net.role !== 'solo', players = lobby.players, meId = G.net.id;
+  preloadGame();                                                             // the physics engine downloads while the cutscene plays
+  playCutscene({ players, meId, coop, onBack: () => { if (!coop) go('main'); },
+    onDone: () => startGame({ players, meId, coop, openSettings: () => go('settings'), onQuit: toMenu }) });
 }
 
 // ---------- settings applied live ----------
 let gfxT = 0;
 function apply(k) {
-  if (['preset', 'scale', 'shadows', 'snow', 'fog', 'view', 'bloom', 'grain', 'all'].includes(k)) { clearTimeout(gfxT); gfxT = setTimeout(applyGraphics, 120); }
+  if (['preset', 'scale', 'shadows', 'snow', 'fog', 'view', 'bloom', 'grain', 'all'].includes(k)) { clearTimeout(gfxT); gfxT = setTimeout(() => { applyGraphics(); gameApply(); }, 120); }
   if (k === 'fps' || k === 'all') $('fps').classList.toggle('hidden', !S.fps);
   if (k === 'all') renderProfile();
 }
@@ -156,6 +161,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' || e.code === 'Escape') {
     if (!$('profile-pop').classList.contains('hidden')) { $('profile-pop').classList.add('hidden'); return; }
     if (document.querySelector('.starting, .cutscene')) return;
+    if (inGame() && current !== 'settings') return;                           // the game has its own Esc (the pause menu)
     if (current !== 'main' && current !== 'splash') back();
   }
 });
