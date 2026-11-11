@@ -17,7 +17,19 @@
 </head>
 <body data-mode="menu" data-ui="">
 <canvas id="view"></canvas>
+<div id="vignette"></div>
 <div id="fade" class="on"></div>
+
+<!-- splash: the first click also starts the sound -->
+<div id="splash">
+  <div class="sp-in">
+    <div class="sp-kick">EARTH · YEAR 3000 · PRISM OCCUPATION</div>
+    <svg class="logo big" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 4 96 88H4Z"/><path class="cut" d="M50 40 70 76H30Z"/></svg>
+    <h1 class="sp-title"><span>PRISM</span><b>PLUNDERERS</b></h1>
+    <div class="sp-line"></div>
+    <div class="sp-click">Click to continue</div>
+  </div>
+</div>
 
 <!-- main menu -->
 <section id="s-main" class="screen hidden">
@@ -26,15 +38,28 @@
       <svg class="logo" viewBox="0 0 100 92" aria-hidden="true"><path d="M50 4 96 88H4Z"/><path class="cut" d="M50 40 70 76H30Z"/></svg>
       <div>
         <div class="kicker">PvE extraction shooter · 1-4 players</div>
-        <h1 class="title"><span>PRISM</span> PLUNDERERS</h1>
+        <h1 class="title"><span>PRISM</span><b>PLUNDERERS</b></h1>
       </div>
     </div>
     <nav class="menu">
-      <button class="mi" id="mi-test"><span class="mi-n">01</span><span class="mi-t">Test range</span><span class="mi-d">Fly around the foundation build and try your keys</span></button>
-      <button class="mi" data-go="controls"><span class="mi-n">02</span><span class="mi-t">Controls</span><span class="mi-d">Rebind every key, mouse settings</span></button>
-      <button class="mi" data-go="save"><span class="mi-n">03</span><span class="mi-t">Save data</span><span class="mi-d">Credits, stash, backups</span></button>
+      <button class="mi" id="mi-test"><span class="mi-n">01</span><span class="mi-t">Test range</span><span class="mi-d">Fly the foundation build and try your keys</span><span class="mi-go">&rsaquo;</span></button>
+      <button class="mi" data-go="controls"><span class="mi-n">02</span><span class="mi-t">Controls</span><span class="mi-d">Rebind every key, mouse settings</span><span class="mi-go">&rsaquo;</span></button>
+      <button class="mi" data-go="save"><span class="mi-n">03</span><span class="mi-t">Save data</span><span class="mi-d">Credits, stash, backups</span><span class="mi-go">&rsaquo;</span></button>
     </nav>
-    <p class="build-note">This is the foundation build. The player, the Prism, The Ruins, the lobby and the workshop arrive in the next parts.</p>
+    <div class="soon">
+      <div class="soon-h">Coming in the next updates</div>
+      <div class="soon-list"><span>Raids</span><span>Workshop</span><span>Skill tree</span><span>Co-op</span></div>
+    </div>
+  </div>
+  <div class="card-me">
+    <div class="me-av" id="me-av"></div>
+    <div class="me-t"><small>Plunderer</small><b id="me-name"></b></div>
+    <div class="me-cr"><small>Scrap Credits</small><b id="me-cr"></b></div>
+  </div>
+  <div class="status">
+    <span class="st-dot"></span><span>Sector <b>The Ruins</b></span>
+    <span class="st-sep"></span><span>Prism activity <b class="st-bars"><i></i><i></i><i></i><i class="off"></i></b> <b>High</b></span>
+    <span class="st-sep"></span><span id="st-clock"></span>
   </div>
   <div class="corner"><span id="ver"></span></div>
 </section>
