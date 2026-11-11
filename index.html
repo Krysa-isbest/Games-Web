@@ -151,6 +151,10 @@ const GAMES = [
     desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening cutscene and the first walk around the island, with the cold, day and night, storms and the ruined shack. Fire, wood and the axe come next.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
+      { version: '0.3.1', date: '2026-11-11', notes: [
+        'Co-op: when a friend loses the connection, the message now says why (the network path failed, or the host closed it). Details go to the browser console (F12).',
+        'A friend\'s game now reconnects to the room server if that link drops for a moment, the same way the host\'s already did.'
+      ] },
       { version: '0.3', date: '2026-11-11', notes: [
         'The island is playable: after the opening you stand in the snow by the burning wreck and can walk the whole island in first person. It takes about 6 to 8 minutes to cross.',
         'You have a full body: look down and you see your coat, legs and boots. Walk, sprint, crouch, walk slowly and jump, with your own keys and settings (hold or toggle, field of view, sensitivity, head bob).',
