@@ -20,9 +20,10 @@ export class Hands {
     this.L = arm(); this.L.position.set(-0.22, -0.3, -0.4); this.L.rotation.set(0.25, 0.3, 0); this.root.add(this.L);
     const lt = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.055, 0.02), new THREE.MeshStandardMaterial({ color: '#c9a35a', metalness: 0.9, roughness: 0.3 }));
     lt.position.set(0.02, 0.055, -0.02); this.L.add(lt);
-    this.flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex('rgba(255,240,190,1)', 'rgba(255,150,50,0.7)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-    this.flame.position.set(0.02, 0.11, -0.02); this.flame.scale.set(0.045, 0.07, 1); this.L.add(this.flame);
-    this.light = new THREE.PointLight('#ffb35a', 0, 10, 1.7); this.light.position.set(0.02, 0.14, -0.05); this.L.add(this.light);
+    this.flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex('rgba(255,240,190,1)', 'rgba(255,150,50,0.7)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55 }));
+    this.flame.position.set(0.02, 0.1, -0.02); this.flame.scale.set(0.02, 0.035, 1); this.L.add(this.flame);
+    // a small flame: it lights the space around you a little, it doesn't flood it
+    this.light = new THREE.PointLight('#ffb067', 0, 6, 2); this.light.position.set(0.05, 0.35, -0.6); this.L.add(this.light);
     this.type = null; this.sw = -1; this.lit = false; this.t = 0; this.pull = 0;
     this.chips = new Chips(scene);
     for (const m of [this.R, this.L]) m.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
@@ -36,6 +37,7 @@ export class Hands {
     const m = meshFor(type);
     m.traverse(o => { o.castShadow = false; });
     if (type === 'axe') { m.rotation.set(0, Math.PI, Math.PI / 2); m.position.set(0, 0.2, 0); this.slot.rotation.set(-0.45, 0, 0); }
+    else if (type === 'flare') { m.rotation.set(-Math.PI / 2, 0, 0); m.position.set(0.03, 0.02, 0); this.slot.rotation.set(0, Math.PI / 2, 0); }      // held like a pistol: grip in the glove, barrel forward
     else if (type === 'log' || type === 'split' || type === 'branch' || type === 'board' || type === 'pipe') { m.position.set(-0.14, 0.06, -0.08); m.scale.setScalar(0.85); this.slot.rotation.set(0, 0.25, 0); }
     else { m.position.set(0, 0.03, -0.1); m.rotation.set(-0.5, 0.3, 0); this.slot.rotation.set(0, 0, 0); }
     this.slot.add(m);
@@ -66,8 +68,8 @@ export class Hands {
     this.R.position.set(px, py, pz); this.R.rotation.set(rx, -0.12, 0);
     // the lighter's flame
     const f = 0.85 + 0.15 * Math.sin(t * 23) * Math.sin(t * 13.7 + 1) + Math.random() * 0.06;
-    this.flame.scale.set(0.045 * f, 0.075 * f, 1);
-    this.light.intensity = this.lit && show ? 2.4 * f : 0;
+    this.flame.scale.set(0.02 * f, 0.035 * f, 1);
+    this.light.intensity = this.lit && show ? 0.7 * f : 0;
     this.chips.update(dt);
     return hit;
   }

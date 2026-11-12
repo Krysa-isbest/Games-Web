@@ -19,7 +19,7 @@ export const TYPES = {
   fur: { name: 'the fur coat', short: 'Fur coat', icon: '🧥', stack: 1, wear: 0.75, color: '#e9dfcf', take: 1.5, h: 0.05 },
   wool: { name: 'the wool coat', short: 'Wool coat', icon: '🧥', stack: 1, wear: 0.85, color: '#33465a', take: 1.5, h: 0.05 },
   kit: { name: 'the first aid kit', short: 'First aid kit', icon: '🩹', stack: 1, take: 1.0, h: 0.05 },
-  flare: { name: 'the flare gun', short: 'Flare gun', icon: '🔶', stack: 1, take: 2.5, h: 0.06 },
+  flare: { name: 'the flare gun', short: 'Flare gun', icon: '🔫', stack: 1, take: 2.5, h: 0.035 },
   trunk: { name: 'a felled tree', short: 'Tree', icon: '🌲', stack: 1, noTake: true },
 };
 export const TYPE_LIST = Object.keys(TYPES);
@@ -84,8 +84,13 @@ export function meshFor(type) {
       part(g, box('kit', 0.32, 0.1, 0.24), M.white);
       part(g, box('kitX1', 0.06, 0.012, 0.16), M.red, 0, 0.055, 0); part(g, box('kitX2', 0.16, 0.012, 0.06), M.red, 0, 0.056, 0);
       break;
-    case 'flare':
-      part(g, box('flare', 0.38, 0.12, 0.2), M.orange); part(g, box('flareH', 0.12, 0.03, 0.04), M.dark, 0, 0.075, 0);
+    case 'flare':     // an orange flare pistol lying on its side: a fat short barrel along x, the grip towards -z
+      part(g, geo('flareB', () => new THREE.CylinderGeometry(0.034, 0.034, 0.17, 14).rotateZ(Math.PI / 2)), M.orange, 0.06, 0, 0);
+      part(g, geo('flareM', () => new THREE.CircleGeometry(0.026, 14)), M.dark, 0.146, 0, 0, 0, Math.PI / 2, 0);
+      part(g, box('flareF', 0.11, 0.05, 0.06), M.orange, -0.05, 0, -0.005);
+      part(g, box('flareG', 0.05, 0.045, 0.12), M.orange, -0.07, 0, -0.085, 0, 0.3, 0);
+      part(g, box('flareT', 0.035, 0.012, 0.045), M.dark, -0.02, 0, -0.05);
+      part(g, box('flareH', 0.02, 0.03, 0.025), M.dark, -0.1, 0, 0.02);
       break;
   }
   return g;
@@ -280,10 +285,16 @@ export class Inventory {
     this.coat = s.type; this.ver++;
   }
   undress() {
-    if (!this.coat) return false;
     const i = this.slots.findIndex(s => !s);
-    if (i < 0) return false;
-    this.slots[i] = { type: this.coat, n: 1, dry: 1 }; this.coat = null; this.ver++;
+    return i >= 0 && this.undressTo(i);
+  }
+  // take the coat off into slot i: an empty slot, or swap with the coat lying there
+  undressTo(i) {
+    if (!this.coat) return false;
+    const s = this.slots[i];
+    if (s && !TYPES[s.type].wear) return false;
+    this.slots[i] = { type: this.coat, n: 1, dry: 1 };
+    this.coat = s ? s.type : null; this.ver++;
     return true;
   }
 }

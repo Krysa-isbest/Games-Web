@@ -348,7 +348,7 @@ function buildInvDom(gm) {
     <div class="gm-bag hidden"><div class="panel"><header class="p-head"><h2>Backpack</h2><span class="p-sub">${kn('inventory')} or Esc to close</span></header>
       <div class="gm-bagbody"><div class="gm-wear"><small>Wearing</small><div class="bs" data-coat></div></div>
         <div><small>Backpack</small><div class="gm-grid" data-bag></div><small>Hotbar</small><div class="gm-grid hot" data-hot></div></div></div>
-      <p class="gm-baghint">Click a thing, then click where it goes. Right-click drops one. Click a coat to put it on; click what you wear to take it off.</p></div></div>`);
+      <p class="gm-baghint">Click a thing, then click where it goes. Right-click drops one. To change coats, move a coat onto "Wearing", or move the one you wear into a slot.</p></div></div>`);
   const q = s => d.querySelector(s);
   Object.assign(gm.dom, { hot: q('.gm-slots'), held: q('.gm-held'), bag: q('.gm-bag'), bagGrid: q('[data-bag]'), bagHot: q('[data-hot]'), coatSlot: q('[data-coat]') });
   gm.dom.bag.addEventListener('mousedown', e => {
@@ -356,13 +356,18 @@ function buildInvDom(gm) {
     e.preventDefault();
     if (!el) return;
     const inv = gm.inv;
+    // the coat you wear: right-click drops it; click it to pick it up (then click a slot to put it there);
+    // click it while holding a coat from a slot to swap them
     if (el.hasAttribute('data-coat')) {
-      if (gm.pick != null && TYPES[inv.slots[gm.pick]?.type]?.wear) inv.wear(gm.pick); else inv.undress();
-      gm.pick = null; SFX.grab(); return;
+      if (e.button === 2) { if (inv.coat) { const c = inv.coat; inv.coat = null; dropAt(gm, c, 1, {}); } gm.pick = null; }
+      else if (typeof gm.pick === 'number' && TYPES[inv.slots[gm.pick]?.type]?.wear) { inv.wear(gm.pick); gm.pick = null; SFX.grab(); }
+      else gm.pick = gm.pick === 'coat' || !inv.coat ? null : 'coat';
+      inv.ver++; return;
     }
     const i = +el.dataset.i, s = inv.slots[i];
-    if (e.button === 2) { if (s) { const it = inv.take(i, 1); dropAt(gm, it.type, it.n, it.data); } gm.pick = null; return; }
-    if (gm.pick == null) { if (s && TYPES[s.type].wear) { inv.wear(i); SFX.grab(); } else if (s) gm.pick = i; }
+    if (e.button === 2) { if (s) { const it = inv.take(i, 1); dropAt(gm, it.type, it.n, it.data); } gm.pick = null; inv.ver++; return; }
+    if (gm.pick === 'coat') { if (inv.undressTo(i)) SFX.grab(); gm.pick = null; }
+    else if (gm.pick == null) { if (s) gm.pick = i; }
     else { if (gm.pick !== i) inv.swap(gm.pick, i); gm.pick = null; }
     inv.ver++;
   });
@@ -381,6 +386,7 @@ function renderInv(gm) {
     for (let i = 0; i < HOT; i++) hb += slotHtml(inv.slots[i], i, i === inv.sel, kn('slot' + (i + 1)), gm.pick === i);
     d.bagGrid.innerHTML = bag; d.bagHot.innerHTML = hb;
     d.coatSlot.innerHTML = inv.coat ? `<i>${TYPES[inv.coat].icon}</i><span>${TYPES[inv.coat].short}</span>` : '<span>No coat</span>';
+    d.coatSlot.classList.toggle('pick', gm.pick === 'coat');
   }
   // what you hold, in words, for a moment when it changes
   const h = inv.held(), key = h ? h.type + h.n + Math.round(h.dry * 10) : '';

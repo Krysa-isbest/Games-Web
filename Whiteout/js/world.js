@@ -524,7 +524,7 @@ function makeWreck(R, wld, scene, crew) {
   placeItem(wld, GM, 'fur', 0.15, FLOOR + 0.05, -1.75, 0, 0.5, 0);
   placeItem(wld, GM, 'wool', 0.45, FLOOR + 0.05, -3.9, 0, -0.7, 0);
   placeItem(wld, GM, 'kit', 0.9, FLOOR + 1.25, BULK - 0.1, Math.PI / 2, 0, 0);
-  placeItem(wld, GM, 'flare', -0.42, FLOOR + 0.95, 4.52, Math.PI / 2, 0, 0);
+  placeItem(wld, GM, 'flare', -0.42, FLOOR + 0.95, 4.5, 0, -Math.PI / 2, -Math.PI / 2);        // clipped to the back of the captain's seat, barrel down
   for (const [x, z, a] of [[-4.2, -2.0, 0.4], [6.5, -9.0, 1.9], [-6.0, -8.5, 2.6], [3.2, 6.5, 0.8], [8.4, 5.2, 2.2]]) placeItem(wld, GM, 'sheet', x, 0.02, z, 0, a, 0);
   // the fire burning in the back of the cabin, the smoke along the ceiling, the red emergency light
   const fmat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,230,160,1)', 'rgba(255,110,30,0.6)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
