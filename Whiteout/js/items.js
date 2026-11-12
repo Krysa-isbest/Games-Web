@@ -118,6 +118,18 @@ export class Stash {
   constructor(R, phys, scene, guest, make = {}) {
     Object.assign(this, { R, phys, scene, guest, make });
     this.list = new Map(); this.next = 1; this.byCol = new Map();
+    this.rev = 0;            // goes up whenever something appears, goes away or comes to rest: the host sends the list when it has
+  }
+  // a saved game (the host or solo): throw away what lies here and lay out what the save says
+  load(list, next) {
+    for (const id of [...this.list.keys()]) this.remove(id);
+    for (const a of list) {
+      const [id, ti, n, x, y, z, qx, qy, qz, qw, buried, dry, hp, s, sy] = a, type = TYPE_LIST[ti];
+      if (!type) continue;
+      const data = { dry }; if (hp >= 0) data.hp = hp; if (s) { data.s = s; data.sy = sy; }
+      this.spawn({ id, type, n, data, p: [x, y, z], q: [qx, qy, qz, qw], rest: type !== 'trunk', buried });      // a felled tree is solid again
+    }
+    this.next = Math.max(this.next, next || 1);
   }
   get(id) { return this.list.get(id); }
   // o: { id?, type, n?, data?, p: [x, y, z], q?: [x, y, z, w], v?: [vx, vy, vz], w?: [wx, wy, wz], rest?, buried? }
@@ -129,8 +141,8 @@ export class Stash {
     const mesh = this.make[o.type] ? this.make[o.type](data) : meshFor(o.type);
     mesh.position.fromArray(o.p); if (o.q) mesh.quaternion.fromArray(o.q);
     this.scene.add(mesh);
-    const it = { id, type: o.type, n: o.n || 1, data, mesh, body: null, rest: !!o.rest, buried: o.buried || 0, base: mesh.position.y, sleepT: 0, to: null, hidden: false, hideN: 0 };
-    this.list.set(id, it);
+    const it = { id, type: o.type, n: o.n || 1, data, mesh, body: null, rest: !!o.rest, buried: o.buried || 0, base: mesh.position.y, sleepT: 0, to: null, hidden: false, hideAt: 0 };
+    this.list.set(id, it); this.rev++;
     if (!it.rest && !this.guest) this.physical(it, o.v, o.w);
     return it;
   }
@@ -150,14 +162,14 @@ export class Stash {
     if (!it.body) return;
     for (let i = 0; i < it.body.numColliders(); i++) this.byCol.delete(it.body.collider(i).handle);
     this.phys.removeRigidBody(it.body);
-    it.body = null; it.rest = true; it.base = it.mesh.position.y;
+    it.body = null; it.rest = true; it.base = it.mesh.position.y; this.rev++;
   }
   remove(id) {
     const it = this.list.get(id);
     if (!it) return null;
     if (it.body) { for (let i = 0; i < it.body.numColliders(); i++) this.byCol.delete(it.body.collider(i).handle); this.phys.removeRigidBody(it.body); it.body = null; }
     this.scene.remove(it.mesh);
-    this.list.delete(id);
+    this.list.delete(id); this.rev++;
     return it;
   }
   update(dt, wld, env) {
@@ -174,6 +186,8 @@ export class Stash {
           if (it.sleepT > 1.2) this.settle(it);
         }
       } else if (this.guest) {
+        // we asked the host for it and hid it; if the host didn't give it to us, it shows again
+        if (it.hidden && performance.now() - it.hideAt > 2500) { it.hidden = false; it.mesh.visible = true; }
         if (it.to) {
           m.position.x += (it.to[0] - m.position.x) * k; m.position.y += (it.to[1] - m.position.y) * k; m.position.z += (it.to[2] - m.position.z) * k;
           m.quaternion.slerp(_q.set(it.to[3], it.to[4], it.to[5], it.to[6]), k);
@@ -212,7 +226,6 @@ export class Stash {
         it = this.spawn({ id, type: TYPE_LIST[ti], n, data, p: [x, y, z], q: [qx, qy, qz, qw], rest: true, buried });
       }
       it.n = n; it.buried = buried; it.data.dry = dry; if (hp >= 0) it.data.hp = hp;
-      if (it.hidden && ++it.hideN > 4) { it.hidden = false; it.hideN = 0; it.mesh.visible = true; }   // we asked to take it, but the host gave it to someone else
       it.to = [x, y, z, qx, qy, qz, qw];
     }
     for (const id of [...this.list.keys()]) if (!seen.has(id)) this.remove(id);

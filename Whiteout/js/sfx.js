@@ -16,8 +16,17 @@ function ready() {
   bus.gain.value = S.sfx;
   return ctx;
 }
+// a sound some way off (your crew chopping, a tree coming down): quieter with distance, silent past 45 m
+let FAR = 1;
+export function at(dist, fn, ...args) {
+  const v = Math.max(0, 1 - dist / 45);
+  if (v < 0.03 || typeof fn !== 'function') return;
+  FAR = v * v;
+  try { fn(...args); } finally { FAR = 1; }
+}
 // a short burst of filtered noise
 function burst(ctx, t, type, freq, q, vol, atk, dec) {
+  vol *= FAR;
   const s = ctx.createBufferSource(); s.buffer = noise; s.loop = true;
   const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   const g = ctx.createGain();
@@ -27,6 +36,7 @@ function burst(ctx, t, type, freq, q, vol, atk, dec) {
 }
 // a low thump
 function thud(ctx, t, f0, f1, vol, dur) {
+  vol *= FAR;
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);

@@ -10,7 +10,17 @@ export const MAX = 4;
 export const NET = { mode: null, code: '', conns: new Map(), handlers: {}, peer: null, pending: null, onConn: () => {}, onDrop: () => {} };
 export const on = (t, fn) => { NET.handlers[t] = fn; };
 
-function raw(conn, msg) { try { conn.send(typeof msg === 'string' ? msg : JSON.stringify(msg)); } catch (e) { console.warn('send failed', e); } }
+// big messages (the whole world for someone joining) go in pieces: a data channel only promises about 16 KB at a time
+const BIG = 12000, parts = new Map();
+let partN = 0;
+function raw(conn, msg) {
+  try {
+    const s = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    if (s.length <= BIG) { conn.send(s); return; }
+    const id = ++partN, n = Math.ceil(s.length / BIG);
+    for (let i = 0; i < n; i++) conn.send(JSON.stringify({ t: '_part', id, i, n, d: s.slice(i * BIG, (i + 1) * BIG) }));
+  } catch (e) { console.warn('send failed', e); }
+}
 export function send(to, msg) {
   const role = G.net.role;
   if (role === 'solo') return;
@@ -25,6 +35,15 @@ export const broadcast = msg => send('*', msg);
 function receive(fromConn, data) {
   let msg;
   try { msg = JSON.parse(data); } catch { return; }
+  if (msg.t === '_part') {          // a piece of a big message: put it together, then read it
+    const key = fromConn + ':' + msg.id, got = parts.get(key) || { n: 0, d: [] };
+    if (got.d[msg.i] == null) { got.d[msg.i] = msg.d; got.n++; }
+    parts.set(key, got);
+    if (got.n < msg.n) return;
+    parts.delete(key);
+    receive(fromConn, got.d.join(''));
+    return;
+  }
   if (G.net.role === 'host') {
     msg.from = fromConn;
     if (msg.to && msg.to !== 'p0') {
@@ -34,8 +53,14 @@ function receive(fromConn, data) {
   }
   NET.handlers[msg.t]?.(msg, msg.from);
 }
+export const _receive = receive;      // for the checks without a browser
 function addConn(pid, conn) { NET.conns.set(pid, conn); NET.onConn(pid); }
-function dropConn(pid) { if (!NET.conns.has(pid)) return; NET.conns.delete(pid); NET.onDrop(pid); }
+function dropConn(pid) {
+  if (!NET.conns.has(pid)) return;
+  NET.conns.delete(pid);
+  for (const k of [...parts.keys()]) if (k.startsWith(pid + ':')) parts.delete(k);
+  NET.onDrop(pid);
+}
 const freePid = () => ['p1', 'p2', 'p3'].find(p => !NET.conns.has(p));
 
 // ---------- PeerJS ----------
@@ -84,7 +109,8 @@ export async function hostPeerJS() {
   peer.on('connection', dc => {
     dc.on('open', () => {
       const pid = freePid();
-      if (!pid || G.started) { dc.send(JSON.stringify({ t: 'full', why: G.started ? 'The game already started.' : `The crew is full (${MAX} players).` })); setTimeout(() => dc.close(), 300); return; }
+      // (a game that has started still lets people knock: the host is asked, see lobby.js and game.js)
+      if (!pid) { dc.send(JSON.stringify({ t: 'full', why: `The crew is full (${MAX} players).` })); setTimeout(() => dc.close(), 300); return; }
       watchLink(dc, pid);
       dc.on('data', d => receive(pid, d));
       dc.on('close', () => dropConn(pid));

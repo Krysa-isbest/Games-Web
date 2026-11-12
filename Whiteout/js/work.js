@@ -12,6 +12,7 @@ import { TYPES, nameOf, shortOf, Inventory, HOT } from './items.js';
 import { Home, STOVE_MAX } from './home.js';
 import { Hands } from './hands.js';
 import * as SFX from './sfx.js';
+import { applyShared } from './sync.js';
 
 let GW = null;           // the running game (game.js's gm)
 let H = null;            // helpers from game.js: { hint, lock }
@@ -39,7 +40,7 @@ export function initWork(gm, helpers) {
   gm.hands = new Hands(gm.camera, gm.scene);
   gm.scene.add(gm.camera);
   gm.hands.setCoat(gm.myCoat);
-  gm.prevK = new Set(); gm.invShown = -1; gm.pick = null; gm.bagOpen = false; gm.sT = 0; gm.heldT = 0;
+  gm.prevK = new Set(); gm.invShown = -1; gm.pick = null; gm.bagOpen = false; gm.sT = 0; gm.heldT = 0; gm.sentRev = -1; gm.sN = 0;
   buildInvDom(gm);
   gm.wheel = e => {
     if (!gm.locked || gm.pauseOpen) return;
@@ -75,9 +76,20 @@ export function workTick(gm, dt, env) {
     if (ev.includes('blown') && gm.inShack) H.hint(gm, 'blown', 'The storm tore some of the packed snow out of the walls.', 5000, true);
     if (ev.includes('out') && gm.inShack) H.hint(gm, 'stove-out', 'The stove has burned out. Feed it before the shack goes cold.', 5000, true);
     // a felled tree grows back after 5 days (if nobody stands on the stump)
-    for (const ti of [...gm.world.felled]) { const t = gm.world.trees[ti]; if (gm.T - t.at >= 5 * DAY && Math.hypot(p.pos.x - t.x, p.pos.z - t.z) > 2.5) gm.world.unfell(ti); }
+    for (const ti of [...gm.world.felled]) {
+      const t = gm.world.trees[ti];
+      if (gm.T - t.at < 5 * DAY) continue;
+      const clear = q => Math.hypot(q.x - t.x, q.z - t.z) > 2.5;
+      if (clear(p.pos) && [...gm.avatars.values()].every(a => clear(a.pos))) gm.world.unfell(ti);
+    }
+    // co-op: the shack, the trees and the crates twice a second; the list of things only when it changed (and every 4 s to be sure)
     gm.sT -= dt;
-    if (gm.role === 'host' && gm.sT <= 0) { gm.sT = 0.5; broadcast(worldSnap(gm)); }
+    if (gm.role === 'host' && gm.sT <= 0) {
+      gm.sT = 0.5;
+      const s = gm.world.stash, full = s.rev !== gm.sentRev || ++gm.sN >= 8;
+      if (full) { gm.sentRev = s.rev; gm.sN = 0; }
+      broadcast(sharedSnap(gm, full));
+    }
   }
   gm.home.visuals(dt);
   const st = gm.home.stove;
@@ -135,17 +147,17 @@ function axeHit(gm) {
     const h = hit.collider.handle;
     if (w.treeByCol.has(h)) {
       const ti = w.treeByCol.get(h), t = w.trees[ti], dx = t.x - p.pos.x, dz = t.z - p.pos.z, l = Math.hypot(dx, dz) || 1;
-      gm.hands.chips.burst(at, 10, '#9a7448'); SFX.chop();
+      gm.hands.chips.burst(at, 10, '#9a7448'); shout(gm, 'chop', at);
       act(gm, { a: 'chop', kind: 'tree', i: ti, dir: [dx / l, dz / l] });
       return;
     }
     if (w.propByCol.has(h)) {
       const i = w.propByCol.get(h);
-      if (w.props[i].kind === 'crate') { gm.hands.chips.burst(at, 10, '#a08a6a'); SFX.chop(); act(gm, { a: 'chop', kind: 'prop', i }); return; }
+      if (w.props[i].kind === 'crate') { gm.hands.chips.burst(at, 10, '#a08a6a'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: 'prop', i }); return; }
     }
     if (w.stash.byCol.has(h)) {
       const it = w.stash.get(w.stash.byCol.get(h));
-      if (it && (it.type === 'trunk' || it.type === 'log')) { gm.hands.chips.burst(at, 10, '#9a7448'); SFX.chop(); act(gm, { a: 'chop', kind: it.type, id: it.id }); return; }
+      if (it && (it.type === 'trunk' || it.type === 'log')) { gm.hands.chips.burst(at, 10, '#9a7448'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: it.type, id: it.id }); return; }
     }
   }
   // lying things have no collider: logs (and trunks on a guest) by where you look
@@ -155,7 +167,7 @@ function axeHit(gm) {
     _d.subVectors(near, cam.position);
     const dist = _d.length();
     if (dist > (it.type === 'log' ? 1.9 : 2.4) || _d.dot(_f) / dist < 0.86) continue;
-    gm.hands.chips.burst(near, 10, '#9a7448'); SFX.chop();
+    gm.hands.chips.burst(near, 10, '#9a7448'); shout(gm, 'chop', near);
     act(gm, { a: 'chop', kind: it.type, id: it.id });
     return;
   }
@@ -178,8 +190,8 @@ function chop(gm, a) {
     const dx = a.dir?.[0] ?? 1, dz = a.dir?.[1] ?? 0, ang = 0.9;
     _q.setFromAxisAngle(UP, t.rot);
     s.spawn({ type: 'trunk', data: { s: t.s, sy: t.sy, hp: 3 }, p: [t.x, t.y + 0.25, t.z], q: [_q.x, _q.y, _q.z, _q.w], w: [dz * ang, 0, -dx * ang], v: [dx * 0.3, 0, dz * 0.3] });
-    SFX.fall();
-    if (gm.role !== 'guest') H.hint(gm, 'timber', 'Timber! Chop the fallen tree into logs. A new tree grows from the stump in 5 days.', 7000, true);
+    shout(gm, 'fall', _b.set(t.x, t.y + 1.5, t.z));
+    if (Math.hypot(gm.player.pos.x - t.x, gm.player.pos.z - t.z) < 12) H.hint(gm, 'timber', 'Timber! Chop the fallen tree into logs. A new tree grows from the stump in 5 days.', 7000, true);
   } else if (a.kind === 'trunk') {
     const it = s.get(a.id);
     if (!it || it.type !== 'trunk') return;
@@ -203,7 +215,7 @@ function chop(gm, a) {
     const p = w.breakProp(a.i);
     if (!p) return;
     for (let k = 0; k < 3; k++) { _q.setFromAxisAngle(UP, Math.random() * 6.28); s.spawn({ type: 'board', p: [p.x, p.y + 0.1 + k * 0.06, p.z], q: _q.toArray(), v: [Math.random() * 2 - 1, 1.5, Math.random() * 2 - 1] }); }
-    SFX.fall(0.4);
+    shout(gm, 'fall', p, 0.4);
   }
 }
 
@@ -262,7 +274,7 @@ export function findAct(gm, unbuckle) {
     if (sc) {
       if (ht && TYPES[ht].fuel) offer(sc + 0.05, st.fuel >= STOVE_MAX - 30 ? { id: 'full', text: 'The stove is full', hold: 0 } : { id: 'feed', text: `Put ${nameOf(ht, { dry: held.dry })} in the stove`, hold: 0.6, go: () => feed(gm) });
       else if (ht === 'pipe' && !st.pipe) offer(sc + 0.05, { id: 'pipe', text: 'Fit the stove pipe', hold: 3, go: () => fitPipe(gm) });
-      else if (!st.lit && st.fuel > 0) offer(sc + 0.05, { id: 'light', text: 'Light the stove with your lighter', hold: 2, go: () => { act(gm, { a: 'light' }); SFX.ignite(); H.hint(gm, 'lit', 'The fire takes. Patch the gaps and the shack holds on to its heat.', 6000); } });
+      else if (!st.lit && st.fuel > 0) offer(sc + 0.05, { id: 'light', text: 'Light the stove with your lighter', hold: 2, go: () => { act(gm, { a: 'light' }); shout(gm, 'ignite', w.shack.stove.pos); H.hint(gm, 'lit', 'The fire takes. Patch the gaps and the shack holds on to its heat.', 6000); } });
       else offer(sc, { id: 'stove', text: home.status() + (st.fuel <= 0 ? ': wood goes in here' : ''), hold: 0 });
     }
   }
@@ -283,15 +295,15 @@ export function findAct(gm, unbuckle) {
   {
     const d = w.shack.door, sc = look(d.pos, 2.3, 0.78);
     if (sc) {
-      if (home.door === 'broken') offer(sc, ht && TYPES[ht].patch && patches >= 2 ? { id: 'fix', text: 'Fix the door with 2 boards', hold: 3, go: () => { if (gm.inv.use(t => TYPES[t].patch, 2)) { act(gm, { a: 'door', op: 'fix' }); SFX.hammer(); } } } : { id: 'door', text: 'The door hangs off one hinge: 2 boards would fix it', hold: 0 });
-      else offer(sc, { id: 'door' + home.door, text: home.door === 'open' ? 'Close the door' : 'Open the door', hold: 0.15, go: () => { act(gm, { a: 'door', op: 'toggle' }); SFX.door(); } });
+      if (home.door === 'broken') offer(sc, ht && TYPES[ht].patch && patches >= 2 ? { id: 'fix', text: 'Fix the door with 2 boards', hold: 3, go: () => { if (gm.inv.use(t => TYPES[t].patch, 2)) { act(gm, { a: 'door', op: 'fix' }); shout(gm, 'hammer', d.pos); } } } : { id: 'door', text: 'The door hangs off one hinge: 2 boards would fix it', hold: 0 });
+      else offer(sc, { id: 'door' + home.door, text: home.door === 'open' ? 'Close the door' : 'Open the door', hold: 0.15, go: () => { act(gm, { a: 'door', op: 'toggle' }); shout(gm, 'door', d.pos); } });
     }
   }
   return best;
 }
 function take(gm, it) {
   if (!gm.inv.room(it.type, it.n)) return;
-  if (gm.role === 'guest') { it.hidden = true; it.mesh.visible = false; send('p0', { t: 'g-act', a: 'take', id: it.id }); }
+  if (gm.role === 'guest') { it.hidden = true; it.hideAt = performance.now(); it.mesh.visible = false; send('p0', { t: 'g-act', a: 'take', id: it.id }); }
   else apply(gm, { a: 'take', id: it.id }, G.net.id);
 }
 function feed(gm) {
@@ -304,21 +316,35 @@ function feed(gm) {
 function fitPipe(gm) {
   if (gm.inv.heldType() !== 'pipe') return;
   gm.inv.take(gm.inv.sel, 1);
-  act(gm, { a: 'pipe' }); SFX.hammer();
+  act(gm, { a: 'pipe' }); shout(gm, 'hammer', gm.world.shack.stove.pos);
   H.hint(gm, 'piped', 'The pipe is on. The smoke goes up and out now.', 5000, true);
 }
 function mend(gm, i, how, need) {
   if (how === 2 && !gm.inv.use(t => TYPES[t].patch, need)) return;
   act(gm, { a: 'mend', i, how });
-  if (how === 2) SFX.hammer(); else SFX.pack();
+  shout(gm, how === 2 ? 'hammer' : 'pack', gm.world.shack.spots[i].pos);
   H.hint(gm, 'mended', how === 2 ? 'Every gap you close keeps more of the stove\'s heat in.' : 'Packed snow keeps the wind out, for now. A storm can blow it out again; boards hold better.', 6000);
 }
 
 // ---------- co-op ----------
-function worldSnap(gm) {
-  const w = gm.world;
-  return { t: 'g-s', it: w.stash.snap(), home: gm.home.snap(), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0) };
+function sharedSnap(gm, full) {
+  const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0) };
+  if (full) m.it = w.stash.snap();
+  return m;
 }
+// a sound the whole crew should hear from where it happens: you hear it here, the others get told
+const FX = ['chop', 'fall', 'hammer', 'pack', 'door', 'ignite', 'clank'];
+function shout(gm, k, pos, arg) {
+  SFX.at(gm.camera.position.distanceTo(pos), SFX[k], arg);
+  if (gm.role !== 'solo') send('*', { t: 'g-fx', k, p: [Math.round(pos.x * 10) / 10, Math.round(pos.y * 10) / 10, Math.round(pos.z * 10) / 10], arg });
+}
+on('g-fx', m => {
+  const gm = GW;
+  if (!gm || !gm.ready || !FX.includes(m.k) || !Array.isArray(m.p)) return;
+  const d = gm.camera.position.distanceTo(_a.set(m.p[0], m.p[1], m.p[2]));
+  SFX.at(d, SFX[m.k], m.arg);
+  if (m.k === 'fall' && !m.arg && d < 12) H.hint(gm, 'timber', 'Timber! Chop the fallen tree into logs. A new tree grows from the stump in 5 days.', 7000, true);
+});
 on('g-act', (m, from) => { const gm = GW; if (gm && gm.ready && gm.role === 'host') apply(gm, m, from); });
 on('g-got', m => {
   const gm = GW;
@@ -329,14 +355,12 @@ on('g-got', m => {
 });
 on('g-s', m => {
   const gm = GW;
-  if (!gm || !gm.ready || gm.role !== 'guest') return;
-  const w = gm.world;
-  w.stash.applySnap(m.it || []);
-  if (m.home) gm.home.apply(m.home);
-  const fe = new Map((m.fe || []).map(([i, at]) => [i, at]));
-  for (const [i, at] of fe) if (w.trees[i]?.up) w.fell(i, at);
-  for (const i of [...w.felled]) if (!fe.has(i)) w.unfell(i);
-  for (const i of m.go || []) if (!w.props[i]?.gone) w.breakProp(i);
+  if (!gm || !gm.ready || gm.role !== 'guest' || gm.waitState) return;
+  const home = gm.home, lit = home.stove.lit, snow = home.patch.filter(x => x === 1).length;
+  applyShared(gm, m);
+  // what the host's game noticed, for you too
+  if (gm.inShack && lit && !home.stove.lit) H.hint(gm, 'stove-out', 'The stove has burned out. Feed it before the shack goes cold.', 5000, true);
+  if (gm.inShack && home.patch.filter(x => x === 1).length < snow && gm.env.storm > 0.5) H.hint(gm, 'blown', 'The storm tore some of the packed snow out of the walls.', 5000, true);
 });
 export const movingItems = gm => gm.world.stash.moving();
 export function applyMovingItems(gm, list) { gm.world.stash.applyMoving(list || []); }

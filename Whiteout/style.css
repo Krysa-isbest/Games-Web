@@ -390,6 +390,25 @@ select { max-width: 290px; }
 .gm-carry { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ice); text-shadow: 0 1px 4px #000, 0 0 10px rgba(0, 0, 0, 0.7); max-width: 300px; }
 .gm-carry:empty { display: none; }
 @media (max-width: 700px) { .gm-side { left: 14px; bottom: 62px; } .gm-smoke { grid-template-columns: 50px 140px; } }
+/* co-op: the chat, someone asking to join, invites in the pause menu, the continue-or-new choice */
+.gm-chat { position: absolute; left: 28px; bottom: 132px; width: min(420px, 60vw); pointer-events: none; }
+.gm-chatlog { display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.35; color: #eef4f8; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.8); }
+.gm-chatlog div { transition: opacity 2s; overflow-wrap: anywhere; }
+.gm-chatlog div.old { opacity: 0; }
+.gm-chatlog div.sys { font-style: italic; color: var(--frost); }
+.gm-chatlog b { font-weight: 700; filter: brightness(1.5) saturate(1.2); }
+.gm-chatin { width: 100%; margin-top: 6px; padding: 8px 10px; pointer-events: auto; font: 500 14px var(--ui); color: #fff; background: rgba(4, 10, 17, 0.75); border: 1px solid rgba(233, 242, 249, 0.4); border-radius: 4px; outline: none; }
+.gm-ask { position: absolute; left: 50%; top: 20px; transform: translateX(-50%); padding: 12px 20px; white-space: nowrap; font-size: 15px; font-weight: 600; color: #fff; background: rgba(4, 10, 17, 0.82); border: 1px solid var(--ember); border-radius: 5px; box-shadow: 0 0 22px rgba(255, 150, 70, 0.35); animation: up 0.3s both; }
+.gm-invite { padding-top: 12px; border-top: 1px solid var(--rule2); }
+.gm-invite p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; color: var(--ink2); }
+.gm-direct { display: flex; flex-direction: column; gap: 6px; }
+.gm-direct textarea { font-size: 11px; }
+.choice { position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; padding: 16px; background: rgba(3, 8, 14, 0.6); backdrop-filter: blur(4px); animation: fadeIn 0.2s both; }
+.ch-box { display: flex; flex-direction: column; gap: 10px; width: min(360px, 92vw); padding: 22px; color: var(--ink); border-radius: 5px; background: linear-gradient(165deg, rgba(232, 242, 249, 0.96), rgba(196, 218, 235, 0.94)); border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(110, 160, 200, 0.45), 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(255, 255, 255, 0.6); }
+.ch-box h4 { margin: 0; font: 600 20px var(--title); letter-spacing: 0.14em; text-transform: uppercase; }
+.ch-box p { margin: 0 0 6px; font-weight: 600; color: var(--ink2); }
+.ch-box small { color: var(--ink3); font-size: 12px; line-height: 1.4; }
+@media (max-width: 700px) { .gm-chat { left: 14px; bottom: 112px; } .gm-ask { white-space: normal; text-align: center; width: 90vw; } }
 /* the hotbar and the backpack */
 .gm-hot { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; transition: opacity 0.4s; }
 .game.paused .gm-hot { opacity: 0.2; }

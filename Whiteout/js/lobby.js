@@ -4,6 +4,7 @@
 import { G, S, saveSettings, esc } from './state.js';
 import { NET, MAX, on, send, broadcast, hostPeerJS, joinPeerJS, directHostCode, directHostAccept, directJoin, becomeDirectHost, leaveNet } from './net.js';
 import { ui } from './audio.js';
+import { readSave, saveLabel } from './save.js';
 
 const $ = id => document.getElementById(id);
 let H = null, stage = 'pick';
@@ -21,7 +22,14 @@ export function initLobby(h) {
   };
   way.querySelectorAll('button').forEach(b => b.onclick = () => { S.netWay = b.dataset.v; saveSettings(); syncWay(); ui.click(); });
   syncWay();
-  $('pc-solo').onclick = () => { if (G.started) return; G.started = true; ui.click(); H.starting({ players: [me()] }); };
+  $('pc-solo').onclick = async () => {
+    if (G.started) return;
+    ui.click();
+    const save = readSave('solo'), pick = save ? await chooseSave(save) : 'new';
+    if (!pick || G.started) return;
+    G.started = true;
+    H.starting({ players: [me()] }, pick === 'cont' ? { cont: true, save } : {});
+  };
   $('pc-host').onclick = () => startHost();
   $('pc-join').onclick = () => { setStage('join'); setTimeout(() => $(S.netWay === 'peer' ? 'join-code' : 'dj-code').focus(), 50); };
   $('join-code').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
@@ -35,12 +43,16 @@ export function initLobby(h) {
   // lobby
   $('lb-leave').onclick = leave;
   $('lb-ready').onclick = () => { G.myReady = !G.myReady; send('p0', { t: 'ready', v: G.myReady }); renderSlots(); ui.click(); };
-  $('lb-start').onclick = () => {
+  $('lb-start').onclick = async () => {
     const notReady = G.lobby.players.filter(p => !p.ready);
     if (notReady.length) { ui.error(); return H.toast(`Waiting for ${notReady.map(p => p.name).join(', ')} to be ready.`, 'warn'); }
+    const save = readSave('coop'), pick = save ? await chooseSave(save) : 'new';
+    if (!pick || G.started) return;
     G.started = true;
-    broadcast({ t: 'start', opts: G.lobby.opts });
-    H.starting(G.lobby);
+    const cont = pick === 'cont';
+    if (cont && save.world?.diff) { G.lobby.opts.diff = save.world.diff; syncOpts(); }
+    broadcast({ t: 'start', opts: G.lobby.opts, cont, crew: save?.crew });
+    H.starting(G.lobby, cont ? { cont: true, save } : {});
   };
   for (const id of ['o-diff', 'o-island', 'o-ff']) {
     const seg = $(id), key = { 'o-diff': 'diff', 'o-island': 'island', 'o-ff': 'ff' }[id];
@@ -52,16 +64,33 @@ export function initLobby(h) {
   on('welcome', m => { G.net.id = m.id; hello(); });
   on('hello', (m, from) => {
     if (G.net.role !== 'host') return;
-    G.lobby.players = G.lobby.players.filter(p => p.id !== from).concat({ ...m.info, id: from, ready: false });
-    chatLine(null, `${m.info.name} joined the crew.`); ui.join(); push();
+    const info = { name: String(m.info?.name || 'Survivor').slice(0, 16), coat: m.info?.coat || '#b4462e' };
+    if (G.started) {      // the game is already running: the host is asked on screen (F1 yes, F2 no)
+      if (H.askJoin?.(from, info)) send(from, { t: 'wait' });
+      else refuse(from, 'The crew is in the opening scene right now. Try again in a minute or two.');
+      return;
+    }
+    G.lobby.players = G.lobby.players.filter(p => p.id !== from).concat({ ...info, id: from, ready: false });
+    chatLine(null, `${info.name} joined the crew.`); ui.join(); push();
+  });
+  on('wait', () => { status('The game has already started. Asking the host to let you in…'); $('lb-ready').classList.add('hidden'); });
+  on('join', m => {       // the host said yes: straight onto the island, no cutscene
+    if (G.net.role !== 'guest' || G.started) return;
+    G.lobby.players = m.players; G.lobby.opts = m.opts; G.started = true;
+    status('You are in.');
+    H.joining(m);
   });
   on('ready', (m, from) => { const p = G.lobby.players.find(x => x.id === from); if (p) { p.ready = !!m.v; push(); } });
   on('rename', (m, from) => { const p = G.lobby.players.find(x => x.id === from); if (p) { p.name = m.name; p.coat = m.coat; push(); } });
   on('lobby', m => { G.lobby.players = m.players; G.lobby.opts = m.opts; syncOpts(); renderSlots(); });
-  on('chat', m => { chatLine(m.from, m.text); if (G.net.role === 'host') broadcast({ t: 'chat', text: m.text, from: m.from }); });
+  on('chat', m => {
+    if (m.from === G.net.id) return;                    // my own line, coming back from the host: it's already shown
+    chatLine(m.from, m.text);
+    if (G.net.role === 'host') broadcast({ t: 'chat', text: m.text, from: m.from });
+  });
   on('full', m => { fail(new Error(m.why)); leaveNet(); setStage('pick'); });
   on('kick', () => { H.toast('The host removed you from the crew.', 'bad'); leave(true); });
-  on('start', m => { G.lobby.opts = m.opts; H.starting(G.lobby); });
+  on('start', m => { G.lobby.opts = m.opts; G.started = true; H.starting(G.lobby, m.cont ? { cont: true, crew: m.crew } : {}); });
   NET.onConn = pid => { if (G.net.role === 'host') send(pid, { t: 'welcome', id: pid }); };
   NET.onDrop = pid => {
     if (G.net.role === 'guest' && pid === 'p0') { H.toast('Lost the connection to the host. ' + (NET.why || 'The host closed it or left the room.'), 'bad'); leave(true); return; }
@@ -143,6 +172,33 @@ function push() {
   broadcast({ t: 'lobby', players: G.lobby.players, opts: G.lobby.opts });
   renderSlots();
 }
+// the host let someone into a running game (game.js calls these)
+export function admit(pid, info, crew) {
+  if (G.net.role !== 'host' || !NET.conns.has(pid)) return;
+  G.lobby.players = G.lobby.players.filter(p => p.id !== pid).concat({ ...info, id: pid, ready: true });
+  push();
+  chatLine(null, `${info.name} joined the crew.`);
+  send(pid, { t: 'join', players: G.lobby.players, opts: G.lobby.opts, crew });
+}
+export function refuse(pid, why) {
+  send(pid, { t: 'full', why });
+  setTimeout(() => NET.conns.get(pid)?.close(), 500);
+}
+// a saved game is waiting: continue it, or start a new one? (null = never mind)
+function chooseSave(save) {
+  return new Promise(res => {
+    const d = document.createElement('div');
+    d.className = 'choice';
+    d.innerHTML = `<div class="ch-box"><h4>A saved game</h4><p>${esc(saveLabel(save))}</p>
+      <button class="btn primary" data-v="cont">Continue it</button><button class="btn" data-v="new">Start a new game</button><button class="btn ghost" data-v="">Cancel</button>
+      <small>A new game replaces the saved one the first time it saves.</small></div>`;
+    document.body.append(d);
+    const done = v => { removeEventListener('keydown', esc2, true); d.remove(); res(v); };
+    const esc2 = e => { if (e.code === 'Escape') { e.stopImmediatePropagation(); done(null); } };      // Esc closes this, not the Play screen
+    addEventListener('keydown', esc2, true);
+    d.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b && e.target !== d) return; done(b ? b.dataset.v || null : null); });
+  });
+}
 export function profileChanged() {
   if (G.net.role === 'host') push();
   else if (G.net.role === 'guest') send('p0', { t: 'rename', name: S.name, coat: S.coat });
@@ -173,10 +229,14 @@ function renderSlots() {
   $('lb-start').classList.toggle('dim', !allReady);
 }
 function sendChat() {
-  const inp = $('chat-in'), text = inp.value.trim().slice(0, 140);
-  if (!text) return;
+  const inp = $('chat-in'), text = inp.value;
   inp.value = '';
-  if (G.net.role === 'solo') return;
+  say(text);
+}
+// say something to the crew (the lobby's chat box, and the chat in the game)
+export function say(text) {
+  text = String(text || '').trim().slice(0, 140);
+  if (!text || G.net.role === 'solo') return;
   chatLine(G.net.id, text);
   if (G.net.role === 'host') broadcast({ t: 'chat', text, from: 'p0' }); else send('p0', { t: 'chat', text });
 }
@@ -188,6 +248,7 @@ function chatLine(from, text) {
   d.querySelector('span').textContent = text;
   $('chat-log').append(d);
   $('chat-log').scrollTop = 1e9;
+  H.chat?.(from ? p?.name || '?' : null, text, p?.coat);        // the game shows it too, when one is running
   if (from && from !== G.net.id) ui.chat();
 }
 

@@ -2,9 +2,12 @@
 // out (build step 2), then the island (build step 1). This file runs it: the loop, the escape from the plane,
 // the cold (body heat), the HUD, the pause menu and the mouse.
 // The island is world.js, you are player.js, the clock and the weather are island.js.
-// Co-op is built the "host runs the world" way: the host owns the clock, the difficulty and the physics of the
-// loose things and sends them out; everyone moves their own survivor and sends where they are. This is only
-// the frame for build step 6 (full sync): enough that a crew stands on the same island at the same time.
+// Co-op is built the "host runs the world" way: the host owns the clock, the difficulty, the physics of the loose
+// things, the items, the trees and the shack, and sends them out; everyone moves their own survivor and sends
+// where they are and what they carry. A game starts three ways: new (after the cutscene, in your seat), load (the
+// host or solo continues a save), join (a guest comes into a running game: the host sends the world, sync.js).
+// Someone knocking on a running game shows the host "F1 yes, F2 no". The host keeps what everyone carries, so
+// a player who drops out gets their things back when they return, and a save holds the whole crew's things.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -13,7 +16,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { G, S, clamp, lerp } from './state.js';
 import { kn } from './keys.js';
-import { NET, on, send, broadcast } from './net.js';
+import { NET, on, send, broadcast, directHostCode, directHostAccept } from './net.js';
+import { admit, refuse, say } from './lobby.js';
+import { worldState, applyWorld, loadWorld, playerRecord, restorePlayer } from './sync.js';
+import { writeSave } from './save.js';
 import { SCN, W, smooth } from './scene.js';
 import { menuAudio, GAME, ui as uiSnd } from './audio.js';
 import { dressPanel } from './frost.js';
@@ -25,7 +31,7 @@ import { makeBody, pose, lookFor, rightHand } from './body.js';
 import * as SFX from './sfx.js';
 import { initWork, stopWork, workTick, findAct, closeBag, coatWarmth, planeItems, movingItems, applyMovingItems } from './work.js';
 import { sealedText } from './home.js';
-import { meshFor } from './items.js';
+import { meshFor, TYPES } from './items.js';
 import { BINDS } from './keys.js';
 
 let GM = null;      // the running game
@@ -33,15 +39,18 @@ export const inGame = () => !!GM;
 export function preloadGame() { loadPhysics().catch(() => { /* tried again when the game starts */ }); }
 const diffNow = () => ISL.DIFF[G.lobby.opts.diff] || ISL.DIFF.normal;
 
-// args: { players, meId, coop, openSettings(), onQuit() }
+// args: { players, meId, coop, openSettings(), onQuit(), load?: a save (host or solo), join?: true (a guest: the host sends the world), crew? }
 export async function startGame(args) {
   if (GM) return;
-  const gm = GM = { args, coop: !!args.coop, role: G.net.role, raf: 0, last: 0, T: ISL.T_START, Tnet: null, TnetAt: 0, env: {},
+  const mode = args.load ? 'load' : args.join ? 'join' : 'new';
+  const gm = GM = { args, mode, coop: !!args.coop, role: G.net.role, raf: 0, last: 0, T: ISL.T_START, Tnet: null, TnetAt: 0, env: {},
+    // co-op: people asking to join, what each guest carries (by player id), what those who left carried (by name)
+    asks: [], recs: new Map(), left: new Map(), waitState: mode === 'join', hiT: 0, meT: 2, lastRec: '', saveDay: 0, chatOpen: false,
     ready: false, ended: false, locked: false, started: false, pauseOpen: false, unlockAt: 0,
     inp: new Input(), avatars: new Map(), hints: new Set(), hintQ: [], hintBusy: false,
     netT: 0, propT: 0, propN: 0, hudT: 0, leeT: 0, lee: 0, cold: 0, rate: 0, inside: false, byFire: 0, edgeT: 0, fpsN: 0, fpsT: 0, txt: {},
     // the escape from the plane
-    escaped: false, fainting: false, smoke: 0.25, smokeView: 0, coughT: 3, inCab: true, act: null, holdT: 0, smoky: false };
+    escaped: mode !== 'new', fainting: false, smoke: mode === 'new' ? 0.25 : 0, smokeView: 0, coughT: 3, inCab: mode === 'new', act: null, holdT: 0, smoky: false };
   buildDom(gm);
   document.body.classList.add('in-game');
   SCN.paused = true; menuAudio(false);
@@ -60,9 +69,9 @@ export async function startGame(args) {
   gm.ready = true; gm.last = performance.now();
   GAME.on = true; GAME.wind = 1; GAME.fire = 0;
   gm.dom.root.classList.add('ready');
-  gm.dom.cover.classList.add('out');
+  if (!gm.waitState) gm.dom.cover.classList.add('out');        // a guest joining keeps the cover until the host's world has arrived
   gm.raf = requestAnimationFrame(frame);
-  setTimeout(() => { if (GM === gm) objective(gm); }, 1800);
+  if (mode === 'new') setTimeout(() => { if (GM === gm) objective(gm); }, 1800);
 }
 
 export function stopGame() {
@@ -105,30 +114,42 @@ function buildDom(gm) {
     <div class="gm-act"><i></i><span></span></div>
     <div class="gm-side"><div class="gm-smoke"><small>Smoke</small><div class="gm-bar"><i></i></div></div></div>
     <div class="gm-click">Click to look around</div>
+    <div class="gm-chat"><div class="gm-chatlog"></div><input class="gm-chatin hidden" maxlength="140" placeholder="Say something to your crew… (Enter sends)" autocomplete="off" spellcheck="false"></div>
+    <div class="gm-ask hidden"></div>
     <div class="gm-pause hidden"><div class="panel">
       <header class="p-head"><h2>Paused</h2><span class="p-sub"></span></header>
       <div class="gm-pmenu">
         <button class="btn primary" data-a="resume">Resume</button>
         <button class="btn" data-a="settings">Settings</button>
+        <button class="btn" data-a="save">Save the game</button>
         <div class="gm-diff"><span>Difficulty</span><div class="seg">${Object.entries(ISL.DIFF).map(([k, v]) => `<button data-v="${k}">${v.name}</button>`).join('')}</div></div>
+        <div class="gm-invite hidden"><p></p>
+          <div class="gm-direct hidden"><button class="btn small" data-a="inv-make">Make an invite code</button><textarea rows="2" readonly data-inv placeholder="The invite code appears here: send it to your friend"></textarea>
+            <textarea rows="2" data-rep placeholder="Paste the reply code your friend sends back"></textarea><button class="btn small" data-a="inv-ok">Connect</button></div></div>
         <p class="gm-note"></p>
         <button class="btn ghost" data-a="quit">Quit to menu</button>
       </div>
     </div></div>
-    <div class="gm-cover"><div><div class="kicker">Flight 2207</div><p>Smoke. The roar of the fire. Your seatbelt is still on.</p><div class="gm-load"><i></i></div></div></div>`;
+    <div class="gm-cover"><div><div class="kicker">Flight 2207</div><p>${{ new: 'Smoke. The roar of the fire. Your seatbelt is still on.', load: 'The island, as you left it.', join: 'Finding your crew on the island…' }[gm.mode]}</p><div class="gm-load"><i></i></div></div></div>`;
   document.body.append(d);
   const q = s => d.querySelector(s);
   gm.dom = { root: d, canvas: q('.gm-canvas'), frost: q('.gm-frost'), heat: q('.gm-heat'), bar: q('.gm-bar i'), state: q('.gm-heat small'), clock: q('.gm-clock b'), day: q('.gm-day'), air: q('.gm-air'),
     obj: q('.gm-obj'), hint: q('.gm-hint'), pause: q('.gm-pause'), sub: q('.gm-pause .p-sub'), note: q('.gm-note'), cover: q('.gm-cover'),
-    smokefx: q('.gm-smokefx'), faint: q('.gm-faint'), act: q('.gm-act'), actText: q('.gm-act span'), smokeBox: q('.gm-smoke'), smokeBar: q('.gm-smoke i') };
+    smokefx: q('.gm-smokefx'), faint: q('.gm-faint'), act: q('.gm-act'), actText: q('.gm-act span'), smokeBox: q('.gm-smoke'), smokeBar: q('.gm-smoke i'),
+    chatLog: q('.gm-chatlog'), chatIn: q('.gm-chatin'), ask: q('.gm-ask'), saveB: q('[data-a="save"]'), quitB: q('[data-a="quit"]'), invite: q('.gm-invite'), inviteP: q('.gm-invite p'), direct: q('.gm-direct') };
   q('[data-a="resume"]').onclick = () => resume(gm, true);
   q('[data-a="settings"]').onclick = () => gm.args.openSettings?.();
-  const quitB = q('[data-a="quit"]');
+  gm.dom.saveB.onclick = () => { const ok = saveGame(gm); gm.dom.saveB.textContent = ok ? 'Saved' : gm.escaped ? 'Could not save' : 'Get out of the plane first'; setTimeout(() => { gm.dom.saveB.textContent = 'Save the game'; }, 2000); };
+  const quitB = gm.dom.quitB;
   quitB.onclick = () => {
-    if (quitB.dataset.sure) return quit(gm);
+    if (quitB.dataset.sure) { if (gm.role !== 'guest' && gm.ready) saveGame(gm); return quit(gm); }      // the host and solo save on the way out
     quitB.dataset.sure = '1'; quitB.textContent = 'Click again to quit';
-    setTimeout(() => { delete quitB.dataset.sure; quitB.textContent = 'Quit to menu'; }, 3000);
+    setTimeout(() => { delete quitB.dataset.sure; syncPause(gm); }, 3000);
   };
+  // invite codes (LAN / Tailscale) for someone joining a game that is already running
+  q('[data-a="inv-make"]').onclick = async () => { const ta = q('[data-inv]'); try { ta.value = await directHostCode(); navigator.clipboard?.writeText(ta.value).catch(() => {}); } catch (e) { ta.value = e.message || String(e); } };
+  q('[data-a="inv-ok"]').onclick = async () => { const ta = q('[data-rep]'); try { await directHostAccept(ta.value); ta.value = ''; q('[data-inv]').value = ''; ta.placeholder = 'Connecting… You will be asked to let them in.'; } catch (e) { ta.value = ''; ta.placeholder = e.message || String(e); } };
+  gm.dom.chatIn.addEventListener('blur', () => closeChat(gm));
   d.querySelectorAll('.gm-diff button').forEach(b => b.onclick = () => {
     if (gm.role === 'guest') return;
     G.lobby.opts.diff = b.dataset.v; syncPause(gm); uiSnd.click();
@@ -151,10 +172,13 @@ function build(gm, R) {
   camera.rotation.order = 'YXZ';
   const players = gm.args.players?.length ? gm.args.players : [{ id: 'p0', name: S.name, coat: S.coat }];
   const idx = gm.idx = Math.max(0, players.findIndex(p => p.id === gm.args.meId));
-  const world = gm.world = buildWorld(R, scene, renderer, gm.role === 'guest', Math.min(4, players.length));
+  // how many of the cabin's seats were the crew's when the plane came down (the rest have passengers in them)
+  const crew = gm.crew = clamp((gm.mode === 'load' ? gm.args.load.crew : gm.args.crew) || players.length, 1, 4);
+  const world = gm.world = buildWorld(R, scene, renderer, gm.role === 'guest', crew);
   const p = gm.player = new Player(R, world, scene, camera, lookFor(players[idx]), world.spawn(idx));
   gm.seat = world.seat(idx); gm.myCoat = lookFor(players[idx]).coat;
-  p.sit(gm.seat);                                       // you wake up still buckled into your seat
+  if (gm.mode === 'new') p.sit(gm.seat);                // you wake up still buckled into your seat
+  else { const o = world.shack.outside; p.teleport(o.x, world.groundY(o.x, o.z) + 0.15, o.z); p.yaw = ISL.SHACK.ry; }      // until the save or the host says where you are
   p.onStep = (surface, loud, depth) => SFX.step(surface, loud, depth);
   p.onLand = (speed, surface) => SFX.land(speed, surface);
   // post: bloom, then grain, a vignette, the cold grade and frost (the menu's look), anti-aliased when it's on
@@ -183,10 +207,20 @@ function build(gm, R) {
   });
   composer.addPass(gm.final);
   gfx(gm, false);
+  initWork(gm, { hint, lock });                         // the inventory, the hands, the shack's stove and gaps (work.js)
+  // continuing a saved game: the world as it was, your own things, and the rest of the crew's kept for when they join
+  if (gm.mode === 'load') {
+    const save = gm.args.load;
+    loadWorld(gm, save.world);
+    for (const [name, rec] of Object.entries(save.players || {})) if (name !== S.name) gm.left.set(name, rec);
+    const mine = save.players?.[S.name];
+    if (mine) restorePlayer(gm, mine, TYPES);
+    gm.saveDay = ISL.envAt(gm.T, 0).day;
+    world.phys.step();
+  }
   // the first picture: the right light and your body, before the first frame is drawn
   const env = ISL.envAt(gm.T, diffNow().storm, gm.env);
   p.view(0.016, env); world.update(0.016, env, camera);
-  initWork(gm, { hint, lock });                         // the inventory, the hands, the shack's stove and gaps (work.js)
   // someone dropping out of the crew
   gm.prevDrop = NET.onDrop;
   NET.onDrop = pid => { gm.prevDrop?.(pid); if (GM === gm) dropped(gm, pid); };
@@ -213,6 +247,8 @@ function frame(now) {
   gm.last = now;
   gm.fpsN++; gm.fpsT += dt;
   if (gm.fpsT > 0.5) { W.fps = Math.round(gm.fpsN / gm.fpsT); gm.fpsN = 0; gm.fpsT = 0; }
+  // joining: keep asking the host for the world until it comes (the host's game may still be loading)
+  if (gm.waitState) { gm.hiT -= dt; if (gm.hiT <= 0) { gm.hiT = 1.5; send('p0', { t: 'g-hi' }); } }
   if (dt > 0 && !(gm.pauseOpen && !gm.coop)) tick(gm, dt);      // a solo game stops while the pause menu is open
   hud(gm, dt);
   gm.composer.render();
@@ -229,7 +265,7 @@ function tick(gm, dt) {
   const diff = diffNow(), env = ISL.envAt(gm.T, diff.storm, gm.env);
   W.gust = env.gust; W.wind = env.wind; W.t += dt;                // the wind you hear follows the wind you see
   // physics in small steps: you move, then the world moves
-  gm.inp.active = gm.locked && !gm.fainting;
+  gm.inp.active = gm.locked && !gm.fainting && !gm.chatOpen && !gm.waitState;
   const n = clamp(Math.ceil(dt / 0.02), 1, 4), h = dt / n;
   for (let i = 0; i < n; i++) {
     w.phys.timestep = h;
@@ -247,6 +283,8 @@ function tick(gm, dt) {
   if (gm.smokeView > 0.005) { const fog = gm.scene.fog; fog.color.lerp(SMOKE_C, Math.min(1, gm.smokeView * 1.4)); fog.density = Math.max(fog.density, 0.02 + gm.smokeView * 0.32); }
   crew(gm, dt);
   net(gm, dt);
+  // every morning the game saves itself (the host's or solo's)
+  if (gm.role !== 'guest' && gm.escaped && env.hours >= 8 && env.hours < 10 && gm.saveDay !== env.day) { gm.saveDay = env.day; if (saveGame(gm)) hint(gm, 'saved' + env.day, 'Morning. The game is saved.', 4000, true); }
   gm.bloom.strength = lerp(0.75, 0.22, env.light); gm.bloom.threshold = lerp(0.72, 0.92, env.light);
   const u = gm.final.uniforms;
   u.uTime.value = W.t; u.uCold.value = gm.cold; u.uFrost.value = S.frost ? Math.max(env.gust * p.exposure * 0.8, gm.cold * 0.9) : 0;
@@ -397,6 +435,97 @@ function hud(gm, dt) {
   if (gm.act) { setText(gm, 'act', d.actText, (gm.act.hold ? `Hold ${kn('use')} · ` : '') + gm.act.text); d.act.classList.add('show'); d.act.classList.toggle('nohold', !gm.act.hold); }
   else d.act.classList.remove('show');
   if (gm.pauseOpen) setText(gm, 'sub', d.sub, `Day ${env.day} · ${clockText(env)}`);
+  // someone asking to join: the first in line, with the seconds they have left
+  const a = gm.asks[0];
+  if (a) {
+    const left = Math.ceil((a.until - performance.now()) / 1000);
+    if (left <= 0 || !NET.conns.has(a.pid)) answerAsk(gm, false, left <= 0 ? 'The host didn\'t answer.' : '');
+    else setText(gm, 'ask', d.ask, `${a.info.name} wants to join your crew · F1 yes · F2 no · ${left} s`);
+  }
+  d.ask.classList.toggle('hidden', !gm.asks.length);
+}
+
+// ---------- someone knocks on a game that is already running ----------
+// lobby.js calls this on the host when a new player says hello mid-game. false = can't ask right now.
+export function askJoin(pid, info) {
+  const gm = GM;
+  if (!gm || !gm.ready || gm.role !== 'host' || gm.ended) return false;
+  gm.asks = gm.asks.filter(a => a.pid !== pid);
+  gm.asks.push({ pid, info, until: performance.now() + 30000 });
+  uiSnd.join();
+  return true;
+}
+function answerAsk(gm, yes, why = 'The host said no.') {
+  const a = gm.asks.shift();
+  gm.txt.ask = null;
+  if (!a) return;
+  if (yes) admit(a.pid, a.info, gm.crew);
+  else if (why) refuse(a.pid, why);
+}
+// where someone joining appears: next to the host if the host is out in the open or in the shack, else by the shack's door
+function joinSpawn(gm) {
+  const p = gm.player, w = gm.world, o = w.shack.outside;
+  if (!gm.escaped || gm.inCab || p.seat || !p.grounded) return { x: o.x, y: w.groundY(o.x, o.z) + 0.15, z: o.z, yaw: ISL.SHACK.ry };
+  const x = p.pos.x + Math.cos(p.yaw) * 1.4, z = p.pos.z - Math.sin(p.yaw) * 1.4;       // a step to the host's right
+  const y = gm.inShack ? (w.inShack(_t.set(x, p.pos.y, z)) ? p.pos.y : null) : Math.max(w.groundY(x, z), ISL.SEA);
+  return y == null ? { x: p.pos.x, y: p.pos.y + 0.15, z: p.pos.z, yaw: p.yaw } : { x, y: y + 0.15, z, yaw: p.yaw };
+}
+const _t = new THREE.Vector3();
+on('g-hi', (m, from) => {
+  const gm = GM;
+  if (!gm || !gm.ready || gm.role !== 'host' || !from) return;
+  const name = G.lobby.players.find(x => x.id === from)?.name;
+  const me = (name && gm.left.get(name)) || null;          // they were here before: their own things
+  if (me) { gm.left.delete(name); gm.recs.set(from, me); }
+  send(from, { t: 'g-state', w: worldState(gm), me, spawn: joinSpawn(gm) });
+});
+on('g-state', m => {
+  const gm = GM;
+  if (!gm || !gm.ready || gm.role !== 'guest' || !gm.waitState || !m.w) return;
+  applyWorld(gm, m.w);
+  const p = gm.player, s = m.spawn;
+  if (!(m.me && restorePlayer(gm, m.me, TYPES)) && s) { p.teleport(s.x, s.y, s.z); p.yaw = +s.yaw || 0; }
+  gm.waitState = false;
+  gm.dom.cover.classList.add('out');
+  hint(gm, 'joined', m.me ? 'You are back with your crew, with what you were carrying.' : 'You found the others. The host\'s game runs the island: what you do is shared.', 7000, true);
+});
+// what a guest carries, sent to the host now and then: for coming back after dropping out, and for the save
+on('g-me', (m, from) => { const gm = GM; if (gm && gm.ready && gm.role === 'host' && from && m.rec) gm.recs.set(from, m.rec); });
+
+// ---------- saving (the host's game, or solo) ----------
+function saveGame(gm) {
+  if (gm.role === 'guest' || !gm.ready || !gm.escaped || gm.waitState) return false;
+  const players = {};
+  for (const [name, rec] of gm.left) players[name] = rec;                  // those who left, as they left
+  for (const rec of gm.recs.values()) if (rec?.name) players[rec.name] = rec;    // the guests playing now
+  players[S.name] = playerRecord(gm);
+  return writeSave(gm.coop ? 'coop' : 'solo', { v: 1, at: Date.now(), day: gm.env.day, clock: clockText(gm.env), crew: gm.crew, world: worldState(gm), players });
+}
+
+// ---------- the chat (Enter) ----------
+export function gameChat(name, text, color) {
+  const gm = GM;
+  if (!gm || !gm.dom?.chatLog) return;
+  const d = document.createElement('div');
+  if (name) { const b = document.createElement('b'); b.textContent = name + ': '; if (color) b.style.color = color; d.append(b); } else d.className = 'sys';
+  d.append(String(text));
+  gm.dom.chatLog.append(d);
+  while (gm.dom.chatLog.children.length > 6) gm.dom.chatLog.firstChild.remove();
+  setTimeout(() => d.classList.add('old'), 12000);
+  setTimeout(() => d.remove(), 14000);
+}
+function openChat(gm) {
+  if (gm.chatOpen || !gm.coop) return;
+  gm.chatOpen = true; gm.inp.clear();
+  const inp = gm.dom.chatIn;
+  inp.value = ''; inp.classList.remove('hidden'); inp.focus();
+}
+function closeChat(gm, sendIt = false) {
+  if (!gm.chatOpen) return;
+  gm.chatOpen = false;
+  const inp = gm.dom.chatIn;
+  if (sendIt) say(inp.value);
+  inp.value = ''; inp.classList.add('hidden'); inp.blur();
 }
 function objective(gm) {
   const o = gm.dom.obj;
@@ -427,7 +556,16 @@ function lock(gm) {
 function syncPause(gm) {
   const guest = gm.role === 'guest';
   gm.dom.root.querySelectorAll('.gm-diff button').forEach(b => { b.classList.toggle('on', b.dataset.v === G.lobby.opts.diff); b.disabled = guest; });
-  gm.dom.note.textContent = guest ? 'The host sets the difficulty. The island keeps going while this is open.' : gm.coop ? 'The island keeps going while this is open.' : 'The island waits while you are paused.';
+  gm.dom.note.textContent = guest ? 'The host sets the difficulty and saves the game. The island keeps going while this is open.' : gm.coop ? 'The island keeps going while this is open. The game saves itself every morning.' : 'The island waits while you are paused. The game saves itself every morning.';
+  gm.dom.saveB.classList.toggle('hidden', guest);
+  if (!gm.dom.quitB.dataset.sure) gm.dom.quitB.textContent = guest ? 'Leave the crew' : 'Save and quit to menu';
+  // how friends get into a game that is already running
+  const host = gm.role === 'host';
+  gm.dom.invite.classList.toggle('hidden', !host);
+  if (host) {
+    gm.dom.inviteP.textContent = NET.mode === 'peerjs' ? `Room code ${NET.code}: friends can still join. You'll be asked first (F1 yes, F2 no).` : 'Friends can still join with an invite code. You\'ll be asked first (F1 yes, F2 no).';
+    gm.dom.direct.classList.toggle('hidden', NET.mode !== 'direct');
+  }
 }
 function openPause(gm) {
   if (gm.pauseOpen || gm.ended) return;
@@ -452,6 +590,13 @@ function listen(gm) {
   const h = gm.h = {
     kd: e => {
       if (GM !== gm || gm.ended) return;
+      // someone is asking to join: F1 lets them in, F2 doesn't (wherever you are, even in a menu)
+      if ((e.code === 'F1' || e.code === 'F2') && gm.asks.length) { e.preventDefault(); if (!e.repeat) answerAsk(gm, e.code === 'F1'); return; }
+      // typing to the crew: the keys go to the text box
+      if (gm.chatOpen) {
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); closeChat(gm, true); } else if (e.code === 'Escape') closeChat(gm);
+        return;
+      }
       if (e.code === 'Escape') {
         if (document.body.classList.contains('game-settings')) return;        // the settings window closes itself (main.js)
         if (gm.bagOpen) { closeBag(gm); return; }
@@ -462,11 +607,12 @@ function listen(gm) {
       if (gm.bagOpen && e.code === BINDS.inventory) { e.preventDefault(); closeBag(gm); return; }
       if (!gm.locked) return;
       if (!/^F\d+$/.test(e.code)) e.preventDefault();                         // Tab, Alt and Space belong to the game now
+      if (gm.coop && e.code === BINDS.chat && !e.repeat) { openChat(gm); return; }
       gm.inp.key(e.code, true, e.repeat);
     },
     ku: e => gm.inp.key(e.code, false),
     md: e => {
-      if (GM !== gm || !gm.ready || gm.ended || gm.bagOpen) return;            // the backpack takes its own clicks
+      if (GM !== gm || !gm.ready || gm.ended || gm.bagOpen || gm.waitState) return;      // the backpack takes its own clicks
       if (!gm.locked) { if (!gm.pauseOpen && e.button === 0) lock(gm); return; }
       gm.inp.key('Mouse' + e.button, true, false);
     },
@@ -478,9 +624,9 @@ function listen(gm) {
       gm.dom.root.classList.toggle('locked', gm.locked);
       if (gm.locked) {
         closePause(gm);
-        if (!gm.started) { gm.started = true; objective(gm); setTimeout(() => { if (GM === gm) hint(gm, 'keys', `Move: ${kn('forward')} ${kn('left')} ${kn('back')} ${kn('right')} · Sprint: ${kn('sprint')} · Crouch: ${kn('crouch')} · Jump: ${kn('jump')} · Use (hold): ${kn('use')} · Lighter: ${kn('light')}`, 9000); }, 3000); }
+        if (!gm.started) { gm.started = true; if (gm.mode === 'new') objective(gm); setTimeout(() => { if (GM === gm) hint(gm, 'keys', `Move: ${kn('forward')} ${kn('left')} ${kn('back')} ${kn('right')} · Sprint: ${kn('sprint')} · Crouch: ${kn('crouch')} · Jump: ${kn('jump')} · Use (hold): ${kn('use')} · Lighter: ${kn('light')}${gm.coop ? ` · Chat: ${kn('chat')}` : ''}`, 9000); }, 3000); }
       } else {
-        gm.inp.clear();
+        gm.inp.clear(); closeChat(gm);
         if (was && !gm.bagOpen) { gm.unlockAt = performance.now(); openPause(gm); }
       }
     },
@@ -510,8 +656,17 @@ function unlisten(gm) {
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
 const TYPE_COLOR = { fur: '#e9dfcf', wool: '#33465a' };
 function net(gm, dt) {
-  if (gm.role === 'solo') return;
+  if (gm.role === 'solo' || gm.waitState) return;
   const p = gm.player;
+  // a guest tells the host what they carry, when it has changed (the host keeps it for a rejoin and for the save)
+  if (gm.role === 'guest') {
+    gm.meT -= dt;
+    if (gm.meT <= 0) {
+      gm.meT = 2;
+      const rec = playerRecord(gm), key = JSON.stringify([rec.slots, rec.coat, rec.sel, rec.out, Math.round(rec.heat / 5), Math.round(rec.p[0] / 3), Math.round(rec.p[2] / 3)]);
+      if (key !== gm.lastRec) { gm.lastRec = key; send('p0', { t: 'g-me', rec }); }
+    }
+  }
   gm.netT -= dt;
   if (gm.netT <= 0) {           // where I am, about 12 times a second
     gm.netT = 0.08;
@@ -534,7 +689,7 @@ function net(gm, dt) {
 }
 on('g-w', m => {
   const gm = GM;
-  if (!gm || !gm.ready || gm.role !== 'guest') return;
+  if (!gm || !gm.ready || gm.role !== 'guest' || gm.waitState) return;
   gm.Tnet = +m.T || 0; gm.TnetAt = performance.now();
   if (ISL.DIFF[m.diff]) G.lobby.opts.diff = m.diff;
   for (const a of m.props || []) { const o = gm.world.props[a[0]]; if (o && !o.gone) o.to = a.slice(1); }
@@ -546,7 +701,8 @@ on('g-p', (m, from) => {
   let a = gm.avatars.get(from);
   if (!a) {
     const info = G.lobby.players.find(x => x.id === from) || gm.args.players?.find(x => x.id === from) || { id: from };
-    a = { P: makeBody(lookFor(info), false), pos: new THREE.Vector3(m.p[0], m.p[1], m.p[2]), yaw: +m.yaw || 0, cr: 0, wk: 0, to: m, body: null };
+    a = { P: makeBody(lookFor(info), false), pos: new THREE.Vector3(m.p[0], m.p[1], m.p[2]), yaw: +m.yaw || 0, cr: 0, wk: 0, ph: 0, to: m, body: null, tag: nameTag(info.name || '') };
+    a.P.g.add(a.tag);
     gm.scene.add(a.P.g);
     if (gm.role === 'host') {     // a stand-in the host's physics can feel, so a guest can push loose things too
       a.body = gm.world.phys.createRigidBody(gm.R.RigidBodyDesc.kinematicPositionBased().setTranslation(m.p[0], m.p[1] + 0.9, m.p[2]));
@@ -556,15 +712,32 @@ on('g-p', (m, from) => {
   }
   a.to = m;
 });
+// a name floating over a crew member's head
+function nameTag(name) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const x = c.getContext('2d');
+  x.font = '600 30px Inter, "Segoe UI", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.shadowColor = 'rgba(0,0,0,0.9)'; x.shadowBlur = 6; x.fillStyle = '#eaf3fa';
+  x.fillText(String(name).slice(0, 16), 128, 34);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  s.scale.set(1.0, 0.25, 1); s.position.y = 2.02;
+  return s;
+}
 function crew(gm, dt) {
   const k = 1 - Math.exp(-12 * dt);
   for (const a of gm.avatars.values()) {
-    const to = a.to, dy = (+to.yaw || 0) - a.yaw;
+    const to = a.to, dy = (+to.yaw || 0) - a.yaw, ox = a.pos.x, oz = a.pos.z;
+    if (a.pos.distanceToSquared(_t.set(to.p[0], to.p[1], to.p[2])) > 64) a.pos.copy(_t);       // they were moved (woke up outside, joined): no sliding across the island
     a.pos.x += (to.p[0] - a.pos.x) * k; a.pos.y += (to.p[1] - a.pos.y) * k; a.pos.z += (to.p[2] - a.pos.z) * k;
     a.yaw += Math.atan2(Math.sin(dy), Math.cos(dy)) * k;
     a.cr += ((to.cr ? 1 : 0) - a.cr) * k; a.wk += ((+to.wk || 0) - a.wk) * k;
+    // their stride follows how far they really moved here, so the legs don't jump with every message
+    if (dt > 0) a.ph += Math.min(6, Math.hypot(a.pos.x - ox, a.pos.z - oz) / dt) * dt * (to.cr ? 5.2 : 2.6);
     a.P.g.position.copy(a.pos); a.P.g.rotation.y = a.yaw + Math.PI;
-    pose(a.P, { crouch: a.cr, walk: a.wk, phase: +to.ph || 0, air: to.air ? 1 : 0, hug: to.h ? 0 : +to.hug || 0, look: -(+to.pit || 0) * 0.6, sit: to.st ? 1 : 0, hold: !!to.h, swing: +to.sw || 0, lighter: !!to.li });
+    a.tag.position.y = 2.02 - a.cr * 0.45 - (to.st ? 0.35 : 0);
+    a.tag.material.opacity = 1 - smooth(18, 40, a.pos.distanceTo(gm.camera.position));
+    pose(a.P, { crouch: a.cr, walk: a.wk, phase: a.ph, air: to.air ? 1 : 0, hug: to.h ? 0 : +to.hug || 0, look: -(+to.pit || 0) * 0.6, sit: to.st ? 1 : 0, hold: !!to.h, swing: +to.sw || 0, lighter: !!to.li });
     // their coat (a coat they found has its own colour) and what they hold in their hand
     const cc = TYPE_COLOR[to.coat] || to.coat;
     if (cc && cc !== a.coat) { a.coat = cc; a.P.coat.color.set(cc); }
@@ -584,5 +757,22 @@ function dropped(gm, pid) {
     if (a.body) gm.world.phys.removeRigidBody(a.body);
     gm.avatars.delete(pid);
   }
-  if (gm.role === 'guest' && pid === 'p0') quit(gm);       // the host is gone, and the island with them
+  gm.asks = gm.asks.filter(x => x.pid !== pid); gm.txt.ask = null;
+  if (gm.role === 'guest' && pid === 'p0') { quit(gm); return; }       // the host is gone, and the island with them
+  // the host keeps what they carried for when they come back. The axe and the stove pipe stay behind on the
+  // ground where they stood: there is only one of each, and the crew can't wait for them.
+  const rec = gm.role === 'host' ? gm.recs.get(pid) : null;
+  if (!rec) return;
+  gm.recs.delete(pid);
+  const at = a ? a.pos : new THREE.Vector3(rec.p[0], rec.p[1], rec.p[2]);
+  let lost = '';
+  rec.slots = (rec.slots || []).map(s => {
+    if (!s || (s[0] !== 'axe' && s[0] !== 'pipe')) return s;
+    const x = at.x + (Math.random() - 0.5) * 0.8, z = at.z + (Math.random() - 0.5) * 0.8;
+    gm.world.stash.spawn({ type: s[0], p: [x, at.y + 0.6, z], v: [0, 0, 0] });
+    lost = TYPES[s[0]].name;
+    return 0;
+  });
+  if (rec.name) gm.left.set(rec.name, rec);
+  if (lost) gameChat(null, `${rec.name || 'They'} left ${lost} behind.`);
 }

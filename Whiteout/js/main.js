@@ -8,7 +8,7 @@ import { openHowto } from './howto.js';
 import { initLobby, openPlay, playBack, profileChanged } from './lobby.js';
 import { dressPanel } from './frost.js';
 import { playCutscene } from './cutscene.js';
-import { startGame, preloadGame, inGame, gameApply } from './game.js';
+import { startGame, preloadGame, inGame, gameApply, askJoin, gameChat } from './game.js';
 
 const $ = id => document.getElementById(id);
 const SCREENS = ['main', 'play', 'howto', 'settings', 'credits'];
@@ -109,11 +109,18 @@ function drawFrost() {
 
 // ---------- starting the game: the opening cutscene, then the island ----------
 function toMenu() { playBack(); stack.length = 0; go('main', false); }      // leaves the crew too, if you were in one
-function starting(lobby) {
-  const coop = G.net.role !== 'solo', players = lobby.players, meId = G.net.id;
+// how: {} = a new game (the cutscene first); { cont, save } = the host or solo continues a saved game;
+// { cont, crew } = a guest follows the host into a saved game (the host sends the world)
+function starting(lobby, how = {}) {
+  const coop = G.net.role !== 'solo', players = lobby.players, meId = G.net.id, base = { players, meId, coop, openSettings: () => go('settings'), onQuit: toMenu };
   preloadGame();                                                             // the physics engine downloads while the cutscene plays
-  playCutscene({ players, meId, coop, onBack: () => { if (!coop) go('main'); },
-    onDone: () => startGame({ players, meId, coop, openSettings: () => go('settings'), onQuit: toMenu }) });
+  if (how.cont) { startGame(G.net.role === 'guest' ? { ...base, join: true, crew: how.crew } : { ...base, load: how.save }); return; }
+  playCutscene({ players, meId, coop, onBack: () => { if (!coop) go('main'); }, onDone: () => startGame(base) });
+}
+// the host let you into a game that is already running: no cutscene, the host sends the world
+function joining(m) {
+  preloadGame();
+  startGame({ players: m.players, meId: G.net.id, coop: true, join: true, crew: m.crew, openSettings: () => go('settings'), onQuit: toMenu });
 }
 
 // ---------- settings applied live ----------
@@ -128,7 +135,7 @@ function apply(k) {
 initScene($('bg'));
 drawFrost();
 initSettings({ apply, toast });
-initLobby({ toast, go, starting });
+initLobby({ toast, go, starting, joining, askJoin, chat: gameChat });
 renderProfile();
 $('ver').textContent = VERSION;
 $('fps').classList.toggle('hidden', !S.fps);
