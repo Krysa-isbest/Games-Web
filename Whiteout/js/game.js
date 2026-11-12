@@ -1,5 +1,6 @@
-// Whiteout: the game, build step 1: walking the island. After the opening cutscene you stand in the snow by
-// the burning wreck. This file runs it: the loop, the cold (body heat), the HUD, the pause menu and the mouse.
+// Whiteout: the game. After the opening cutscene you wake up buckled into your seat in the burning plane: get
+// out (build step 2), then the island (build step 1). This file runs it: the loop, the escape from the plane,
+// the cold (body heat), the HUD, the pause menu and the mouse.
 // The island is world.js, you are player.js, the clock and the weather are island.js.
 // Co-op is built the "host runs the world" way: the host owns the clock, the difficulty and the physics of the
 // loose things and sends them out; everyone moves their own survivor and sends where they are. This is only
@@ -34,7 +35,9 @@ export async function startGame(args) {
   const gm = GM = { args, coop: !!args.coop, role: G.net.role, raf: 0, last: 0, T: ISL.T_START, Tnet: null, TnetAt: 0, env: {},
     ready: false, ended: false, locked: false, started: false, pauseOpen: false, unlockAt: 0,
     inp: new Input(), avatars: new Map(), hints: new Set(), hintQ: [], hintBusy: false,
-    netT: 0, propT: 0, propN: 0, hudT: 0, leeT: 0, lee: 0, cold: 0, rate: 0, inside: false, byFire: 0, edgeT: 0, fpsN: 0, fpsT: 0, txt: {} };
+    netT: 0, propT: 0, propN: 0, hudT: 0, leeT: 0, lee: 0, cold: 0, rate: 0, inside: false, byFire: 0, edgeT: 0, fpsN: 0, fpsT: 0, txt: {},
+    // the escape from the plane
+    escaped: false, fainting: false, smoke: 0.25, smokeView: 0, coughT: 3, inCab: true, inv: new Set(), coat: null, act: null, holdT: 0 };
   buildDom(gm);
   document.body.classList.add('in-game');
   SCN.paused = true; menuAudio(false);
@@ -93,7 +96,10 @@ function buildDom(gm) {
       <div class="gm-clock"><b></b><small class="gm-day"></small><small class="gm-air"></small></div>
       <div class="gm-dot"></div>
     </div>
+    <div class="gm-smokefx"></div><div class="gm-faint"><p></p></div>
     <div class="gm-obj"></div><div class="gm-hint"></div>
+    <div class="gm-act"><i></i><span></span></div>
+    <div class="gm-side"><div class="gm-smoke"><small>Smoke</small><div class="gm-bar"><i></i></div></div><div class="gm-carry"></div></div>
     <div class="gm-click">Click to look around</div>
     <div class="gm-pause hidden"><div class="panel">
       <header class="p-head"><h2>Paused</h2><span class="p-sub"></span></header>
@@ -105,11 +111,12 @@ function buildDom(gm) {
         <button class="btn ghost" data-a="quit">Quit to menu</button>
       </div>
     </div></div>
-    <div class="gm-cover"><div><div class="kicker">Flight 2207</div><p>You drag yourself out of the burning plane.</p><div class="gm-load"><i></i></div></div></div>`;
+    <div class="gm-cover"><div><div class="kicker">Flight 2207</div><p>Smoke. The roar of the fire. Your seatbelt is still on.</p><div class="gm-load"><i></i></div></div></div>`;
   document.body.append(d);
   const q = s => d.querySelector(s);
   gm.dom = { root: d, canvas: q('.gm-canvas'), frost: q('.gm-frost'), heat: q('.gm-heat'), bar: q('.gm-bar i'), state: q('.gm-heat small'), clock: q('.gm-clock b'), day: q('.gm-day'), air: q('.gm-air'),
-    obj: q('.gm-obj'), hint: q('.gm-hint'), pause: q('.gm-pause'), sub: q('.gm-pause .p-sub'), note: q('.gm-note'), cover: q('.gm-cover') };
+    obj: q('.gm-obj'), hint: q('.gm-hint'), pause: q('.gm-pause'), sub: q('.gm-pause .p-sub'), note: q('.gm-note'), cover: q('.gm-cover'),
+    smokefx: q('.gm-smokefx'), faint: q('.gm-faint'), act: q('.gm-act'), actText: q('.gm-act span'), smokeBox: q('.gm-smoke'), smokeBar: q('.gm-smoke i'), carry: q('.gm-carry') };
   q('[data-a="resume"]').onclick = () => resume(gm, true);
   q('[data-a="settings"]').onclick = () => gm.args.openSettings?.();
   const quitB = q('[data-a="quit"]');
@@ -138,10 +145,12 @@ function build(gm, R) {
   const scene = gm.scene = new THREE.Scene();
   const camera = gm.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.07, 2000);
   camera.rotation.order = 'YXZ';
-  const world = gm.world = buildWorld(R, scene, renderer, gm.role === 'guest');
   const players = gm.args.players?.length ? gm.args.players : [{ id: 'p0', name: S.name, coat: S.coat }];
-  const idx = Math.max(0, players.findIndex(p => p.id === gm.args.meId));
+  const idx = gm.idx = Math.max(0, players.findIndex(p => p.id === gm.args.meId));
+  const world = gm.world = buildWorld(R, scene, renderer, gm.role === 'guest', Math.min(4, players.length));
   const p = gm.player = new Player(R, world, scene, camera, lookFor(players[idx]), world.spawn(idx));
+  gm.seat = world.seat(idx); gm.myCoat = lookFor(players[idx]).coat;
+  p.sit(gm.seat);                                       // you wake up still buckled into your seat
   p.onStep = (surface, loud, depth) => SFX.step(surface, loud, depth);
   p.onLand = (speed, surface) => SFX.land(speed, surface);
   // post: bloom, then grain, a vignette, the cold grade and frost (the menu's look), anti-aliased when it's on
@@ -215,7 +224,7 @@ function tick(gm, dt) {
   const diff = diffNow(), env = ISL.envAt(gm.T, diff.storm, gm.env);
   W.gust = env.gust; W.wind = env.wind; W.t += dt;                // the wind you hear follows the wind you see
   // physics in small steps: you move, then the world moves
-  gm.inp.active = gm.locked;
+  gm.inp.active = gm.locked && !gm.fainting;
   const n = clamp(Math.ceil(dt / 0.02), 1, 4), h = dt / n;
   for (let i = 0; i < n; i++) {
     w.phys.timestep = h;
@@ -223,8 +232,13 @@ function tick(gm, dt) {
     w.phys.step();
   }
   survive(gm, dt, env, diff);
+  plane(gm, dt, env);
   p.view(dt, env);
   w.update(dt, env, gm.camera);
+  // smoke in the cabin: the view closes in (less when you crouch under it)
+  const sk = gm.inCab ? clamp(gm.smoke + 0.15, 0, 1) * smooth(0.25, 0.6, env.fire) * (p.crouched ? 0.55 : 1) : 0;
+  gm.smokeView += (sk - gm.smokeView) * Math.min(1, dt * 2.5);
+  if (gm.smokeView > 0.005) { const fog = gm.scene.fog; fog.color.lerp(SMOKE_C, Math.min(1, gm.smokeView * 1.4)); fog.density = Math.max(fog.density, 0.02 + gm.smokeView * 0.32); }
   crew(gm, dt);
   net(gm, dt);
   gm.bloom.strength = lerp(0.75, 0.22, env.light); gm.bloom.threshold = lerp(0.72, 0.92, env.light);
@@ -238,7 +252,7 @@ function tick(gm, dt) {
 // around you. (Nothing kills you yet: being downed comes with a later build step.)
 function survive(gm, dt, env, diff) {
   const p = gm.player, w = gm.world;
-  const inside = gm.inside = w.inShack(p.pos);
+  const inShack = gm.inShack = w.inShack(p.pos), inCab = gm.inCab = !!p.seat || w.inCabin(p.pos), inside = gm.inside = inShack || inCab;
   // out of the wind behind something solid? one ray against the wind, a few times a second
   gm.leeT -= dt;
   if (gm.leeT <= 0) {
@@ -249,9 +263,9 @@ function survive(gm, dt, env, diff) {
   }
   const open = (inside ? 0.25 : 1 - 0.6 * gm.lee) * (p.crouched ? 0.85 : 1);     // how much of the wind reaches you
   p.exposure += (open - p.exposure) * Math.min(1, dt * 3);
-  const fd = Math.hypot(p.pos.x - w.fire.pos.x, p.pos.z - w.fire.pos.z), byFire = gm.byFire = env.fire * smooth(9, 2.2, fd);
+  const fd = Math.hypot(p.pos.x - w.fire.pos.x, p.pos.z - w.fire.pos.z), byFire = gm.byFire = Math.max(env.fire * smooth(9, 2.2, fd), inCab ? env.fire * 0.2 : 0);
   const cold = -env.temp / 24, chill = env.wind / 10 * p.exposure;
-  const drain = diff.drain * cold * (0.1 * (inside ? 0.6 : 1) + 0.14 * chill) * (1 - byFire * 0.6);
+  const drain = diff.drain * cold * (0.1 * (inside ? 0.6 : 1) + 0.14 * chill) * (1 - byFire * 0.6) * (gm.coat ? gm.coat.warm : 1);
   const sun = env.light * (1 - env.storm) * (inside ? 0.05 : 0.14);             // daylight warms you a little, mostly out in the sun
   const gain = 0.04 + sun + (p.moving ? (p.sprinting ? 0.1 : 0.035) : 0) + byFire * 1.3;
   const rate = gm.started ? gain - drain : 0;
@@ -263,11 +277,11 @@ function survive(gm, dt, env, diff) {
   p.shiver = c * (0.3 + 0.7 * smooth(0.25, 0.7, 0.5 + 0.5 * Math.sin(gm.T * 0.9) * Math.sin(gm.T * 0.37 + 1)));
   p.hug += (smooth(30, 8, p.heat) * (p.sprinting ? 0.3 : 1) - p.hug) * Math.min(1, dt * 2);
   // what you hear: the wind is duller indoors, the fire crackles when you are near it
-  GAME.wind = inside ? 0.5 : lerp(0.72, 1, p.exposure); GAME.fire = env.fire * smooth(32, 3, fd) * 3;
+  GAME.wind = inside ? 0.5 : lerp(0.72, 1, p.exposure); GAME.fire = inCab ? env.fire * 3 : env.fire * smooth(32, 3, fd) * 3;
   // things worth saying once
   if (!gm.started) return;
-  if (inside) hint(gm, 'shack', 'The ruin keeps some of the wind off you. It is still cold in here: the gaps let it in.');
-  if (byFire > 0.3) hint(gm, 'fire', 'The fire warms you. It will burn out by the morning.');
+  if (inShack) hint(gm, 'shack', 'The ruin keeps some of the wind off you. It is still cold in here: the gaps let it in.');
+  if (byFire > 0.3 && !inCab) hint(gm, 'fire', 'The fire warms you. It will burn out by the morning.');
   if (p.heat < 30) hint(gm, 'cold', 'You are freezing. Get out of the wind: behind a wall, a rock, or in among the trees.');
   if (p.surface === 'ice' && p.grounded) hint(gm, 'ice', 'Sea ice. You slide on it, and nothing out here stops the wind.');
   if (p.depth > 0.75 && p.moving) hint(gm, 'snow', 'Deep snow slows you down. Wind-packed snow is firmer.');
@@ -275,6 +289,112 @@ function survive(gm, dt, env, diff) {
   if (env.light > 0.6) hint(gm, 'day', 'Daylight. It is warmer by day, but the days are short.');
   gm.edgeT -= dt;
   if (p.atEdge && gm.edgeT <= 0) { gm.edgeT = 12; gm.hints.delete('edge'); hint(gm, 'edge', 'The ice is too thin further out. Turn back.', 4000, true); }
+}
+
+// ---------- the escape from the plane ----------
+// You wake up buckled into your seat. Unbuckle, grab what you can reach (two coats, the first aid kit, the flare
+// gun in the cockpit), and get out through the torn-off back before the smoke fills your lungs. Crouching keeps
+// you under the smoke. If it takes you, you come to in the snow outside, half frozen, with only what you grabbed.
+// What you leave stays in the wreck; the smoke stays too, until the fire dies in the morning.
+const SMOKE_C = new THREE.Color('#1d1a17'), _f = new THREE.Vector3(), _d = new THREE.Vector3();
+const ITEM_HINT = {
+  fur: 'You pull on the fur coat. It keeps the cold out far better than what you had on.',
+  wool: 'You pull on the wool coat. Warmer than what you had on.',
+  kit: 'The first aid kit: bandages, painkillers, a little medicine. Keep it for when it counts.',
+  flare: 'The flare gun. It\'s empty: you\'ll need shells for it.',
+};
+function plane(gm, dt, env) {
+  const p = gm.player;
+  // the smoke fills the cabin while the plane burns, and clears once you are outside
+  if (gm.inCab && env.fire > 0.25) { if (gm.started && !gm.fainting) gm.smoke = Math.min(1, gm.smoke + dt / 42 * env.fire * (p.crouched ? 0.5 : 1)); }
+  else gm.smoke = Math.max(0, gm.smoke - dt / 7);
+  if (gm.smoke >= 1 && !gm.fainting) faint(gm);
+  if (gm.smoke > 0.45 && gm.inCab && gm.started) { gm.coughT -= dt; if (gm.coughT <= 0) { gm.coughT = 1.4 + Math.random() * 2.6 * (1.3 - gm.smoke); SFX.cough(0.6 + gm.smoke * 0.5); } }
+  if (gm.started && !p.seat && gm.inCab && gm.smoke > 0.5) hint(gm, 'crouch', `The smoke is thickest up high. Crouch (${kn('crouch')}) to stay under it.`);
+  // out in the snow for the first time
+  if (!gm.escaped && gm.started && !p.seat && !gm.inCab) {
+    gm.escaped = true; objective(gm);
+    hint(gm, 'out', gm.inv.size < 4 ? 'You made it out. Whatever you left behind is still in there. Go back while the fire burns and the smoke will get you.' : 'You made it out, with everything worth taking.');
+  }
+  interact(gm, dt);
+}
+// what is in front of you that you can use: the seatbelt while you sit, otherwise the nearest thing you look at
+function interact(gm, dt) {
+  const p = gm.player, w = gm.world, cam = gm.camera;
+  let act = null;
+  if (!gm.fainting && gm.locked) {
+    if (p.seat) act = { id: 'belt', text: 'Unbuckle your seatbelt', hold: 1.2, go: () => unbuckle(gm) };
+    else {
+      const cp = Math.cos(p.pitch);
+      _f.set(-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp);
+      let best = 0.82, pick = null;
+      for (const it of w.items) {
+        if (it.taken) continue;
+        _d.subVectors(it.pos, cam.position);
+        const dist = _d.length();
+        if (dist > 1.9 || dist < 0.01) continue;
+        const dot = _d.dot(_f) / dist;
+        if (dot < best) continue;
+        _d.divideScalar(dist);
+        const ray = new gm.R.Ray({ x: cam.position.x, y: cam.position.y, z: cam.position.z }, { x: _d.x, y: _d.y, z: _d.z });
+        const loose = gm.R.QueryFilterFlags.EXCLUDE_DYNAMIC | gm.R.QueryFilterFlags.EXCLUDE_KINEMATIC;          // only walls and seats hide things
+        if (w.phys.castRay(ray, Math.max(0.05, dist - 0.15), true, loose, undefined, p.col)) continue;
+        best = dot; pick = it;
+      }
+      if (pick) {
+        const full = pick.kind === 'coat' && gm.coat, it = pick;
+        act = { id: it.id, text: full ? `${it.name[4].toUpperCase()}${it.name.slice(5)}: you already wear a coat` : `Pick up ${it.name}`, hold: full ? 0 : it.hold, go: () => takeItem(gm, it, G.net.id) };
+      }
+    }
+  }
+  if (!act || act.id !== gm.act?.id) gm.holdT = 0;
+  gm.act = act;
+  if (act && act.hold && gm.inp.is('use')) {
+    gm.holdT += dt;
+    if (gm.holdT >= act.hold) { gm.holdT = 0; gm.act = null; act.go(); }
+  } else gm.holdT = Math.max(0, gm.holdT - dt * 3);
+  gm.dom.act.style.setProperty('--k', act && act.hold ? (gm.holdT / act.hold).toFixed(3) : '0');
+}
+function unbuckle(gm) {
+  gm.player.stand(gm.seat.aisle);
+  SFX.grab();
+  hint(gm, 'belt', 'The way out is the torn-off back of the plane. Grab what you can on the way, but don\'t wait too long.');
+}
+function takeItem(gm, it, from) {
+  if (it.taken) return;
+  it.taken = from; it.mesh.visible = false;
+  if (from !== G.net.id) return;
+  gm.inv.add(it.id); SFX.grab();
+  if (it.kind === 'coat') { gm.coat = it; gm.player.P.coat.color.set(it.color); }
+  if (gm.role === 'guest') send('p0', { t: 'g-take', id: it.id });
+  hint(gm, 'got-' + it.id, ITEM_HINT[it.id] || '', 6000, true);
+}
+// a guest took something the host gave to someone else first
+function loseItem(gm, it) {
+  gm.inv.delete(it.id);
+  if (gm.coat === it) { gm.coat = null; gm.player.P.coat.color.set(gm.myCoat); }
+  hint(gm, 'lost-' + it.id, `Someone else got to ${it.name} first.`, 5000, true);
+}
+// the smoke took you: black, then you come to outside
+function faint(gm) {
+  gm.fainting = true; gm.inp.clear(); gm.holdT = 0;
+  const f = gm.dom.faint, txt = f.querySelector('p');
+  txt.textContent = 'The smoke closes over you…'; f.classList.add('show');
+  SFX.cough(1.3);
+  setTimeout(() => {
+    if (GM !== gm) return;
+    const p = gm.player, s = gm.world.spawn(gm.idx);
+    if (p.seat) p.stand(s); else p.teleport(s.x, s.y, s.z);
+    p.yaw = s.yaw; p.pitch = -0.1;
+    gm.smoke = 0; gm.smokeView = 0; p.heat = Math.min(p.heat, 35);
+    txt.textContent = 'You come to in the snow. You don\'t remember crawling out.';
+    setTimeout(() => {
+      if (GM !== gm) return;
+      f.classList.remove('show'); gm.fainting = false;
+      if (!gm.escaped) { gm.escaped = true; objective(gm); }
+      hint(gm, 'fainted', 'You got out, barely, and you\'re freezing. Whatever you didn\'t grab is still in the wreck.', 7000, true);
+    }, 2600);
+  }, 2400);
 }
 
 // ---------- the HUD ----------
@@ -294,7 +414,7 @@ function hud(gm, dt) {
   d.bar.style.width = p.heat.toFixed(1) + '%';
   const st = HEAT.find(s => p.heat >= s[0]);
   if (d.heat.dataset.s !== st[1]) d.heat.dataset.s = st[1];
-  const where = gm.byFire > 0.25 ? 'By the fire' : gm.inside ? 'In the shack' : gm.lee > 0.35 ? 'Out of the wind' : env.wind * p.exposure > 13 ? 'In the wind' : '';
+  const where = gm.inCab ? 'In the plane' : gm.byFire > 0.25 ? 'By the fire' : gm.inShack ? 'In the shack' : gm.lee > 0.35 ? 'Out of the wind' : env.wind * p.exposure > 13 ? 'In the wind' : '';
   const arrow = gm.rate > 0.05 ? ' ▲' : gm.rate < -0.3 ? ' ▼▼' : gm.rate < -0.04 ? ' ▼' : '';
   setText(gm, 'state', d.state, st[2] + arrow + (where ? ' · ' + where : ''));
   setText(gm, 'clock', d.clock, clockText(env));
@@ -303,11 +423,21 @@ function hud(gm, dt) {
   const temp = S.temp === 'f' ? `${Math.round(env.temp * 9 / 5 + 32)}°F` : `${Math.round(env.temp)}°C`;
   setText(gm, 'air', d.air, `${temp} · wind ${Math.round(env.wind * 3.6)} km/h`);
   d.frost.style.opacity = S.frost ? (gm.cold * 0.85).toFixed(2) : '0';
+  // the smoke, what you carry, what you can do here
+  d.smokeBox.classList.toggle('show', gm.smoke > 0.02);
+  d.smokeBar.style.width = (gm.smoke * 100).toFixed(1) + '%';
+  d.smokeBox.classList.toggle('bad', gm.smoke > 0.7);
+  d.smokefx.style.opacity = (gm.smokeView * 0.8).toFixed(3);
+  setText(gm, 'carry', d.carry, gm.inv.size ? 'Carrying: ' + gm.world.items.filter(it => gm.inv.has(it.id)).map(it => it.name.replace('the ', '') + (gm.coat === it ? ' (wearing it)' : '')).join(' · ') : '');
+  if (gm.act) { setText(gm, 'act', d.actText, (gm.act.hold ? `Hold ${kn('use')} · ` : '') + gm.act.text); d.act.classList.add('show'); d.act.classList.toggle('nohold', !gm.act.hold); }
+  else d.act.classList.remove('show');
   if (gm.pauseOpen) setText(gm, 'sub', d.sub, `Day ${env.day} · ${clockText(env)}`);
 }
 function objective(gm) {
   const o = gm.dom.obj;
-  o.innerHTML = `<small>Objective</small><b>Find shelter</b><span>An old hunters' shack stands up the hill to the south-west.</span>`;
+  o.innerHTML = gm.escaped
+    ? `<small>Objective</small><b>Find shelter</b><span>An old hunters' shack stands up the hill to the south-west.</span>`
+    : `<small>Objective</small><b>Get out of the plane</b><span>The fire is spreading. Grab what you can, and get out before the smoke takes you.</span>`;
   o.classList.add('show');
   clearTimeout(gm.objT);
   gm.objT = setTimeout(() => o.classList.remove('show'), 12000);
@@ -417,7 +547,7 @@ function net(gm, dt) {
   gm.netT -= dt;
   if (gm.netT <= 0) {           // where I am, about 12 times a second
     gm.netT = 0.08;
-    send('*', { t: 'g-p', p: [r2(p.pos.x), r2(p.visY - p.sink), r2(p.pos.z)], yaw: r2(p.yaw), pit: r2(p.pitch), cr: p.crouched ? 1 : 0, wk: r2(p.walkAmt), ph: r2(p.phase), air: p.grounded ? 0 : 1, hug: r2(p.hug) });
+    send('*', { t: 'g-p', p: [r2(p.pos.x), r2(p.visY - p.sink), r2(p.pos.z)], yaw: r2(p.seat ? p.seat.yaw : p.yaw), pit: r2(p.pitch), cr: p.crouched ? 1 : 0, wk: r2(p.walkAmt), ph: r2(p.phase), air: p.grounded ? 0 : 1, hug: r2(p.hug), st: p.seat ? 1 : 0, coat: gm.coat ? gm.coat.color : gm.myCoat });
   }
   if (gm.role !== 'host') return;
   gm.propT -= dt;
@@ -429,15 +559,28 @@ function net(gm, dt) {
       const m = o.mesh;
       props.push([i, r3(m.position.x), r3(m.position.y), r3(m.position.z), r3(m.quaternion.x), r3(m.quaternion.y), r3(m.quaternion.z), r3(m.quaternion.w)]);
     });
-    broadcast({ t: 'g-w', T: r2(gm.T), diff: G.lobby.opts.diff, props });
+    broadcast({ t: 'g-w', T: r2(gm.T), diff: G.lobby.opts.diff, props, items: gm.world.items.map(it => it.taken || 0) });
   }
 }
+// a guest picked something up: the host decides who got it (the first one)
+on('g-take', (m, from) => {
+  const gm = GM;
+  if (!gm || !gm.ready || gm.role !== 'host') return;
+  const it = gm.world.items.find(x => x.id === m.id);
+  if (it && !it.taken) takeItem(gm, it, from);
+});
 on('g-w', m => {
   const gm = GM;
   if (!gm || !gm.ready || gm.role !== 'guest') return;
   gm.Tnet = +m.T || 0; gm.TnetAt = performance.now();
   if (ISL.DIFF[m.diff]) G.lobby.opts.diff = m.diff;
   for (const a of m.props || []) { const o = gm.world.props[a[0]]; if (o) o.to = a.slice(1); }
+  (m.items || []).forEach((owner, i) => {
+    const it = gm.world.items[i];
+    if (!it || !owner || it.taken === owner) return;
+    if (it.taken === G.net.id) loseItem(gm, it);
+    it.taken = owner; it.mesh.visible = false;
+  });
 });
 on('g-p', (m, from) => {
   const gm = GM;
@@ -463,7 +606,8 @@ function crew(gm, dt) {
     a.yaw += Math.atan2(Math.sin(dy), Math.cos(dy)) * k;
     a.cr += ((to.cr ? 1 : 0) - a.cr) * k; a.wk += ((+to.wk || 0) - a.wk) * k;
     a.P.g.position.copy(a.pos); a.P.g.rotation.y = a.yaw + Math.PI;
-    pose(a.P, { crouch: a.cr, walk: a.wk, phase: +to.ph || 0, air: to.air ? 1 : 0, hug: +to.hug || 0, look: -(+to.pit || 0) * 0.6 });
+    pose(a.P, { crouch: a.cr, walk: a.wk, phase: +to.ph || 0, air: to.air ? 1 : 0, hug: +to.hug || 0, look: -(+to.pit || 0) * 0.6, sit: to.st ? 1 : 0 });
+    if (to.coat && to.coat !== a.coat) { a.coat = to.coat; a.P.coat.color.set(to.coat); }
     if (a.body) a.body.setNextKinematicTranslation({ x: a.pos.x, y: a.pos.y + 0.9, z: a.pos.z });
   }
 }

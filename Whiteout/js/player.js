@@ -43,7 +43,7 @@ export class Player {
     this.cr = 0; this.air = 1; this.phase = 0; this.walkAmt = 0; this.visY = spawn.y; this.sink = 0; this.dip = 0; this.fovKick = 0; this.t = 0;
     // set by the cold (game.js)
     this.heat = 78; this.slow = 1; this.shiver = 0; this.hug = 0; this.exposure = 1;
-    this.half = H_STAND;
+    this.half = H_STAND; this.seat = null;
     const phys = wld.phys;
     this.body = phys.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + H_STAND + RAD, spawn.z));
     this.col = phys.createCollider(R.ColliderDesc.capsule(H_STAND, RAD).setFriction(0), this.body);
@@ -64,6 +64,20 @@ export class Player {
     const s = 0.0022 * (+S.sens || 1);
     this.yaw -= clamp(dx, -300, 300) * s;
     this.pitch = clamp(this.pitch - clamp(dy, -300, 300) * s * (S.invertY ? -1 : 1), -1.5, 1.5);
+    if (this.seat) {     // buckled in: you can turn your head, not your body
+      const d = Math.atan2(Math.sin(this.yaw - this.seat.yaw), Math.cos(this.yaw - this.seat.yaw));
+      this.yaw = this.seat.yaw + clamp(d, -2, 2);
+    }
+  }
+  // buckled into a seat: the capsule is switched off until you stand up
+  sit(s) {
+    this.seat = s; this.col.setEnabled(false);
+    this.pos.set(s.x, s.y, s.z); this.visY = s.y; this.yaw = s.yaw; this.pitch = -0.12;
+    this.vel.set(0, 0, 0); this.vy = 0; this.grounded = true; this.moving = false; this.speed = 0; this.surface = 'wood';
+  }
+  stand(at) {
+    this.seat = null; this.col.setEnabled(true);
+    this.teleport(at.x, at.y + 0.02, at.z);
   }
   teleport(x, y, z) {
     this.pos.set(x, y, z); this.visY = y; this.vel.set(0, 0, 0); this.vy = 0;
@@ -84,6 +98,7 @@ export class Player {
   // one physics step of h seconds: called just before the world steps
   step(h, env, inp) {
     const w = this.w, p = this.pos;
+    if (this.seat) { inp.jump = 0; this.depth = 0; this.sprinting = false; return; }
     // ---- what you are asking for ----
     let fx = 0, fz = 0;
     if (inp.active) { fz = (inp.is('forward') ? 1 : 0) - (inp.is('back') ? 1 : 0); fx = (inp.is('right') ? 1 : 0) - (inp.is('left') ? 1 : 0); }
@@ -145,7 +160,7 @@ export class Player {
     // ---- what you are standing on ----
     const gy = w.groundY(p.x, p.z), top = Math.max(gy, SEA);
     if (p.y < top - 3) { this.teleport(p.x, top + 0.3, p.z); return; }                   // fell through the world: back on top
-    this.surface = w.inShack(p) ? 'wood' : p.y > top + 0.4 ? 'hard' : gy < SEA ? 'ice' : 'snow';
+    this.surface = w.inShack(p) || w.inCabin(p) ? 'wood' : p.y > top + 0.4 ? 'hard' : gy < SEA ? 'ice' : 'snow';
     this.steep = this.grounded && this.surface === 'snow' && w.slopeY(p.x, p.z) < 0.74;
     this.speed = got / h;
     this.moving = this.grounded && this.speed > 0.4;
@@ -164,6 +179,16 @@ export class Player {
   view(dt, env) {
     this.t += dt;
     const cam = this.cam, p = this.pos, k = 1 - Math.exp(-14 * dt), t = this.t;
+    if (this.seat) {
+      const s = this.seat, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw), sh = this.shiver;
+      cam.position.set(s.x - sy * 0.1, s.y + 1.29, s.z - cy * 0.1);
+      cam.rotation.set(this.pitch + Math.sin(t * 43.1) * 0.003 * sh, this.yaw + Math.sin(t * 47) * 0.003 * sh, Math.sin(t * 0.6) * 0.01);
+      const hf = THREE.MathUtils.degToRad(clamp(+S.fov || 80, 60, 110)), vf = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(hf / 2) / cam.aspect));
+      if (Math.abs(vf - cam.fov) > 0.01) { cam.fov = vf; cam.updateProjectionMatrix(); }
+      this.P.g.position.set(s.x, s.y, s.z); this.P.g.rotation.y = s.yaw + Math.PI;
+      pose(this.P, { fp: true, sit: 1, hug: this.hug });
+      return;
+    }
     this.cr += ((this.crouched ? 1 : 0) - this.cr) * k;
     this.air += ((this.grounded ? 0 : 1) - this.air) * (1 - Math.exp(-10 * dt));
     this.sink += (this.depth * 0.2 - this.sink) * (1 - Math.exp(-6 * dt));          // your legs sink into deep snow

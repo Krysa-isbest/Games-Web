@@ -1,13 +1,14 @@
 // Whiteout: the island you walk on. The same look as the menu's island (snow, pines, rocks, the frozen sea,
 // the aurora), three times as big, with a collider behind everything: the ground, every tree trunk and rock,
-// the ruined shack you can go into, the wreck, the tower, and loose things that roll and slide when you push
-// them. The sky, the light, the fog and the snowfall follow the world time (island.js).
+// the ruined shack you can go into, the wreck (hollow: the cabin you wake up in is inside it), the tower, and
+// loose things that roll and slide when you push them. The sky, the light, the fog and the snowfall follow the world time (island.js).
 // Co-op: the host's physics moves the loose things; on a guest they only follow what the host sends.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { S, clamp, lerp } from './state.js';
 import { glowTex, iceTex, planeTex, paint, fbm, smooth, Smoke } from './scene.js';
 import * as ISL from './island.js';
+import { makeBody, pose } from './body.js';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _m = new THREE.Matrix4(), _e = new THREE.Euler(), _c = new THREE.Color();
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _t = new THREE.Vector3();
@@ -26,6 +27,7 @@ class Batch {
     this.by.get(mat).push(g);
   }
   box(mat, w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) { this.geo(mat, new THREE.BoxGeometry(w, h, d), x, y, z, rx, ry, rz); }
+  raw(mat, g) { if (!this.by.has(mat)) this.by.set(mat, []); this.by.get(mat).push(g); }
   build() {
     for (const [mat, list] of this.by) {
       const m = new THREE.Mesh(mergeGeometries(list), mat);
@@ -222,6 +224,9 @@ function makeShack(R, wld, scene, rng) {
 
   // the foundation and the floorboards
   B.box(dark, W0 + 0.3, FL, D0 + 0.3, 0, FL / 2, 0); sol.box(W0 + 0.3, FL, D0 + 0.3, 0, FL / 2, 0);
+  // an old board laid up to the door: Rapier's step-up doesn't climb the foundation's edge, so without it you had to jump in
+  { const run = 0.9, rz = Math.atan2(FL, run), L = Math.hypot(run, FL), cz = D0 / 2 + 0.15 + run / 2;
+    B.box(woods[2], 1.0, 0.08, L, 1.3, FL / 2 - 0.04, cz, rz); sol.box(1.1, 0.08, L, 1.3, FL / 2 - 0.04, cz, rz, 0, 0, 0.9); }
   for (let i = 0; i < 14; i++) B.box(i % 3 ? floorM : dark, W0 - 0.3, 0.02, 0.27, 0, FL + 0.01, -D0 / 2 + 0.15 + i * 0.3);
 
   // a wall of horizontal planks: `holes` are the door and the window, `cuts` are planks that are gone
@@ -321,19 +326,120 @@ function makeShack(R, wld, scene, rng) {
   wld.inShack = p => { _v.copy(p).applyMatrix4(wld.shack.inv); return Math.abs(_v.x) < W0 / 2 - 0.05 && Math.abs(_v.z) < D0 / 2 - 0.05 && _v.y > -0.3 && _v.y < H0 - 0.3; };
 }
 
-// ---------- the crashed plane ----------
-function makeWreck(R, wld, scene) {
+// ---------- the crashed plane: a hollow wreck with the cabin you wake up in ----------
+// Wreck coordinates: x across, y up (the snow is at 0), z along the plane: the cockpit is at +z, the torn-off
+// back at -z. The cabin is the cutscene's, turned round: the club four of facing seats around two tables, two
+// more seats behind, the cockpit beyond the bulkhead. Every player wakes up in their own seat.
+const NPC = [
+  { coat: '#e9dfcf', hair: '#d8b878', skin: '#f0c8a8', long: true },
+  { coat: '#22262d', hair: '#9a9a9a', skin: '#e3b48f' },
+  { coat: '#5a1e2a', hair: '#1c1410', skin: '#c98f6a', long: true },
+  { coat: '#33465a', hair: '#5a3d26', skin: '#e8be9a' },
+];
+const FLOOR = 0.12, BULK = 4.2, TORN = -6.5;
+const SEATS = [[0.78, 0.95, -1], [0.78, -0.95, 1], [-0.78, 0.95, -1], [-0.78, -0.95, 1]];     // x, z, facing (-1 = towards the back)
+const REAR = [[0.78, -2.9, 1], [-0.78, -2.9, 1]];
+function makeWreck(R, wld, scene, crew) {
   const g = new THREE.Group(), y0 = wld.groundY(ISL.WRECK.x, ISL.WRECK.z);
   g.position.set(ISL.WRECK.x, y0, ISL.WRECK.z); g.rotation.y = ISL.WRECK.ry;
   scene.add(g);
   const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; m.receiveShadow = true; par.add(m); return m; };
-  const hull = new THREE.MeshStandardMaterial({ map: planeTex(), roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+  const hull = new THREE.MeshStandardMaterial({ map: planeTex(), roughness: 0.45, metalness: 0.55 });
   const metal = std('#b9c0c8', { roughness: 0.4, metalness: 0.7 }), charred = std('#1c1a19', { roughness: 1 }), snow = snowMat();
-  const sol = solids(R, wld.phys, g);
-  solidMesh(R, wld.phys, add(new THREE.CylinderGeometry(1.55, 1.55, 13, 24, 1, true), hull, 0, 1.0, 0, Math.PI / 2, 0, 0.12), 0.5);
-  add(new THREE.SphereGeometry(1.55, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), hull, 0, 1.0, 6.5, Math.PI / 2, 0, 0).scale.set(1, 1.8, 1);
+  const lining = std('#7d776d', { roughness: 0.8, side: THREE.BackSide }), carpet = std('#2e2723', { roughness: 1 }), wood = std('#5b3a22', { roughness: 0.4 });
+  const leather = std('#b8a484', { roughness: 0.6 }), leatherDark = std('#8a765a', { roughness: 0.65 }), dark = std('#15181c', { roughness: 0.6, metalness: 0.3 }), gold = std('#c9a35a', { roughness: 0.3, metalness: 0.9 });
+  const sol = solids(R, wld.phys, g), B = new Batch(g);
+  // the fuselage: the outside, a sooty lining inside, the nose
+  add(new THREE.CylinderGeometry(1.55, 1.55, 13, 28, 1, true), hull, 0, 1.0, 0, Math.PI / 2);
+  add(new THREE.CylinderGeometry(1.5, 1.5, 13, 28, 1, true), lining, 0, 1.0, 0, Math.PI / 2).castShadow = false;
+  add(new THREE.SphereGeometry(1.55, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ map: hull.map, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide }), 0, 1.0, 6.5, Math.PI / 2, 0, 0).scale.set(1, 1.8, 1);
   sol.ball(1.5, 0, 1.0, 6.7); sol.ball(1.1, 0, 1.0, 8.1);
-  add(new THREE.CircleGeometry(1.5, 20), charred, 0, 1.0, -6.45, 0, Math.PI, 0);
+  // the shell you can't walk through: thin slabs round the sides and the roof (the floor closes the bottom)
+  const a0 = Math.asin((FLOOR - 1.0) / 1.55), a1 = Math.PI - a0, n = 16;
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (a1 - a0) * (i + 0.5) / n, w = 2 * 1.62 * Math.sin((a1 - a0) / n / 2) + 0.06;
+    sol.box(w, 0.12, 13, Math.cos(a) * 1.62, 1.0 + Math.sin(a) * 1.62, 0, 0, 0, a - Math.PI / 2, 0.5);
+  }
+  B.box(carpet, 2.5, 0.06, 12, 0, FLOOR - 0.03, -0.5); sol.box(2.6, 0.42, 13, 0, FLOOR - 0.21, 0, 0, 0, 0, 0.8);
+  B.box(std('#4a3b2f', { roughness: 1 }), 0.5, 0.012, 10, 0, FLOOR + 0.006, -1.5);
+  // the end of the floor, bent down onto the snow: a ramp, so you can walk back in (a bare 12 cm edge stops a slow walk)
+  const ramp = -Math.atan2(FLOOR, 0.8);
+  B.box(carpet, 2.3, 0.06, 0.82, 0, FLOOR / 2 - 0.03, TORN - 0.4, ramp); sol.box(2.4, 0.1, 0.84, 0, FLOOR / 2 - 0.05, TORN - 0.4, ramp, 0, 0, 0.8);
+  // windows: dark ovals in the lining, seven a side
+  const winG = new THREE.CircleGeometry(0.15, 20).scale(1, 1.35, 1), winM = new THREE.MeshBasicMaterial({ color: '#070b12' });
+  for (const s of [-1, 1]) for (const z of [-4.6, -3.0, -1.6, -0.2, 1.2, 2.6, 3.7]) B.geo(winM, winG.clone(), s * 1.47, 1.25, z, 0, -s * Math.PI / 2, 0);
+  // overhead bins; the one over the aisle at the back has fallen open
+  for (const s of [-1, 1]) for (let z = -4.4; z < 3.7; z += 1.1) if (!(s > 0 && Math.abs(z + 1.1) < 0.1)) B.box(std('#d9d2c4', { roughness: 0.6 }), 0.36, 0.32, 1.0, s * 0.98, FLOOR + 1.84, z);
+  B.box(charred, 0.3, 0.3, 0.95, 0.98, FLOOR + 1.84, -1.1);
+  B.box(std('#cfc7b9'), 0.03, 0.34, 0.98, 0.75, FLOOR + 1.62, -1.1, 0, 0, 1.2);
+  // the bulkhead and the cockpit
+  for (const s of [-1, 1]) { B.box(wood, 1.14, 2.4, 0.08, s * 0.93, FLOOR + 1.2, BULK); sol.box(1.14, 2.4, 0.12, s * 0.93, FLOOR + 1.2, BULK); }
+  B.box(wood, 0.72, 0.4, 0.08, 0, FLOOR + 2.2, BULK); sol.box(0.72, 0.4, 0.12, 0, FLOOR + 2.2, BULK);
+  B.box(dark, 1.5, 0.5, 0.35, 0, FLOOR + 0.75, 5.35, -0.3);
+  B.box(std('#0a1220'), 1.4, 0.45, 0.04, 0, FLOOR + 1.35, 5.5, -0.35);
+  // the torn-off back: ragged metal round the hole, embers on the floor
+  for (let i = 0; i < 24; i++) {
+    const a = a0 + (a1 - a0) * i / 23 + (Math.random() - 0.5) * 0.15, r = 1.47 + Math.random() * 0.12;
+    B.box(Math.random() < 0.6 ? charred : metal, 0.12 + Math.random() * 0.3, 0.3 + Math.random() * 0.45, 0.04, Math.cos(a) * r, 1.0 + Math.sin(a) * r, TORN - 0.05 - Math.random() * 0.2, (Math.random() - 0.5) * 0.8, 0, a + Math.PI / 2 + (Math.random() - 0.5) * 0.5);
+  }
+  const ember = new THREE.MeshBasicMaterial({ color: '#ff6a1a' });
+  for (let i = 0; i < 7; i++) B.box(ember,0.06 + Math.random() * 0.08, 0.04, 0.2 + Math.random() * 0.3, (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 0.5), FLOOR + 0.02, TORN + 0.2 + Math.random() * 0.8, 0, Math.random() * 3, 0);
+  // seats, tables, the pilots' seats; every seat is solid
+  const seat = (x, z, face) => {
+    const ry = face > 0 ? 0 : Math.PI, c = Math.cos(ry), s = Math.sin(ry), at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    const part = (m, w, h, d, lx, y, lz, rx = 0) => { const [px, pz] = at(lx, lz); B.box(m, w, h, d, px, FLOOR + y, pz, rx, ry, 0); };
+    part(leatherDark, 0.62, 0.4, 0.6, 0, 0.2, 0); part(leather, 0.58, 0.1, 0.56, 0, 0.45, 0.02);
+    part(leather, 0.6, 0.8, 0.15, 0, 0.86, -0.3, -0.12); part(leather, 0.42, 0.16, 0.12, 0, 1.32, -0.36, -0.12);
+    for (const k of [-1, 1]) part(leatherDark, 0.09, 0.12, 0.56, k * 0.31, 0.62, 0);
+    sol.box(0.64, 1.3, 0.64, x, FLOOR + 0.65, z);
+  };
+  for (const [x, z, f] of SEATS.concat(REAR)) seat(x, z, f);
+  for (const s of [-1, 1]) {
+    B.box(wood, 0.62, 0.04, 0.74, s * 0.78, FLOOR + 0.72, 0); B.geo(gold, new THREE.CylinderGeometry(0.05, 0.07, 0.7, 10), s * 0.78, FLOOR + 0.35, 0);
+    sol.box(0.62, 0.74, 0.74, s * 0.78, FLOOR + 0.37, 0);
+    seat(s * 0.42, 4.85, 1);
+  }
+  // the people who didn't make it: passengers in the seats nobody plays, the pilots
+  const sit = (look, x, z, face, tilt) => {
+    const P = makeBody(look);
+    P.g.position.set(x, FLOOR, z - face * 0.06); P.g.rotation.y = face > 0 ? 0 : Math.PI;
+    pose(P, { sit: 1, slump: 1, tilt });
+    // they never move: bake the body into the cabin's merged meshes (a handful of draw calls instead of twenty each)
+    g.add(P.g); g.updateMatrixWorld(true);
+    const toCabin = g.matrixWorld.clone().invert();
+    P.g.traverse(o => { if (o.isMesh) B.raw(o.material, o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(toCabin, o.matrixWorld))); });
+    g.remove(P.g);
+  };
+  SEATS.forEach(([x, z, f], i) => { if (i >= crew) sit(NPC[i], x, z, f, i % 2 ? -0.3 : 0.3); });
+  REAR.forEach(([x, z, f], i) => sit(NPC[(i + 2) % 4], x, z, f, i ? -0.35 : 0.35));
+  for (const s of [-1, 1]) sit({ coat: '#e5e9ee', hair: s < 0 ? '#2a2420' : '#6b5a4a', skin: '#e3b48f', pants: '#1d2430' }, s * 0.42, 4.85, 1, s * 0.25);
+  // what you can grab on the way out (game.js decides what each one does)
+  const items = [];
+  const item = (id, kind, name, hold, parts, x, y, z, ry = 0, extra = {}) => {
+    const m = new THREE.Group(); m.position.set(x, FLOOR + y, z); m.rotation.y = ry;
+    for (const [mat, w, h, d, px, py, pz] of parts) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(px, py, pz); b.castShadow = true; m.add(b); }
+    g.add(m);
+    items.push({ id, kind, name, hold, mesh: m, pos: new THREE.Vector3(), taken: 0, ...extra });
+  };
+  const fur = std('#e9dfcf', { roughness: 1 }), wool = std('#33465a', { roughness: 1 }), white = std('#eeeeea', { roughness: 0.5 }), red = std('#c42a1e', { roughness: 0.5 }), orange = std('#e0601a', { roughness: 0.5 });
+  item('fur', 'coat', 'the fur coat', 1.5, [[fur, 0.62, 0.07, 0.48, 0, 0.035, 0], [fur, 0.5, 0.06, 0.12, 0, 0.09, -0.2], [fur, 0.14, 0.05, 0.4, 0.34, 0.03, 0.05]], 0.15, 0, -1.75, 0.5, { color: '#e9dfcf', warm: 0.75 });
+  item('wool', 'coat', 'the wool coat', 1.5, [[wool, 0.56, 0.08, 0.5, 0, 0.04, 0], [wool, 0.42, 0.06, 0.12, 0, 0.1, -0.2]], 0.45, 0, -3.9, -0.7, { color: '#33465a', warm: 0.85 });
+  item('kit', 'kit', 'the first aid kit', 1.0, [[white, 0.32, 0.24, 0.1, 0, 0, 0], [red, 0.06, 0.16, 0.012, 0, 0, -0.055], [red, 0.16, 0.06, 0.012, 0, 0, -0.056]], 0.9, 1.25, BULK - 0.1);
+  item('flare', 'flare', 'the flare gun', 2.5, [[orange, 0.38, 0.2, 0.12, 0, 0, 0], [dark, 0.12, 0.03, 0.04, 0, 0.115, 0]], -0.42, 0.95, 4.52);
+  // the fire burning in the back of the cabin, the smoke along the ceiling, the red emergency light
+  const fmat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,230,160,1)', 'rgba(255,110,30,0.6)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const inFire = [];
+  for (let i = 0; i < 22; i++) {
+    const s = new THREE.Sprite(fmat.clone()), top = i >= 16, side = i % 2 ? 1 : -1;
+    s.userData = { t: Math.random(), bx: top ? side * (0.3 + Math.random() * 0.6) : side * (0.6 + Math.random() * 0.65), by: top ? 1.9 + Math.random() * 0.3 : 0.1 + Math.random() * 0.4, bz: TORN + 0.15 + Math.random() * (top ? 1.6 : 0.9), top };
+    g.add(s); inFire.push(s);
+  }
+  const smat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,255,255,0.6)', 'rgba(255,255,255,0.2)'), color: '#1c1a18', transparent: true, depthWrite: false, opacity: 0 });
+  const inSmoke = [];
+  for (let i = 0; i < 18; i++) { const s = new THREE.Sprite(smat.clone()); s.userData = { t: i / 18, bx: (Math.random() - 0.5) * 1.6, ph: Math.random() * 6 }; g.add(s); inSmoke.push(s); }
+  const inLight = new THREE.PointLight('#ff7a2a', 0, 9, 1.5); inLight.position.set(0, 0.9, TORN + 0.9); g.add(inLight);
+  const redLight = new THREE.PointLight('#ff2a14', 0, 8, 1.6); redLight.position.set(0, FLOOR + 2.0, 0.6); g.add(redLight);
+  B.build();
   // the broken wing stuck in the snow, an engine, the tail further back
   solidMesh(R, wld.phys, add(new THREE.BoxGeometry(9, 0.22, 2.4), metal, 5.5, 0.5, 0.8, 0.05, 0.3, -0.18));
   solidMesh(R, wld.phys, add(new THREE.CylinderGeometry(0.7, 0.6, 2.6, 16), metal, 4.2, 0.4, 1.9, Math.PI / 2, 0, 0.2));
@@ -341,17 +447,27 @@ function makeWreck(R, wld, scene) {
   solidMesh(R, wld.phys, add(new THREE.CylinderGeometry(1.1, 0.5, 4.5, 18), hull, 0, 0.9, 0, Math.PI / 2, 0, 0, tail));
   solidMesh(R, wld.phys, add(new THREE.BoxGeometry(0.22, 3.2, 2.4), std('#9a2b22', { roughness: 0.5, metalness: 0.4 }), 0, 2.6, -1.2, -0.35, 0, 0, tail));
   add(new THREE.BoxGeometry(1.6, 0.35, 11), snow, 0, 2.55, 0.3, 0, 0, 0.12);
-  // the fire at the torn-off end, and the snow it has blackened
-  const fp = new THREE.Vector3(0.2, 0.6, -7.2);
+  // the fire outside, beside the torn-off end (the way out is past it), and the snow it has blackened
+  const fp = new THREE.Vector3(1.7, 0.5, -7.7);
   const scorch = new THREE.Mesh(new THREE.CircleGeometry(4.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTex('rgba(12,9,7,0.9)', 'rgba(20,16,12,0.5)'), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
   scorch.position.set(fp.x, 0.06, fp.z); g.add(scorch);
   const light = new THREE.PointLight('#ff7a2a', 14, 30, 1.7); light.position.copy(fp).add(new THREE.Vector3(0, 1.2, -0.5)); g.add(light);
-  const sprites = [], fmat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,230,160,1)', 'rgba(255,110,30,0.6)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const sprites = [];
   for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(fmat.clone()); s.userData = { t: Math.random(), x: (Math.random() - 0.5) * 1.4, z: (Math.random() - 0.5) * 1.2 }; g.add(s); sprites.push(s); }
   const smoke = new Smoke(fp.clone().add(new THREE.Vector3(0, 1.4, 0)), g, 1.4, '#2a2624', 40);
   g.updateMatrixWorld(true);
-  wld.wreck = { M: g.matrixWorld.clone() };
-  wld.fire = { pos: fp.clone().applyMatrix4(g.matrixWorld), base: fp, light, sprites, smoke };
+  const M = g.matrixWorld.clone(), inv = M.clone().invert(), q = new THREE.Quaternion().setFromRotationMatrix(M);
+  for (const it of items) { it.mesh.getWorldPosition(it.pos); it.pos.y += 0.06; }      // aim a little above the floor
+  wld.items = items;
+  wld.wreck = { M, inv, floorY: y0 + FLOOR, inFire, inSmoke, inLight, redLight };
+  wld.fire = { pos: fp.clone().applyMatrix4(M), base: fp, light, sprites, smoke };
+  wld.inCabin = p => { _v.copy(p).applyMatrix4(inv); return Math.abs(_v.x) < 1.45 && _v.z > TORN && _v.z < 5.4 && _v.y > -0.4 && _v.y < 2.6; };
+  // your seat: where you sit, which way you face, and the spot in the aisle where you stand up
+  wld.seat = i => {
+    const [x, z, f] = SEATS[i % 4], at = (lx, lz) => _v.set(lx, FLOOR, lz).applyMatrix4(M).clone();
+    const p = at(x, z - f * 0.06), aisle = at(0, z), dir = new THREE.Vector3(0, 0, f).applyQuaternion(q);
+    return { x: p.x, y: p.y, z: p.z, yaw: Math.atan2(-dir.x, -dir.z), aisle };
+  };
 }
 
 // ---------- the old watchtower (the satellite phone is up there) ----------
@@ -403,7 +519,7 @@ function makeProps(R, wld, scene, rng, guest) {
   for (let i = 0; i < 14; i++) {
     let lx = 0, lz = 0, tries = 0;
     do { lx = rnd(-9, 11); lz = rnd(-18, 9); }
-    while (++tries < 30 && ((Math.abs(lx) < 2.4 && lz > -7.6 && lz < 10) || (lx > 0.5 && lx < 10.6 && lz > -1.3 && lz < 3.3) || Math.hypot(lx - 4.9, lz + 12.2) < 3 || Math.hypot(lx - 0.2, lz + 7.2) < 1.7 || Math.hypot(lx + 5, lz + 13) < 3.2));
+    while (++tries < 30 && ((Math.abs(lx) < 2.4 && lz > -7.6 && lz < 10) || (lx > 0.5 && lx < 10.6 && lz > -1.3 && lz < 3.3) || Math.hypot(lx - 4.9, lz + 12.2) < 3 || Math.hypot(lx - 1.7, lz + 7.7) < 1.7 || (Math.abs(lx) < 1.6 && lz < -6.4 && lz > -10.5) || Math.hypot(lx + 5, lz + 13) < 3.2));
     const [x, z] = at(WM, lx, lz);
     box(rnd(0.3, 1.1), rnd(0.05, 0.22), rnd(0.3, 1.3), rng() < 0.5 ? metal : charred, 350, x, z, rnd(0, 6.28));
   }
@@ -415,6 +531,8 @@ function makeProps(R, wld, scene, rng, guest) {
     add(seat, [R.ColliderDesc.cuboid(0.31, 0.225, 0.3).setDensity(70), R.ColliderDesc.cuboid(0.3, 0.375, 0.07).setTranslation(0, 0.55, -0.25).setDensity(70)], x, ground(x, z) + 0.27, z, yawQ(wy + 2.2));
     const [x2, z2] = at(WM, 8.6, -6.2); cyl(0.36, 0.24, std('#141414', { roughness: 0.9 }), 300, x2, z2, 0, false);     // a wheel
   }
+  // luggage thrown about inside the cabin, in the way out
+  [['#7a5a3a', -0.65, -4.7, 0.3], ['#2b2f36', 0.6, -5.5, 1.2]].forEach(([c, lx, lz, a]) => { const [x, z] = at(WM, lx, lz); box(0.62, 0.24, 0.42, std(c, { roughness: 0.6 }), 90, x, z, wy + a, wld.wreck.floorY); });
   // around and inside the shack
   const SM = wld.shack.M, sy = ISL.SHACK.ry;
   for (let i = 0; i < 5; i++) { const [x, z] = at(SM, 3.55 + rnd(-0.15, 0.15), -1.9 + i * 0.37); cyl(0.13, 1.1, logM, 550, x, z, sy + rnd(-0.12, 0.12), true); }
@@ -478,7 +596,7 @@ function makeSky(scene, fogColor, moon) {
 }
 
 // ---------- building it all ----------
-export function buildWorld(R, scene, renderer, guest) {
+export function buildWorld(R, scene, renderer, guest, crew = 1) {
   const rng = ISL.mulberry(2207);
   const phys = new R.World({ x: 0, y: -12, z: 0 });
   const wld = { phys, props: [], guest };
@@ -487,7 +605,7 @@ export function buildWorld(R, scene, renderer, guest) {
   makeTrees(R, wld, scene, rng);
   makeRocks(R, wld, scene, rng);
   makeShack(R, wld, scene, rng);
-  makeWreck(R, wld, scene);
+  makeWreck(R, wld, scene, crew);
   makeTower(R, wld, scene);
   makeProps(R, wld, scene, rng, guest);
 
@@ -527,8 +645,8 @@ export function buildWorld(R, scene, renderer, guest) {
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
       uniforms: { uDrift: { value: drift }, uCam: { value: new THREE.Vector3() }, uBox: { value: box }, uTime: { value: 0 }, uSize: { value: 70 * renderer.getPixelRatio() }, uAmount: { value: 0.3 },
-        uShackInv: { value: wld.shack.inv }, uShackHalf: { value: wld.shack.half } },
-      vertexShader: `uniform vec3 uDrift; uniform vec3 uCam; uniform float uBox; uniform float uTime; uniform float uSize; uniform float uAmount; uniform mat4 uShackInv; uniform vec3 uShackHalf;
+        uShackInv: { value: wld.shack.inv }, uShackHalf: { value: wld.shack.half }, uCabInv: { value: wld.wreck.inv } },
+      vertexShader: `uniform vec3 uDrift; uniform vec3 uCam; uniform float uBox; uniform float uTime; uniform float uSize; uniform float uAmount; uniform mat4 uShackInv; uniform vec3 uShackHalf; uniform mat4 uCabInv;
         attribute float aSpeed; attribute float aPhase; varying float vA;
         void main(){
           vec3 p = position + uDrift * aSpeed;
@@ -539,6 +657,8 @@ export function buildWorld(R, scene, renderer, guest) {
           vA = smoothstep(uBox * 0.5, uBox * 0.25, length(p - uCam)) * smoothstep(1.2, 4.0, -mv.z) * step(fract(aPhase * 0.618), uAmount);
           vec3 ls = (uShackInv * vec4(p, 1.0)).xyz;
           if (abs(ls.x) < uShackHalf.x && abs(ls.z) < uShackHalf.z && ls.y < uShackHalf.y) vA = 0.0;
+          vec3 lc = (uCabInv * vec4(p, 1.0)).xyz;                                   // and none inside the plane
+          if (abs(lc.x) < 1.55 && lc.y < 2.6 && lc.z > -6.3 && lc.z < 6.5) vA = 0.0;
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.05, d) * vA * 0.9; if (a < 0.01) discard; gl_FragColor = vec4(0.9, 0.95, 1.0, a); }`,
@@ -622,6 +742,22 @@ export function buildWorld(R, scene, renderer, guest) {
     }
     fr.smoke.update(dt);
     for (const s of fr.smoke.list) s.material.opacity *= 0.3 + 0.7 * f;
+    // inside the plane: the fire in the back, smoke rolling along the ceiling and out of the hole, the red light
+    const wr = wld.wreck, fi = smooth(0.15, 0.6, f);
+    wr.inLight.intensity = 7 * flick * fi;
+    wr.redLight.intensity = f > 0.2 ? (Math.random() < 0.06 ? 0.3 : 1.5) * smooth(0.2, 0.5, f) : 0;
+    for (const s of wr.inFire) {
+      const u = s.userData; u.t += dt * (u.top ? 1.0 : 1.5); if (u.t > 1) u.t -= 1;
+      s.position.set(u.bx + Math.sin(u.t * 5 + u.bz) * 0.05, FLOOR + u.by + u.t * (u.top ? 0.25 : 0.7), u.bz - u.t * 0.25);
+      s.scale.setScalar(((u.top ? 0.35 : 0.55) * (1 - u.t) + 0.12) * fi + 0.001);
+      s.material.opacity = (1 - u.t) * 0.85 * fi;
+    }
+    for (const s of wr.inSmoke) {
+      const u = s.userData; u.t += dt * 0.07; if (u.t > 1) { u.t -= 1; u.bx = (Math.random() - 0.5) * 1.6; }
+      s.position.set(u.bx * 0.7 + Math.sin(u.t * 3 + u.ph) * 0.2, FLOOR + 2.0 - u.t * 0.1 + Math.sin(u.t * 5 + u.ph) * 0.05, 4.0 - u.t * 11);
+      s.scale.setScalar(0.6 + u.t * 1.8);
+      s.material.opacity = Math.sin(Math.PI * u.t) * 0.6 * fi;
+    }
     const blink = (t % 1.6) < 0.25;
     wld.tower.lamp.material.opacity = blink ? 1 : 0.08; wld.tower.light.intensity = blink ? 6 : 0;
 

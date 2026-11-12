@@ -371,6 +371,25 @@ select { max-width: 290px; }
 .gm-load { width: 180px; height: 2px; margin: 0 auto; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
 .gm-load i { display: block; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--ember), transparent); animation: gmLoad 1.3s ease-in-out infinite; }
 @keyframes gmLoad { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+/* the escape from the plane: smoke, the "hold E" prompt, what you carry, passing out */
+.gm-smokefx { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: linear-gradient(180deg, rgba(22, 18, 15, 0.97) 0%, rgba(30, 24, 20, 0.75) 40%, rgba(40, 22, 12, 0.3) 75%, rgba(40, 20, 10, 0.1)); }
+.gm-faint { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
+.gm-faint.show { opacity: 1; }
+.gm-faint p { max-width: 520px; text-align: center; font: italic 500 24px/1.4 var(--serif); color: var(--frost); }
+.gm-act { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 14px; pointer-events: none; white-space: nowrap; font-size: 15px; font-weight: 600; color: #f2f6f9; background: rgba(4, 10, 17, 0.6); border-radius: 4px; text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.2s; }
+.gm-act.show { opacity: 1; }
+.gm-act i { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; background: conic-gradient(var(--ember) calc(var(--k, 0) * 360deg), rgba(255, 255, 255, 0.2) 0); }
+.gm-act.nohold i { display: none; }
+.gm-act.nohold { color: var(--dim); }
+.gm-side { position: absolute; left: 28px; bottom: 76px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.gm-smoke { display: none; grid-template-columns: 54px 202px; align-items: center; column-gap: 10px; }
+.gm-smoke.show { display: grid; }
+.gm-smoke small { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ice); text-shadow: 0 1px 4px #000; }
+.gm-smoke .gm-bar i { background: linear-gradient(90deg, #5c5650, #a59c92); }
+.gm-smoke.bad .gm-bar i { background: linear-gradient(90deg, #7a3a22, #e06a3a); animation: pulse 0.7s ease-in-out infinite; }
+.gm-carry { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ice); text-shadow: 0 1px 4px #000, 0 0 10px rgba(0, 0, 0, 0.7); max-width: 300px; }
+.gm-carry:empty { display: none; }
+@media (max-width: 700px) { .gm-side { left: 14px; bottom: 62px; } .gm-smoke { grid-template-columns: 50px 140px; } }
 body.in-game #fps { right: auto; left: 14px; }      /* the clock sits top right in the game */
 /* the settings, opened from the pause menu: over the game instead of under it */
 body.game-settings #s-settings { z-index: 70; background: rgba(3, 8, 14, 0.6); }

@@ -39,22 +39,25 @@ export function makeBody(look, firstPerson = false) {
     const kn = new THREE.Group(); kn.position.y = -0.44; hip.add(kn); box(0.13, 0.42, 0.14, mp, 0, -0.21, 0, kn); box(0.12, 0.07, 0.24, mshoe, 0, -0.43, 0.05, kn);
     return { hip, kn };
   };
-  return { g, hips, body, head, aL: arm(-1), aR: arm(1), lL: leg(-1), lR: leg(1) };
+  return { g, hips, body, head, coat: mc, aL: arm(-1), aR: arm(1), lL: leg(-1), lR: leg(1) };
 }
 
 // crouch 0..1, walk = how hard the legs swing, phase = where in the stride, air 0..1 = off the ground,
 // hug 0..1 = arms wrapped around yourself against the cold, look = the head's pitch (your crew sees it),
+// sit 0..1 = in a seat (the seat cushion is 0.5 m up), slump 0..1 = unconscious, tilt = which way the head falls,
 // fp = first person (the chest stays out of the camera)
 export function pose(P, k) {
-  const cr = k.crouch || 0, wk = k.walk || 0, ph = k.phase || 0, air = k.air || 0, hug = k.hug || 0;
+  const cr = k.crouch || 0, wk = (k.walk || 0) * (1 - (k.sit || 0)), ph = k.phase || 0, air = k.air || 0, hug = k.hug || 0, st = k.sit || 0, sl = k.slump || 0;
   const sn = Math.sin(ph), sw = sn * 0.55 * wk;
-  const a = cr * 1.0 + air * 0.3, b = cr * 2.08 + air * 0.6;                  // a squat: thighs forward, shins back under the hips
+  let a = cr * 1.0 + air * 0.3, b = cr * 2.08 + air * 0.6;                    // a squat: thighs forward, shins back under the hips
+  a += (Math.PI / 2 - a) * st; b += (Math.PI / 2 - b) * st;                   // sitting: thighs level, shins straight down
   P.lL.hip.rotation.x = -a + sw; P.lR.hip.rotation.x = -a - sw;
   P.lL.kn.rotation.x = b + Math.max(0, -sn) * 0.75 * wk; P.lR.kn.rotation.x = b + Math.max(0, sn) * 0.75 * wk;
-  P.hips.position.y = HIP - cr * 0.425 + Math.abs(Math.cos(ph)) * 0.022 * wk;
-  P.body.rotation.x = k.fp ? 0 : cr * 0.3;
-  P.head.rotation.x = k.look || 0;
-  const swA = sw * 0.9 * (1 - hug), lift = hug * 0.75 + cr * 0.2;
+  const hy = HIP - cr * 0.425 + Math.abs(Math.cos(ph)) * 0.022 * wk;
+  P.hips.position.y = hy + (0.55 - hy) * st;
+  P.body.rotation.x = k.fp ? 0 : cr * 0.3 + sl * 0.35;
+  P.head.rotation.x = (k.look || 0) + sl * 0.75; P.head.rotation.z = sl * (k.tilt ?? 0.2);
+  const swA = sw * 0.9 * (1 - hug), lap = st * (1 - sl) * (1 - hug), lift = hug * 0.75 + cr * 0.2 + lap * 0.35;
   P.aL.sh.rotation.set(-swA - lift, 0, -0.08 + hug * 0.5); P.aR.sh.rotation.set(swA - lift, 0, 0.08 - hug * 0.5);
-  P.aL.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75, 0, hug * 0.85); P.aR.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75, 0, -hug * 0.85);
+  P.aL.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75 - lap * 0.95, 0, hug * 0.85); P.aR.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75 - lap * 0.95, 0, -hug * 0.85);
 }

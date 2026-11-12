@@ -50,6 +50,20 @@ export function step(surface, loud, depth = 0) {
     burst(ctx, t, 'bandpass', 1700 * r, 4, v * 0.6, 0.002, 0.06); thud(ctx, t, 180, 90, v, 0.06);
   }
 }
+// coughing in the smoke
+export function cough(v = 1) {
+  const ctx = ready();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const [o, g] of [[0, 0.2], [0.28, 0.14], [0.52, 0.09]]) { burst(ctx, t + o, 'bandpass', 480 + Math.random() * 120, 1.2, g * v, 0.01, 0.16); thud(ctx, t + o, 140, 80, g * v * 0.5, 0.12); }
+}
+// picking something up
+export function grab() {
+  const ctx = ready();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  burst(ctx, t, 'bandpass', 1400, 1.5, 0.12, 0.01, 0.12); thud(ctx, t + 0.05, 160, 90, 0.12, 0.08);
+}
 export function land(speed, surface) {
   const ctx = ready();
   if (!ctx) return;
