@@ -9,6 +9,7 @@ import { S, clamp, lerp } from './state.js';
 import { glowTex, iceTex, planeTex, paint, fbm, smooth, Smoke } from './scene.js';
 import * as ISL from './island.js';
 import { makeBody, pose } from './body.js';
+import { Stash, TYPES } from './items.js';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _m = new THREE.Matrix4(), _e = new THREE.Euler(), _c = new THREE.Color();
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _t = new THREE.Vector3();
@@ -60,7 +61,13 @@ function solidMesh(R, phys, mesh, fr = 0.7) {
   let d = null;
   if (mesh.geometry.type === 'BoxGeometry') d = R.ColliderDesc.cuboid(p.width / 2 * _s.x, p.height / 2 * _s.y, p.depth / 2 * _s.z);
   else if (mesh.geometry.type === 'CylinderGeometry') d = R.ColliderDesc.cylinder(p.height / 2 * _s.y, Math.max(p.radiusTop, p.radiusBottom) * Math.max(_s.x, _s.z));
-  if (d) phys.createCollider(d.setTranslation(_v.x, _v.y, _v.z).setRotation(quat(_q)).setFriction(fr));
+  return d ? phys.createCollider(d.setTranslation(_v.x, _v.y, _v.z).setRotation(quat(_q)).setFriction(fr)) : null;
+}
+// lay an item in the stash, given in a group's own coordinates (rx, ry, rz turn it in that group)
+function placeItem(wld, M, type, x, y, z, rx = 0, ry = 0, rz = 0, extra = {}) {
+  _v.set(x, y, z).applyMatrix4(M);
+  _q.setFromRotationMatrix(M).multiply(new THREE.Quaternion().setFromEuler(_e.set(rx, ry, rz)));
+  return wld.stash.spawn({ type, p: [_v.x, _v.y, _v.z], q: [_q.x, _q.y, _q.z, _q.w], rest: true, ...extra });
 }
 const snowMat = () => std('#eef3f8', { roughness: 0.9 });
 // a low mound of snow: the cap of a sphere, its rim on the ground
@@ -151,8 +158,9 @@ function treeGeo() {
 }
 const near = (x, z, p, r) => Math.hypot(x - p.x, z - p.z) < r;
 function makeTrees(R, wld, scene, rng) {
-  const geo = treeGeo(), mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
-  const chunks = new Map(), CH = 160;
+  const geo = wld.treeGeo = treeGeo(), mat = wld.treeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  const chunks = new Map(), CH = 160, trees = wld.trees = [];
+  wld.treeByCol = new Map();
   const nx = Math.sin(ISL.WRECK.ry), nz = Math.cos(ISL.WRECK.ry);          // the way the plane's nose points
   for (let gx = -500; gx <= 500; gx += 6.5) for (let gz = -500; gz <= 500; gz += 6.5) {
     const x = gx + (rng() - 0.5) * 6, z = gz + (rng() - 0.5) * 6, pick = rng(), size = rng(), turn = rng(), tall = rng();
@@ -164,20 +172,64 @@ function makeTrees(R, wld, scene, rng) {
     if (behind > 0 && behind < 90 && aside < 8) continue;
     if (wld.slopeY(x, z) < 0.8) continue;
     if (pick > smooth(0.42, 0.6, fbm(x * 0.01 + 40, z * 0.01, 3)) * 0.55 + 0.012) continue;        // forests in clumps, a few lone trees
-    const s = (0.7 + size * 0.8) * 1.5;
+    const s = (0.7 + size * 0.8) * 1.5, sy = 0.9 + tall * 0.35;
     const key = ((x + 640) / CH | 0) + ((z + 640) / CH | 0) * 8;
     if (!chunks.has(key)) chunks.set(key, []);
-    chunks.get(key).push(new THREE.Matrix4().compose(new THREE.Vector3(x, h - 0.25, z), new THREE.Quaternion().setFromAxisAngle(UP, turn * 6.28), new THREE.Vector3(s, s * (0.9 + tall * 0.35), s)));
-    wld.phys.createCollider(R.ColliderDesc.cylinder(1.5 * s, 0.19 * s).setTranslation(x, h + 1.5 * s - 0.3, z).setFriction(0.8));
+    const t = { x, y: h - 0.25, z, s, sy, rot: turn * 6.28, up: true, hp: 5, at: 0, col: null, im: null, j: 0, stump: null };
+    t.m = new THREE.Matrix4().compose(new THREE.Vector3(x, t.y, z), new THREE.Quaternion().setFromAxisAngle(UP, t.rot), new THREE.Vector3(s, s * sy, s));
+    chunks.get(key).push(trees.length);
+    trees.push(t);
+    treeCollider(R, wld, trees.length - 1);
   }
   // one instanced mesh per patch of the island, so patches out of sight are not drawn
   for (const list of chunks.values()) {
     const im = new THREE.InstancedMesh(geo, mat, list.length);
-    list.forEach((m, i) => im.setMatrixAt(i, m));
+    list.forEach((ti, j) => { const t = trees[ti]; t.im = im; t.j = j; im.setMatrixAt(j, t.m); });
     im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
     im.castShadow = true; im.receiveShadow = true;
     scene.add(im);
   }
+  // fallen branches under the trees around the shack: firewood you don't need the axe for
+  const near2 = trees.map((t, i) => [i, Math.hypot(t.x - ISL.SHACK.x, t.z - ISL.SHACK.z)]).filter(([, d]) => d > 20 && d < 120);
+  for (let k = 0; k < 36 && near2.length; k++) {
+    const [ti] = near2.splice(rng() * near2.length | 0, 1)[0], t = trees[ti], a = rng() * 6.28, r = 1.2 + rng() * 2.2;
+    const x = t.x + Math.cos(a) * r, z = t.z + Math.sin(a) * r;
+    _q.setFromAxisAngle(UP, rng() * 6.28);
+    wld.stash.spawn({ type: 'branch', p: [x, wld.groundY(x, z) + 0.035, z], q: [_q.x, _q.y, _q.z, _q.w], rest: true, data: { dry: 0.85 } });
+  }
+  // felling: the tree is hidden, its collider goes, a stump with a sapling is left; it grows back in 5 days
+  const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
+  const stumpGeo = new THREE.CylinderGeometry(0.19, 0.23, 0.4, 7).translate(0, 0.2, 0), sapGeo = new THREE.ConeGeometry(0.3, 0.9, 6).translate(0, 0.45, 0);
+  const stumpMat = std('#4a3626', { roughness: 0.95 }), sapMat = std('#1d3a26', { roughness: 0.9, flatShading: true }), cutMat = std('#b08a5a');
+  wld.felled = new Set();
+  wld.fell = (ti, T) => {
+    const t = trees[ti];
+    if (!t || !t.up) return null;
+    t.up = false; t.at = T; t.hp = 5; wld.felled.add(ti);
+    t.im.setMatrixAt(t.j, HIDE); t.im.instanceMatrix.needsUpdate = true;
+    if (t.col) { wld.treeByCol.delete(t.col.handle); wld.phys.removeCollider(t.col, true); t.col = null; }
+    const g = new THREE.Group(); g.position.set(t.x, t.y + 0.25, t.z); g.scale.setScalar(t.s / 1.5);
+    const st = new THREE.Mesh(stumpGeo, stumpMat), top = new THREE.Mesh(new THREE.CircleGeometry(0.19, 7).rotateX(-Math.PI / 2), cutMat), sap = new THREE.Mesh(sapGeo, sapMat);
+    top.position.y = 0.401; sap.position.set(0.35, 0, 0.1); sap.scale.setScalar(0.05);
+    for (const m of [st, sap]) { m.castShadow = true; m.receiveShadow = true; }
+    g.add(st, top, sap); scene.add(g); t.stump = { g, sap };
+    return t;
+  };
+  wld.unfell = ti => {
+    const t = trees[ti];
+    if (!t || t.up) return;
+    t.up = true; t.hp = 5; wld.felled.delete(ti);
+    t.im.setMatrixAt(t.j, t.m); t.im.instanceMatrix.needsUpdate = true;
+    treeCollider(R, wld, ti);
+    if (t.stump) { scene.remove(t.stump.g); t.stump = null; }
+  };
+  // the saplings grow while you wait
+  wld.growTrees = T => { for (const ti of wld.felled) { const t = trees[ti]; if (t.stump) t.stump.sap.scale.setScalar(0.05 + 0.6 * clamp((T - t.at) / (5 * ISL.DAY), 0, 1)); } };
+}
+function treeCollider(R, wld, ti) {
+  const t = wld.trees[ti];
+  t.col = wld.phys.createCollider(R.ColliderDesc.cylinder(1.5 * t.s, 0.19 * t.s).setTranslation(t.x, t.y + 0.25 + 1.5 * t.s - 0.3, t.z).setFriction(0.8));
+  wld.treeByCol.set(t.col.handle, ti);
 }
 function makeRocks(R, wld, scene, rng) {
   const base = new THREE.DodecahedronGeometry(1, 0);
@@ -241,11 +293,9 @@ function makeShack(R, wld, scene, rng) {
         let p = s;
         while (p < e - 0.05) {
           let len = rnd(1.3, 2.6); if (e - p - len < 0.6) len = e - p;
-          const mid = p + len / 2, gone = r > 1 && rng() < (r >= 6 ? 0.2 : r >= 4 ? 0.09 : 0.04), th = T * rnd(0.75, 1), tilt = rnd(-0.012, 0.012);
-          if (!gone) {
-            if (alongX) B.box(wood(), len - 0.02, ROW - 0.025, th, mid, y, at, 0, 0, tilt);
-            else B.box(wood(), th, ROW - 0.025, len - 0.02, at, y, mid, tilt, 0, 0);
-          }
+          const mid = p + len / 2, th = T * rnd(0.75, 1), tilt = rnd(-0.012, 0.012);
+          if (alongX) B.box(wood(), len - 0.02, ROW - 0.025, th, mid, y, at, 0, 0, tilt);
+          else B.box(wood(), th, ROW - 0.025, len - 0.02, at, y, mid, tilt, 0, 0);
           p += len;
         }
       }
@@ -253,10 +303,22 @@ function makeShack(R, wld, scene, rng) {
   };
   const DOOR = { a: 0.8, b: 1.8, y0: 0, y1: 2.2 }, WIN = { a: -1.74, b: -0.46, y0: 0.95, y1: 1.95 };
   const zf = D0 / 2 - T / 2, xs = W0 / 2 - T / 2, doorTop = 7 * ROW, winLo = 3 * ROW, winHi = 6 * ROW;
-  wall(true, zf, -W0 / 2, W0 / 2, [DOOR, WIN], [{ r: 7, a: -2.6, b: -1.9 }]);
-  wall(true, -zf, -W0 / 2, W0 / 2, [], [{ r: 3, a: 0.6, b: 1.4 }, { r: 4, a: 0.7, b: 1.3 }, { r: 6, a: -2.0, b: -1.2 }, { r: 7, a: -0.5, b: 0.9 }]);
-  wall(false, -xs, -D0 / 2 + T, D0 / 2 - T, [], [{ r: 5, a: -0.6, b: 0.3 }, { r: 7, a: -1.9, b: -0.4 }]);
-  wall(false, xs, -D0 / 2 + T, D0 / 2 - T, [], [{ r: 2, a: 0.2, b: 0.9 }, { r: 4, a: -1.2, b: -0.5 }, { r: 6, a: 0, b: 1.4 }, { r: 7, a: -1.9, b: 0.6 }]);
+  const WALLS = [
+    [true, zf, -W0 / 2, W0 / 2, [DOOR, WIN], [{ r: 7, a: -2.6, b: -1.9 }, { r: 1, a: 2.0, b: 2.6 }, { r: 5, a: -0.4, b: 0.6 }], 1],
+    [true, -zf, -W0 / 2, W0 / 2, [], [{ r: 3, a: 0.6, b: 1.4 }, { r: 4, a: 0.7, b: 1.3 }, { r: 6, a: -2.0, b: -1.2 }, { r: 7, a: -0.5, b: 0.9 }, { r: 2, a: -2.4, b: -1.7 }], -1],
+    [false, -xs, -D0 / 2 + T, D0 / 2 - T, [], [{ r: 5, a: -0.6, b: 0.3 }, { r: 7, a: -1.9, b: -0.4 }, { r: 3, a: 0.6, b: 1.5 }], -1],
+    [false, xs, -D0 / 2 + T, D0 / 2 - T, [], [{ r: 2, a: 0.2, b: 0.9 }, { r: 4, a: -1.2, b: -0.5 }, { r: 6, a: 0, b: 1.4 }, { r: 7, a: -1.9, b: 0.6 }], 1],
+  ];
+  for (const [ax, at, from, to, holes, cuts] of WALLS) wall(ax, at, from, to, holes, cuts);
+  // every gap is a spot you can patch: a board (or a sheet of metal) nailed over it, or snow packed into it from outside
+  const spots = [], newWood = std('#a08f74', { roughness: 0.9 }), packed = std('#f2f6fa', { roughness: 1 });
+  const hidden = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; m.receiveShadow = true; m.visible = false; par.add(m); return m; };
+  for (const [ax, at, , , , cuts, out] of WALLS) for (const c of cuts) {
+    const mid = (c.a + c.b) / 2, len = c.b - c.a, y = (c.r + 0.5) * ROW, o = at + out * (T / 2 + 0.02);
+    const board = ax ? hidden(new THREE.BoxGeometry(len + 0.14, ROW - 0.01, 0.03), newWood, mid, y, o) : hidden(new THREE.BoxGeometry(0.03, ROW - 0.01, len + 0.14), newWood, o, y, mid);
+    const snowP = ax ? hidden(new THREE.BoxGeometry(len, ROW - 0.02, T * 1.3), packed, mid, y, at) : hidden(new THREE.BoxGeometry(T * 1.3, ROW - 0.02, len), packed, at, y, mid);
+    spots.push({ kind: 'wall', need: 1, snowOk: true, local: ax ? new THREE.Vector3(mid, y, at) : new THREE.Vector3(at, y, mid), out: ax ? new THREE.Vector3(0, 0, out) : new THREE.Vector3(out, 0, 0), board, snow: snowP, reach: 2.1 });
+  }
   // the walls you bump into (the gaps are too small to get through)
   sol.box(W0, H0, T, 0, H0 / 2, -zf); sol.box(T, H0, D0 - 2 * T, -xs, H0 / 2, 0); sol.box(T, H0, D0 - 2 * T, xs, H0 / 2, 0);
   for (const [a, b] of [[-W0 / 2, WIN.a], [WIN.b, DOOR.a], [DOOR.b, W0 / 2]]) sol.box(b - a, H0, T, (a + b) / 2, H0 / 2, zf);
@@ -287,27 +349,58 @@ function makeShack(R, wld, scene, rng) {
     sol.box(W0 + 0.9, 0.1, rl, 0, cy, s * cz, s * A);
   }
   B.box(dark, W0 + 0.9, 0.12, 0.12, 0, H0 + 1.52, 0);
+  // the holes in the roof: patched with boards from inside, one per missing board
+  for (const [s, list] of [[1, [6, 7]], [-1, [3, 4]], [-1, [11, 12, 13]]]) {
+    const pg = new THREE.Group(); pg.visible = false; g.add(pg);
+    let xm = 0;
+    for (const i of list) { const x = -(W0 + 0.9) / 2 + (i + 0.5) * bw; xm += x / list.length; const m = new THREE.Mesh(new THREE.BoxGeometry(bw - 0.02, 0.05, rl), newWood); m.position.set(x, cy, s * cz); m.rotation.x = s * A; m.castShadow = true; m.receiveShadow = true; pg.add(m); }
+    spots.push({ kind: 'roof', need: list.length, snowOk: false, local: new THREE.Vector3(xm, cy - 0.05, s * cz), out: new THREE.Vector3(0, 1, 0), board: pg, snow: null, reach: 3.4 });
+  }
 
   // the broken window: a frame, what is left of the cross, a few shards of glass, snow on the sill
   for (const [w, h, x, y] of [[1.36, 0.1, -1.1, winHi + 0.03], [1.36, 0.1, -1.1, winLo - 0.03], [0.1, 1.0, -1.74, 1.41], [0.1, 1.0, -0.46, 1.41], [0.45, 0.06, -1.47, 1.41], [0.06, 0.36, -1.1, 1.68]]) B.box(dark, w, h, 0.08, x, y, zf + 0.04);
   B.box(glass, 0.3, 0.3, 0.012, -1.6, 1.74, zf, 0, 0, 0.78); B.box(glass, 0.24, 0.24, 0.012, -0.6, 1.08, zf, 0, 0, 0.78); B.box(glass, 0.16, 0.2, 0.012, -1.62, 1.04, zf, 0, 0, 0.5);
   B.box(snow, 1.5, 0.08, 0.3, -1.1, winLo - 0.05, zf + 0.14);
+  { // boarding up the window
+    const pg = new THREE.Group(); pg.visible = false; g.add(pg);
+    for (const [y, r] of [[1.12, 0.04], [1.42, -0.03], [1.72, 0.05]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.2, 0.03), newWood); m.position.set(-1.1, y, zf + 0.1); m.rotation.z = r; m.castShadow = true; pg.add(m); }
+    spots.push({ kind: 'window', need: 2, snowOk: false, local: new THREE.Vector3(-1.1, 1.41, zf), out: new THREE.Vector3(0, 0, 1), board: pg, snow: null, reach: 2.2 });
+  }
 
-  // the door: on one hinge, swung wide open and hanging crooked
-  const hinge = new THREE.Group(); hinge.position.set(DOOR.b, 0, D0 / 2 + 0.03); hinge.rotation.set(0, 1.75, 0.13); g.add(hinge);
+  // the door: on one hinge, swung wide open and hanging crooked. Fix it with two boards and it opens and closes.
+  const hinge = new THREE.Group(); hinge.position.set(DOOR.b, 0, D0 / 2 + 0.03); g.add(hinge);
   const doorM = std('#6b5a48', { roughness: 0.9 });
   const door = new THREE.Mesh(new THREE.BoxGeometry(0.96, 1.86, 0.06), doorM); door.position.set(-0.49, FL + 0.95, 0); door.castShadow = true; door.receiveShadow = true; hinge.add(door);
   for (const y of [-0.6, 0.6]) { const br = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.03), dark); br.position.set(0, y, 0.045); door.add(br); }
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), std('#c9a03c', { metalness: 0.8, roughness: 0.3 })); knob.position.set(-0.36, 0, 0.07); door.add(knob);
-  solidMesh(R, wld.phys, door);
+  const doorCtl = { state: '', col: null, local: new THREE.Vector3((DOOR.a + DOOR.b) / 2, 1.1, zf) };
+  doorCtl.set = state => {
+    if (state === doorCtl.state) return;
+    doorCtl.state = state;
+    if (state === 'broken') hinge.rotation.set(0, 1.75, 0.13); else if (state === 'open') hinge.rotation.set(0, 1.7, 0); else hinge.rotation.set(0, 0, 0);
+    if (doorCtl.col) wld.phys.removeCollider(doorCtl.col, true);
+    doorCtl.col = solidMesh(R, wld.phys, door);
+  };
+  doorCtl.set('broken');
 
   // inside: the stove with no pipe, a bunk, a workbench under the window
   const sx = -1.75, sz = -1.25;
   for (const [dx, dz] of [[-0.24, -0.19], [0.24, -0.19], [-0.24, 0.19], [0.24, 0.19]]) B.box(iron, 0.05, 0.14, 0.05, sx + dx, FL + 0.07, sz + dz);
-  B.box(iron, 0.6, 0.6, 0.5, sx, FL + 0.44, sz); B.box(iron2, 0.66, 0.04, 0.56, sx, FL + 0.76, sz); B.box(iron2, 0.26, 0.24, 0.03, sx, FL + 0.4, sz + 0.26);
+  B.box(iron, 0.6, 0.6, 0.5, sx, FL + 0.44, sz); B.box(iron2, 0.66, 0.04, 0.56, sx, FL + 0.76, sz);
   B.geo(iron2, new THREE.CylinderGeometry(0.085, 0.085, 0.1, 10), sx - 0.12, FL + 0.83, sz - 0.08);        // the collar where the pipe used to go
   B.box(snow, 0.3, 0.05, 0.26, sx + 0.08, FL + 0.8, sz + 0.06);
   sol.box(0.6, 0.78, 0.5, sx, FL + 0.39, sz);
+  // its door glows when it burns; its light; the pipe once you find it, with smoke out of the top; smoke indoors without it
+  const glowM = new THREE.MeshStandardMaterial({ color: '#2b2622', roughness: 0.8, metalness: 0.5, emissive: '#ff5a14', emissiveIntensity: 0 });
+  const sDoor = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.03), glowM); sDoor.position.set(sx, FL + 0.4, sz + 0.26); g.add(sDoor);
+  const sLight = new THREE.PointLight('#ff8a3a', 0, 7, 1.6); sLight.position.set(sx, FL + 0.75, sz + 0.55); g.add(sLight);
+  const pipe = new THREE.Group(); pipe.visible = false; g.add(pipe);
+  { const ph = H0 + 1.75 - (FL + 0.83); const m = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, ph, 12), iron); m.position.set(sx - 0.12, FL + 0.83 + ph / 2, sz - 0.08); m.castShadow = true; pipe.add(m);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.12, 12), iron); cap.position.set(sx - 0.12, H0 + 1.85, sz - 0.08); pipe.add(cap); }
+  const chimney = new Smoke(new THREE.Vector3(sx - 0.12, H0 + 1.95, sz - 0.08), g, 0.4, '#8f99a6', 18);
+  const smat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,255,255,0.6)', 'rgba(255,255,255,0.2)'), color: '#2a2622', transparent: true, depthWrite: false, opacity: 0 });
+  const indoor = [];
+  for (let i = 0; i < 12; i++) { const s = new THREE.Sprite(smat.clone()); s.position.set(rnd(-2.3, 2.3), rnd(1.9, 2.6), rnd(-1.7, 1.7)); s.scale.setScalar(rnd(1.2, 2)); s.userData.ph = rnd(0, 6); g.add(s); indoor.push(s); }
   B.box(dark, 1.9, 0.1, 0.85, 1.6, FL + 0.4, -1.5); B.box(cloth, 1.8, 0.1, 0.75, 1.6, FL + 0.5, -1.5);
   for (const [dx, dz] of [[-0.9, -0.38], [0.9, -0.38], [-0.9, 0.38], [0.9, 0.38]]) B.box(dark, 0.08, 0.4, 0.08, 1.6 + dx, FL + 0.2, -1.5 + dz);
   sol.box(1.9, 0.55, 0.85, 1.6, FL + 0.275, -1.5);
@@ -322,8 +415,19 @@ function makeShack(R, wld, scene, rng) {
   B.build();
 
   g.updateMatrixWorld(true);
-  wld.shack = { M: g.matrixWorld.clone(), inv: g.matrixWorld.clone().invert(), half: new THREE.Vector3(W0 / 2, H0 + 0.9, D0 / 2), y: y0, floor: FL };
+  const M = g.matrixWorld.clone();
+  for (const s of spots) { s.pos = s.local.clone().applyMatrix4(M); s.outW = s.out.clone().transformDirection(M); }
+  doorCtl.pos = doorCtl.local.clone().applyMatrix4(M);
+  wld.shack = { M, inv: M.clone().invert(), half: new THREE.Vector3(W0 / 2, H0 + 0.9, D0 / 2), y: y0, floor: FL, spots, door: doorCtl,
+    stove: { pos: new THREE.Vector3(sx, FL + 0.5, sz + 0.3).applyMatrix4(M), glowM, light: sLight, pipe, chimney, indoor },
+    outside: new THREE.Vector3(1.3, 0, 4.2).applyMatrix4(M) };                                   // where you wake up if the smoke gets you in here
   wld.inShack = p => { _v.copy(p).applyMatrix4(wld.shack.inv); return Math.abs(_v.x) < W0 / 2 - 0.05 && Math.abs(_v.z) < D0 / 2 - 0.05 && _v.y > -0.3 && _v.y < H0 - 0.3; };
+  // what lies here when you arrive: the one axe stuck in the chopping stump, the old (dry) firewood, boards fallen
+  // from the roof, and the stove pipe half buried in the snow behind the shack
+  placeItem(wld, M, 'axe', 3.455, 0.82, 2.4, 0, 0, -Math.PI / 2 + 0.45);
+  for (const [x, y, z] of [[3.55, 0.13, -1.75], [3.55, 0.13, -1.47], [3.55, 0.13, -1.19], [3.55, 0.36, -1.61], [3.55, 0.36, -1.33]]) placeItem(wld, M, 'log', x, y, z, 0, rnd(-0.08, 0.08), 0, { data: { dry: 1 } });
+  for (const [x, z, a] of [[0.2, 0.4, 0.5], [-0.3, -0.9, 2.1], [1.3, 0.9, 1.2]]) placeItem(wld, M, 'board', x, FL + 0.035, z, 0, a, 0);
+  { const px = -2.5, pz = -13; _v.set(px, 0, pz).applyMatrix4(M); const gy = wld.groundY(_v.x, _v.z) - y0; placeItem(wld, M, 'pipe', px, gy + 0.06, pz, 0, 0.7, 0.35, { buried: 0.45 }); }
 }
 
 // ---------- the crashed plane: a hollow wreck with the cabin you wake up in ----------
@@ -413,19 +517,15 @@ function makeWreck(R, wld, scene, crew) {
   SEATS.forEach(([x, z, f], i) => { if (i >= crew) sit(NPC[i], x, z, f, i % 2 ? -0.3 : 0.3); });
   REAR.forEach(([x, z, f], i) => sit(NPC[(i + 2) % 4], x, z, f, i ? -0.35 : 0.35));
   for (const s of [-1, 1]) sit({ coat: '#e5e9ee', hair: s < 0 ? '#2a2420' : '#6b5a4a', skin: '#e3b48f', pants: '#1d2430' }, s * 0.42, 4.85, 1, s * 0.25);
-  // what you can grab on the way out (game.js decides what each one does)
-  const items = [];
-  const item = (id, kind, name, hold, parts, x, y, z, ry = 0, extra = {}) => {
-    const m = new THREE.Group(); m.position.set(x, FLOOR + y, z); m.rotation.y = ry;
-    for (const [mat, w, h, d, px, py, pz] of parts) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(px, py, pz); b.castShadow = true; m.add(b); }
-    g.add(m);
-    items.push({ id, kind, name, hold, mesh: m, pos: new THREE.Vector3(), taken: 0, ...extra });
-  };
-  const fur = std('#e9dfcf', { roughness: 1 }), wool = std('#33465a', { roughness: 1 }), white = std('#eeeeea', { roughness: 0.5 }), red = std('#c42a1e', { roughness: 0.5 }), orange = std('#e0601a', { roughness: 0.5 });
-  item('fur', 'coat', 'the fur coat', 1.5, [[fur, 0.62, 0.07, 0.48, 0, 0.035, 0], [fur, 0.5, 0.06, 0.12, 0, 0.09, -0.2], [fur, 0.14, 0.05, 0.4, 0.34, 0.03, 0.05]], 0.15, 0, -1.75, 0.5, { color: '#e9dfcf', warm: 0.75 });
-  item('wool', 'coat', 'the wool coat', 1.5, [[wool, 0.56, 0.08, 0.5, 0, 0.04, 0], [wool, 0.42, 0.06, 0.12, 0, 0.1, -0.2]], 0.45, 0, -3.9, -0.7, { color: '#33465a', warm: 0.85 });
-  item('kit', 'kit', 'the first aid kit', 1.0, [[white, 0.32, 0.24, 0.1, 0, 0, 0], [red, 0.06, 0.16, 0.012, 0, 0, -0.055], [red, 0.16, 0.06, 0.012, 0, 0, -0.056]], 0.9, 1.25, BULK - 0.1);
-  item('flare', 'flare', 'the flare gun', 2.5, [[orange, 0.38, 0.2, 0.12, 0, 0, 0], [dark, 0.12, 0.03, 0.04, 0, 0.115, 0]], -0.42, 0.95, 4.52);
+  // what you can grab on the way out: the coats, the first aid kit on the bulkhead, the flare gun's case on the
+  // back of the captain's seat; and sheets of metal torn off the plane lying round it (good for patching the shack)
+  g.updateMatrixWorld(true);
+  const GM = g.matrixWorld;
+  placeItem(wld, GM, 'fur', 0.15, FLOOR + 0.05, -1.75, 0, 0.5, 0);
+  placeItem(wld, GM, 'wool', 0.45, FLOOR + 0.05, -3.9, 0, -0.7, 0);
+  placeItem(wld, GM, 'kit', 0.9, FLOOR + 1.25, BULK - 0.1, Math.PI / 2, 0, 0);
+  placeItem(wld, GM, 'flare', -0.42, FLOOR + 0.95, 4.52, Math.PI / 2, 0, 0);
+  for (const [x, z, a] of [[-4.2, -2.0, 0.4], [6.5, -9.0, 1.9], [-6.0, -8.5, 2.6], [3.2, 6.5, 0.8], [8.4, 5.2, 2.2]]) placeItem(wld, GM, 'sheet', x, 0.02, z, 0, a, 0);
   // the fire burning in the back of the cabin, the smoke along the ceiling, the red emergency light
   const fmat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,230,160,1)', 'rgba(255,110,30,0.6)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   const inFire = [];
@@ -457,8 +557,6 @@ function makeWreck(R, wld, scene, crew) {
   const smoke = new Smoke(fp.clone().add(new THREE.Vector3(0, 1.4, 0)), g, 1.4, '#2a2624', 40);
   g.updateMatrixWorld(true);
   const M = g.matrixWorld.clone(), inv = M.clone().invert(), q = new THREE.Quaternion().setFromRotationMatrix(M);
-  for (const it of items) { it.mesh.getWorldPosition(it.pos); it.pos.y += 0.06; }      // aim a little above the floor
-  wld.items = items;
   wld.wreck = { M, inv, floorY: y0 + FLOOR, inFire, inSmoke, inLight, redLight };
   wld.fire = { pos: fp.clone().applyMatrix4(M), base: fp, light, sprites, smoke };
   wld.inCabin = p => { _v.copy(p).applyMatrix4(inv); return Math.abs(_v.x) < 1.45 && _v.z > TORN && _v.z < 5.4 && _v.y > -0.4 && _v.y < 2.6; };
@@ -499,14 +597,24 @@ function makeProps(R, wld, scene, rng, guest) {
   const rnd = (a, b) => a + rng() * (b - a);
   const metal = std('#b9c0c8', { roughness: 0.4, metalness: 0.7 }), charred = std('#1c1a19', { roughness: 1 }), logM = std('#4a3626', { roughness: 0.95 });
   const crateM = std('#8a6f4d', { roughness: 0.9 }), barrelM = std('#47586a', { roughness: 0.5, metalness: 0.5 }), plankM = std('#3d342c', { roughness: 0.9 }), leather = std('#d8c4a2', { roughness: 0.55 });
+  wld.propByCol = new Map();
   const add = (mesh, descs, x, y, z, q) => {
     const bd = guest ? R.RigidBodyDesc.kinematicPositionBased() : R.RigidBodyDesc.dynamic().setLinearDamping(0.15).setAngularDamping(0.7);
     const body = wld.phys.createRigidBody(bd.setTranslation(x, y, z).setRotation(quat(q)));
-    for (const d of descs) wld.phys.createCollider(d.setFriction(0.7).setRestitution(0.05), body);
+    for (const d of descs) wld.propByCol.set(wld.phys.createCollider(d.setFriction(0.7).setRestitution(0.05), body).handle, wld.props.length);
     mesh.position.set(x, y, z); mesh.quaternion.copy(q);
     mesh.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(mesh);
-    wld.props.push({ mesh, body, home: [x, y, z], to: null });
+    wld.props.push({ mesh, body, home: [x, y, z], to: null, kind: '', hp: 0, gone: false });
+  };
+  // a crate you smash with the axe: it is gone, and boards lie there instead
+  wld.breakProp = i => {
+    const p = wld.props[i];
+    if (!p || p.gone) return null;
+    p.gone = true; p.mesh.visible = false;
+    for (let k = 0; k < p.body.numColliders(); k++) wld.propByCol.delete(p.body.collider(k).handle);
+    wld.phys.removeRigidBody(p.body); p.body = null;
+    return p.mesh.position.clone();
   };
   const yawQ = (a, tip = 0) => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, a, tip));
   const ground = (x, z) => Math.max(wld.groundY(x, z), ISL.SEA);
@@ -535,10 +643,10 @@ function makeProps(R, wld, scene, rng, guest) {
   [['#7a5a3a', -0.65, -4.7, 0.3], ['#2b2f36', 0.6, -5.5, 1.2]].forEach(([c, lx, lz, a]) => { const [x, z] = at(WM, lx, lz); box(0.62, 0.24, 0.42, std(c, { roughness: 0.6 }), 90, x, z, wy + a, wld.wreck.floorY); });
   // around and inside the shack
   const SM = wld.shack.M, sy = ISL.SHACK.ry;
-  for (let i = 0; i < 5; i++) { const [x, z] = at(SM, 3.55 + rnd(-0.15, 0.15), -1.9 + i * 0.37); cyl(0.13, 1.1, logM, 550, x, z, sy + rnd(-0.12, 0.12), true); }
-  for (const [lx, lz, a] of [[-3.7, 0.9, 0.2], [-3.6, 1.7, 0.9]]) { const [x, z] = at(SM, lx, lz); box(0.55, 0.55, 0.55, crateM, 120, x, z, sy + a); }
+  for (const [lx, lz, a] of [[-3.7, 0.9, 0.2], [-3.6, 1.7, 0.9]]) { const [x, z] = at(SM, lx, lz); box(0.55, 0.55, 0.55, crateM, 120, x, z, sy + a); Object.assign(wld.props[wld.props.length - 1], { kind: 'crate', hp: 2 }); }
   { const [x, z] = at(SM, -3.5, -1.3); cyl(0.29, 0.9, barrelM, 100, x, z, 0, false); }
-  for (const [lx, lz, a] of [[0.2, 0.4, 0.5], [-0.3, -0.9, 2.1], [1.3, 0.9, 1.2]]) { const [x, z] = at(SM, lx, lz); box(1.5, 0.035, 0.2, plankM, 500, x, z, sy + a, wld.shack.y + wld.shack.floor); }   // boards fallen from the roof
+  // (the firewood and the boards fallen from the roof are items now: see makeShack)
+  void logM; void plankM;
 }
 
 // ---------- the sky: the menu's night with its aurora, and a pale cold day ----------
@@ -601,6 +709,10 @@ export function buildWorld(R, scene, renderer, guest, crew = 1) {
   const phys = new R.World({ x: 0, y: -12, z: 0 });
   const wld = { phys, props: [], guest };
   const sparkleU = { value: 1 };
+  // everything you can pick up (items.js). A felled tree is an item too: it falls, rolls, and gets chopped into logs.
+  wld.stash = new Stash(R, phys, scene, guest, {
+    trunk: d => { const g = new THREE.Group(), m = new THREE.Mesh(wld.treeGeo, wld.treeMat); m.scale.set(d.s, d.s * d.sy, d.s); m.castShadow = true; m.receiveShadow = true; g.add(m); return g; },
+  });
   makeTerrain(R, wld, scene, sparkleU);
   makeTrees(R, wld, scene, rng);
   makeRocks(R, wld, scene, rng);
@@ -761,8 +873,11 @@ export function buildWorld(R, scene, renderer, guest, crew = 1) {
     const blink = (t % 1.6) < 0.25;
     wld.tower.lamp.material.opacity = blink ? 1 : 0.08; wld.tower.light.intensity = blink ? 6 : 0;
 
-    // loose things
+    // loose things, things lying about, the saplings on the stumps
+    wld.stash.update(dt, wld, env);
+    wld.growTrees(env.T);
     for (const p of wld.props) {
+      if (p.gone) continue;
       if (guest) {            // follow what the host sent
         if (!p.to) continue;
         const k = 1 - Math.exp(-14 * dt);

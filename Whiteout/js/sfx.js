@@ -64,6 +64,20 @@ export function grab() {
   const t = ctx.currentTime;
   burst(ctx, t, 'bandpass', 1400, 1.5, 0.12, 0.01, 0.12); thud(ctx, t + 0.05, 160, 90, 0.12, 0.08);
 }
+// step 3: the axe, the stove, the hammer, the lighter, the door
+const once = fn => (...a) => { const ctx = ready(); if (ctx) fn(ctx, ctx.currentTime, ...a); };
+export const chop = once((ctx, t) => { thud(ctx, t, 190, 70, 0.32, 0.12); burst(ctx, t, 'bandpass', 1300, 2, 0.22, 0.003, 0.08); burst(ctx, t + 0.02, 'bandpass', 600, 1.5, 0.12, 0.005, 0.12); });
+export const whoosh = once((ctx, t) => burst(ctx, t + 0.12, 'bandpass', 900, 0.8, 0.06, 0.08, 0.12));
+export const clank = once((ctx, t) => { burst(ctx, t, 'bandpass', 3200, 6, 0.12, 0.002, 0.15); thud(ctx, t, 300, 160, 0.1, 0.06); });
+export const fall = once((ctx, t, v = 1) => {
+  for (let i = 0; i < 6; i++) burst(ctx, t + i * 0.09, 'bandpass', 1800 - i * 150, 3, 0.1 * v, 0.004, 0.05);    // the crack
+  thud(ctx, t + 1.4 * v, 70, 30, 0.5 * v, 0.6); burst(ctx, t + 1.4 * v, 'lowpass', 500, 0.7, 0.3 * v, 0.02, 0.8);   // the crash
+});
+export const hammer = once((ctx, t) => { for (let i = 0; i < 3; i++) { thud(ctx, t + i * 0.28, 260, 120, 0.22, 0.06); burst(ctx, t + i * 0.28, 'bandpass', 2600, 5, 0.08, 0.002, 0.05); } });
+export const pack = once((ctx, t) => { for (let i = 0; i < 3; i++) burst(ctx, t + i * 0.3, 'bandpass', 700, 1, 0.14, 0.02, 0.18); });
+export const ignite = once((ctx, t) => { burst(ctx, t, 'highpass', 3000, 0.7, 0.05, 0.002, 0.04); burst(ctx, t + 0.1, 'bandpass', 500, 0.8, 0.2, 0.25, 0.9); });
+export const flick = once((ctx, t) => { burst(ctx, t, 'highpass', 4000, 0.7, 0.08, 0.002, 0.03); burst(ctx, t + 0.04, 'bandpass', 900, 0.8, 0.04, 0.05, 0.2); });
+export const door = once((ctx, t) => { thud(ctx, t, 110, 60, 0.25, 0.15); burst(ctx, t, 'bandpass', 400, 6, 0.06, 0.05, 0.3); });
 export function land(speed, surface) {
   const ctx = ready();
   if (!ctx) return;

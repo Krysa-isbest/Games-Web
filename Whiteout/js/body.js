@@ -60,4 +60,12 @@ export function pose(P, k) {
   const swA = sw * 0.9 * (1 - hug), lap = st * (1 - sl) * (1 - hug), lift = hug * 0.75 + cr * 0.2 + lap * 0.35;
   P.aL.sh.rotation.set(-swA - lift, 0, -0.08 + hug * 0.5); P.aR.sh.rotation.set(swA - lift, 0, 0.08 - hug * 0.5);
   P.aL.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75 - lap * 0.95, 0, hug * 0.85); P.aR.el.rotation.set(-0.15 - 0.25 * wk - hug * 1.75 - lap * 0.95, 0, -hug * 0.85);
+  // holding something in the right hand (others see it), and swinging the axe (swing 0..1)
+  if (k.hold) {
+    const s = k.swing || 0, a = s <= 0 ? -0.75 : s < 0.33 ? -0.75 - 1.9 * (s / 0.33) : -2.65 + 2.4 * Math.min(1, (s - 0.33) / 0.25);
+    P.aR.sh.rotation.set(a, 0, 0.1); P.aR.el.rotation.set(-0.45, 0, 0);
+  }
+  if (k.lighter) { P.aL.sh.rotation.set(-1.0, 0, -0.1); P.aL.el.rotation.set(-0.6, 0, 0); }
 }
+// the hand at the end of the right arm, to put the held item in
+export const rightHand = P => P.aR.el;
