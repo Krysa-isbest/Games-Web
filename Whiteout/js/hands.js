@@ -1,7 +1,7 @@
 // Whiteout: your hands in first person. The sleeve and glove of your coat holding what is in your selected
 // hotbar slot, the axe swing, the lighter in your other hand (it lights up the dark), and wood chips flying.
 import * as THREE from 'three';
-import { meshFor } from './items.js';
+import { meshFor, TYPES } from './items.js';
 import { glowTex } from './scene.js';
 
 export class Hands {
@@ -36,14 +36,15 @@ export class Hands {
     if (!type) return;
     const m = meshFor(type);
     m.traverse(o => { o.castShadow = false; });
-    if (type === 'axe') { m.rotation.set(0, Math.PI, Math.PI / 2); m.position.set(0, 0.2, 0); this.slot.rotation.set(-0.45, 0, 0); }
+    if (type === 'axe' || type === 'saxe') { m.rotation.set(0, Math.PI, Math.PI / 2); m.position.set(0, 0.2, 0); this.slot.rotation.set(-0.45, 0, 0); }
+    else if (type === 'rod') { m.rotation.set(0, 0, 0.45); m.position.set(0.3, 0.02, 0); this.slot.rotation.set(0, Math.PI / 2, 0); }      // the grip in the glove, the tip out in front, raised
     else if (type === 'flare') { m.rotation.set(-Math.PI / 2, 0, 0); m.position.set(0.03, 0.02, 0); this.slot.rotation.set(0, Math.PI / 2, 0); }      // held like a pistol: grip in the glove, barrel forward
     else if (type === 'log' || type === 'split' || type === 'branch' || type === 'board' || type === 'pipe') { m.position.set(-0.14, 0.06, -0.08); m.scale.setScalar(0.85); this.slot.rotation.set(0, 0.25, 0); }
     else { m.position.set(0, 0.03, -0.1); m.rotation.set(-0.5, 0.3, 0); this.slot.rotation.set(0, 0, 0); }
     this.slot.add(m);
   }
-  // start a swing (only with the axe, one at a time)
-  swing() { if (this.sw >= 0 || this.type !== 'axe') return false; this.sw = 0; this.struck = false; return true; }
+  // start a swing (only with an axe, one at a time)
+  swing() { if (this.sw >= 0 || !TYPES[this.type]?.tool) return false; this.sw = 0; this.struck = false; return true; }
   get busy() { return this.sw >= 0; }
   // returns true at the moment the axe lands
   update(dt, k) {

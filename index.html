@@ -163,9 +163,38 @@ const GAMES = [
   },
   {
     file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
-    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening, getting out of the burning plane, the island with the cold, day and night and storms, and the ruined shack you keep warm with the axe, firewood and the stove. The workbench comes next.',
+    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening, getting out of the burning plane, the island with the cold, day and night and storms, the ruined shack you keep warm with the axe, firewood and the stove, the workbench with its crafting book, food and ice fishing, and co-op with saved games, voice chat, rescues, night shifts and thin ice.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
+      { version: '0.9', date: '2026-11-13', notes: [
+        'Voice chat: push to talk (V) or an open mic, set in Settings > Audio & voice. Voices come from where your friends stand, get quieter and duller with distance, and a blizzard swallows them. In the opening cutscene the host\'s real voice goes out over the plane\'s radio.',
+        'Health: frozen stiff, starving or parched, it drains. At zero you are downed: you lie in the snow with a timer running. A friend can carry you to the fire (once you are warm you get up) or patch you up with the first aid kit.',
+        'Dying: on Mild and Harsh you wake up in the shack the next morning, Exhausted and Gloomy, and what you carried lies where you died. On Brutal and Whiteout dead is dead. Solo goes back to the last morning, or it\'s game over. When the whole crew is dead, the game ends.',
+        'The dead and the sleepers watch the others (click or the arrows to switch) and can play the ghost roulette (R), brought over from Chucky\'s House, now with a wheel that really stops on the winning number.',
+        'Sleep in the bunk at night (the others sleep on the floor). While the whole crew sleeps the night runs 12 times as fast, with someone on watch 3 times. The cold, smoke and the morning wake you, so can a friend. Solo, you pick how often you get up to feed the stove. A good night gives you Rested.',
+        'Thin ice: dark patches out on the sea ice, different every day. It groans before it breaks. Crouch to spread your weight. Break through and you have 25 seconds: press the keys on the screen to climb out. Ice picks (a new workbench recipe) make it much easier. A friend can crawl up and pull you out.',
+        'Together: close to your crew, the cold gets to you slower. Soaked: wet clothes let the cold in until you dry by the stove.',
+        'If the host leaves a game with a room code, the next player takes the island over and the rest of the crew comes straight back in.',
+      ] },
+      { version: '0.8', date: '2026-11-13', notes: [
+        'Hunger and thirst: two small bars under your body heat. Hungry or thirsty, the cold gets to you faster. At zero you slow down too. Well fed, the cold gets to you a little slower.',
+        'Eat or drink what you hold with Q. The plane has salted nuts (they make you thirsty) and a bottle of champagne (it feels warm, but it takes heat out of you).',
+        'Ice fishing: chop a hole in the sea ice with an axe (4 blows in the same spot), take the old fishing rod from the bunk in the shack, and use the hole. When a fish bites, hold left mouse to reel in, and let go when the line gets tight or it snaps. Deep water far out gives bigger fish, and they bite better at night. Cold hands make the line jumpy. Holes freeze over after a day.',
+        'Cook fish on the burning stove: cooked fish fills you far more. Raw fish fills you less, and it may come back up.',
+        'Water: hold the pot (it\'s by the stove), look down at the snow outside and fill it, melt it on the stove, and drink it while it\'s warm. Eating snow with empty hands quenches a little thirst but costs heat.',
+        'Two new pages in the crafting book, about fishing and water.',
+        'Fixed: spamming jump was faster than sprinting. After every landing you now need a moment before the next jump.',
+        'Wet wood smokes in the stove even with the pipe on. Dry it first.',
+        'Packed snow can be knocked out of a wall gap again (look at it with empty hands).'
+      ] },
+      { version: '0.7', date: '2026-11-13', notes: [
+        'The workbench: look at the bench in the shack and hold E. The old owner\'s crafting book opens: an old notebook with hand-drawn pages that you flip through (A / D, the arrows, or click a page).',
+        'Crafting happens on the bench: what a recipe needs is laid out there, you work it for a few seconds, and the result lies on the bench to pick up. Your crew hears you working.',
+        'Recipes: boards from a log (needs an axe), a stone axe (2 branches and a stone), and sharpening the axe (needs a stone, which you keep). One page has been torn out, and more pages will come from the earlier survivors\' journals.',
+        'The axe gets dull: every blow takes a little off the edge, and hitting rocks or ice takes more. After about 80 blows a dull axe needs twice the blows. A small bar under the axe in the hotbar shows how sharp it is.',
+        'The stone axe: slow (twice the blows) and it falls apart after 25 blows, but you get the stone back.',
+        'Loose stones lie beside the rocks round the island, and there is a flat whetstone by the chopping stump.'
+      ] },
       { version: '0.6', date: '2026-11-12', notes: [
         'Join a game that is already running: use the room code as usual. The host sees your name and "wants to join your crew · F1 yes · F2 no". If they say yes, you skip the cutscene and appear next to the host with the island as it is now. The host\'s pause menu shows the room code (or makes invite codes).',
         'Dropped out? Join again and you get back what you were carrying. The axe and the stove pipe stay on the ground where you stood, so your crew isn\'t stuck without them.',

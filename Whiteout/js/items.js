@@ -8,8 +8,10 @@ import { SEA, DAY } from './island.js';
 
 // stack: how many fit in one slot. fuel: seconds in the stove (wood: when dry). patch: covers a gap in the shack.
 // take: seconds you hold the use key to pick it up. h: half its height lying down.
+// tool: { power: how much one blow does, use: how much edge one blow costs, breaks: falls apart at no edge }.
+// A thing's "dry" number is its condition: how dry wood is, how sharp a tool is (1 = dry / sharp).
 export const TYPES = {
-  axe: { name: 'the axe', short: 'Axe', icon: '🪓', stack: 1, take: 0.6, h: 0.03 },
+  axe: { name: 'the axe', short: 'Axe', icon: '🪓', stack: 1, take: 0.6, h: 0.03, tool: { power: 1, use: 0.008 } },
   log: { name: 'a log', short: 'Log', icon: '🪵', stack: 2, fuel: 300, wood: true, take: 0.5, h: 0.13 },
   split: { name: 'split wood', short: 'Split wood', icon: '🪵', stack: 4, fuel: 160, wood: true, take: 0.4, h: 0.065 },
   branch: { name: 'a branch', short: 'Branches', icon: '🌿', stack: 6, fuel: 60, take: 0.3, h: 0.035 },
@@ -21,17 +23,38 @@ export const TYPES = {
   kit: { name: 'the first aid kit', short: 'First aid kit', icon: '🩹', stack: 1, take: 1.0, h: 0.05 },
   flare: { name: 'the flare gun', short: 'Flare gun', icon: '🔫', stack: 1, take: 2.5, h: 0.035 },
   trunk: { name: 'a felled tree', short: 'Tree', icon: '🌲', stack: 1, noTake: true },
+  // (new kinds go at the end: saves and co-op messages use each kind's place in this list)
+  saxe: { name: 'the stone axe', short: 'Stone axe', icon: '⛏️', stack: 1, take: 0.5, h: 0.04, tool: { power: 0.5, use: 0.04, breaks: true } },
+  stone: { name: 'a stone', short: 'Stone', icon: '🪨', stack: 4, take: 0.4, h: 0.06 },
+  // food and water (build step 5). food: what eating it does (hunger, thirst, heat; raw: it can make you sick; cook: what it becomes on the stove)
+  rod: { name: 'the old fishing rod', short: 'Fishing rod', icon: '🎣', stack: 1, take: 0.6, h: 0.03 },
+  pot: { name: 'the pot', short: 'Pot', icon: '🥘', stack: 1, take: 0.5, h: 0.09 },
+  potsnow: { name: 'a pot of snow', short: 'Pot of snow', icon: '🧊', stack: 1, take: 0.5, h: 0.09 },
+  potwater: { name: 'a pot of water', short: 'Pot of water', icon: '💧', stack: 1, take: 0.5, h: 0.09 },
+  fish: { name: 'a raw fish', short: 'Raw fish', icon: '🐟', stack: 3, take: 0.4, h: 0.04, food: { hunger: 12, thirst: -4, raw: true }, cook: 'fishc' },
+  bigfish: { name: 'a big raw fish', short: 'Big raw fish', icon: '🐠', stack: 1, take: 0.5, h: 0.06, food: { hunger: 22, thirst: -6, raw: true }, cook: 'bigfishc' },
+  fishc: { name: 'a cooked fish', short: 'Cooked fish', icon: '🍢', stack: 3, take: 0.4, h: 0.04, food: { hunger: 30, thirst: -3, heat: 3 } },
+  bigfishc: { name: 'a big cooked fish', short: 'Big cooked fish', icon: '🍖', stack: 1, take: 0.5, h: 0.06, food: { hunger: 55, thirst: -4, heat: 5 } },
+  snack: { name: 'a bag of salted nuts', short: 'Salted nuts', icon: '🥜', stack: 3, take: 0.4, h: 0.03, food: { hunger: 18, thirst: -8 } },
+  champ: { name: 'a bottle of champagne', short: 'Champagne', icon: '🍾', stack: 1, take: 0.5, h: 0.05, food: { hunger: 3, thirst: 18, heat: -5, drink: true } },
+  // step 6: carried anywhere in your things, they help you climb out if the ice breaks under you
+  picks: { name: 'a pair of ice picks', short: 'Ice picks', icon: '🔱', stack: 1, take: 0.5, h: 0.04 },
 };
 export const TYPE_LIST = Object.keys(TYPES);
 const wet = d => (d >= 0.8 ? 'dry' : d >= 0.45 ? 'damp' : 'wet');
 // "a wet log", "the axe", "3 branches"
 export function nameOf(type, data = {}, n = 1) {
   const t = TYPES[type];
+  if (t.tool) return t.name + edgeWord(type, data.dry ?? 1);
+  if (type === 'potwater') return (data.dry ?? 0) > 0.3 ? 'a pot of warm water' : 'a pot of cold water';
   if (t.wood) return n > 1 ? `${n} ${wet(data.dry ?? 1)} ${type === 'log' ? 'logs' : 'pieces of split wood'}` : type === 'log' ? `a ${wet(data.dry ?? 1)} log` : `${wet(data.dry ?? 1)} split wood`;
   if (n > 1) return `${n} ${t.short.toLowerCase()}${type === 'branch' || type === 'board' ? '' : 's'}`;
   return t.name;
 }
-export const shortOf = (type, data = {}) => (TYPES[type].wood ? `${t0(wet(data.dry ?? 1))} ${TYPES[type].short.toLowerCase()}` : TYPES[type].short);
+export const shortOf = (type, data = {}) => (TYPES[type].wood ? `${t0(wet(data.dry ?? 1))} ${TYPES[type].short.toLowerCase()}` : TYPES[type].short + (TYPES[type].tool ? edgeWord(type, data.dry ?? 1) : ''));
+// how sharp a tool is, in words: "the axe (dull)"
+export const DULL = 0.35;
+function edgeWord(type, e) { return TYPES[type].tool.breaks ? (e < 0.3 ? ' (nearly broken)' : '') : e < DULL ? ' (dull)' : ''; }
 const t0 = s => s[0].toUpperCase() + s.slice(1);
 
 // ---------- how they look (shared geometry and materials; long things lie along x) ----------
@@ -42,7 +65,10 @@ const mats = () => MAT || (MAT = {
   steel: std('#9aa0a6', { metalness: 0.8, roughness: 0.35 }), board: std('#7d7466', { roughness: 0.92 }), sheet: std('#b9c0c8', { roughness: 0.4, metalness: 0.7 }),
   pipe: std('#1d1f22', { roughness: 0.6, metalness: 0.6 }), fur: std('#e9dfcf', { roughness: 1 }), wool: std('#33465a', { roughness: 1 }),
   white: std('#eeeeea', { roughness: 0.5 }), red: std('#c42a1e', { roughness: 0.5 }), orange: std('#e0601a', { roughness: 0.5 }), dark: std('#15181c', { roughness: 0.6 }),
-  twig: std('#3a2a1c', { roughness: 1 }),
+  cork: std('#8a6a48', { roughness: 0.9 }), potM: std('#3a3d42', { roughness: 0.5, metalness: 0.7, side: THREE.DoubleSide }), snowTop: std('#eef4fa', { roughness: 1 }),
+  water: std('#4a7290', { roughness: 0.1, metalness: 0.2 }), fishM: std('#9fb0bc', { roughness: 0.35, metalness: 0.4 }), fishDark: std('#5d6e66', { roughness: 0.4, metalness: 0.3 }),
+  cooked: std('#9a6232', { roughness: 0.7 }), snackM: std('#b8352a', { roughness: 0.5 }), gold: std('#c9a35a', { roughness: 0.3, metalness: 0.9 }), bottle: std('#1d3a2a', { roughness: 0.2, metalness: 0.3 }),
+  twig: std('#3a2a1c', { roughness: 1 }), stone: std('#6d727a', { roughness: 0.95, flatShading: true }), lash: std('#8a7350', { roughness: 1 }),
 });
 const GEO = {};
 const geo = (k, make) => GEO[k] || (GEO[k] = make());
@@ -71,6 +97,44 @@ export function meshFor(type) {
       part(g, cylX('branch', 0.03, 1.1, 6), M.twig);
       part(g, geo('twig', () => new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5).rotateZ(Math.PI / 2)), M.twig, 0.2, 0, 0.1, 0, 0.6, 0);
       part(g, geo('twig', () => new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5).rotateZ(Math.PI / 2)), M.twig, -0.25, 0, -0.08, 0, -0.5, 0);
+      break;
+    case 'saxe':      // a straight branch with a sharp stone lashed to the end (along x like the axe, the head at +x)
+      part(g, cylX('saxeH', 0.024, 0.66, 6), M.twig);
+      part(g, geo('saxeS', () => new THREE.DodecahedronGeometry(0.075, 0).scale(1, 0.55, 1.5)), M.stone, 0.29, 0, 0.05);
+      part(g, geo('saxeL', () => new THREE.CylinderGeometry(0.032, 0.032, 0.07, 8).rotateZ(Math.PI / 2)), M.lash, 0.28, 0, 0);
+      break;
+    case 'stone': part(g, geo('stone', () => new THREE.DodecahedronGeometry(0.08, 0).scale(1.2, 0.75, 1)), M.stone); break;
+    case 'picks':     // two short wooden grips with a sharp stone point each, tied together by a cord
+      for (const s of [-1, 1]) {
+        part(g, cylX('pickH', 0.022, 0.22, 6), M.twig, 0, 0, s * 0.05);
+        part(g, geo('pickP', () => new THREE.ConeGeometry(0.02, 0.07, 5).rotateZ(-Math.PI / 2)), M.stone, 0.14, 0, s * 0.05);
+      }
+      part(g, geo('pickC', () => new THREE.CylinderGeometry(0.004, 0.004, 0.1, 4).rotateX(Math.PI / 2)), M.lash, -0.11, 0, 0);
+      break;
+    case 'rod':       // a short ice-fishing rod: the grip and reel at -x, the tip at +x
+      part(g, geo('rodS', () => new THREE.CylinderGeometry(0.006, 0.014, 0.9, 6).rotateZ(-Math.PI / 2)), M.dark, 0.2, 0, 0);
+      part(g, cylX('rodG', 0.02, 0.28, 8), M.cork, -0.36, 0, 0);
+      part(g, geo('rodR', () => new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12)), M.steel, -0.3, -0.04, 0);
+      break;
+    case 'pot': case 'potsnow': case 'potwater': {
+      part(g, geo('potB', () => new THREE.CylinderGeometry(0.14, 0.12, 0.17, 16, 1, true)), M.potM);
+      part(g, geo('potF', () => new THREE.CircleGeometry(0.12, 16).rotateX(-Math.PI / 2)), M.potM, 0, -0.084, 0);
+      part(g, geo('potH', () => new THREE.TorusGeometry(0.13, 0.008, 6, 16, Math.PI)), M.dark, 0, 0.05, 0, 0, 0, 0);
+      if (type !== 'pot') part(g, geo('potT', () => new THREE.CircleGeometry(0.135, 16).rotateX(-Math.PI / 2)), type === 'potsnow' ? M.snowTop : M.water, 0, type === 'potsnow' ? 0.07 : 0.04, 0);
+      break;
+    }
+    case 'fish': case 'bigfish': case 'fishc': case 'bigfishc': {
+      const big = type.startsWith('big'), m = type.endsWith('c') ? M.cooked : big ? M.fishDark : M.fishM;
+      const s = big ? 1.6 : 1;
+      part(g, geo('fishB', () => new THREE.SphereGeometry(0.1, 12, 8).scale(1.8, 0.45, 0.6)), m).scale.setScalar(s);
+      part(g, geo('fishT', () => new THREE.ConeGeometry(0.06, 0.1, 3).rotateZ(Math.PI / 2).scale(1, 1, 0.3)), m, -0.21 * s, 0, 0).scale.setScalar(s);
+      break;
+    }
+    case 'snack': part(g, box('snack', 0.16, 0.05, 0.11), M.snackM); part(g, box('snackL', 0.1, 0.052, 0.06), M.gold, 0.02, 0.001, 0); break;
+    case 'champ':
+      part(g, cylX('champB', 0.045, 0.22, 12), M.bottle);
+      part(g, geo('champN', () => new THREE.CylinderGeometry(0.016, 0.04, 0.1, 10).rotateZ(-Math.PI / 2)), M.bottle, 0.16, 0, 0);
+      part(g, cylX('champC', 0.018, 0.04, 8), M.gold, 0.22, 0, 0);
       break;
     case 'board': part(g, box('board', 1.2, 0.03, 0.18), M.board); break;
     case 'sheet': part(g, box('sheet', 0.8, 0.02, 0.55), M.sheet); break;
@@ -101,6 +165,14 @@ function colliders(R, type, data) {
   const C = R.ColliderDesc, cx = (r, hl) => C.cylinder(hl, r).setRotation(QX);
   switch (type) {
     case 'axe': return [C.cuboid(0.38, 0.03, 0.1).setDensity(400)];
+    case 'saxe': return [C.cuboid(0.34, 0.04, 0.08).setDensity(400)];
+    case 'stone': return [C.ball(0.07).setDensity(2500)];
+    case 'rod': return [cx(0.02, 0.55).setDensity(400)];
+    case 'pot': case 'potsnow': case 'potwater': return [C.cylinder(0.085, 0.13).setDensity(600)];
+    case 'champ': return [cx(0.045, 0.15).setDensity(900)];
+    case 'fish': case 'fishc': return [C.cuboid(0.18, 0.04, 0.06).setDensity(800)];
+    case 'bigfish': case 'bigfishc': return [C.cuboid(0.3, 0.06, 0.1).setDensity(800)];
+    case 'snack': return [C.cuboid(0.08, 0.025, 0.055).setDensity(300)];
     case 'log': return [cx(0.13, 0.45).setDensity(520)];
     case 'split': return [C.cuboid(0.45, 0.065, 0.13).setDensity(520)];
     case 'branch': return [cx(0.035, 0.55).setDensity(500)];
@@ -272,7 +344,7 @@ export class Inventory {
     const k = Math.min(n, s.n);
     s.n -= k; if (s.n <= 0) this.slots[i] = null;
     this.ver++;
-    return { type: s.type, n: k, data: TYPES[s.type].wood ? { dry: s.dry } : {} };
+    return { type: s.type, n: k, data: { dry: s.dry ?? 1 } };
   }
   count(pred) { let c = 0; for (const s of this.slots) if (s && pred(s.type)) c += s.n; return c; }
   // use up n things that match, the held slot first

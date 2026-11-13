@@ -7,7 +7,7 @@ import { G, S } from './state.js';
 
 const STUN = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }];
 export const MAX = 4;
-export const NET = { mode: null, code: '', conns: new Map(), handlers: {}, peer: null, pending: null, onConn: () => {}, onDrop: () => {} };
+export const NET = { mode: null, code: '', conns: new Map(), pcs: new Map(), handlers: {}, peer: null, oldPeer: null, pending: null, onConn: () => {}, onDrop: () => {}, onLeave: /** @type {null | (() => void)} */ (null) };
 export const on = (t, fn) => { NET.handlers[t] = fn; };
 
 // big messages (the whole world for someone joining) go in pieces: a data channel only promises about 16 KB at a time
@@ -57,7 +57,7 @@ export const _receive = receive;      // for the checks without a browser
 function addConn(pid, conn) { NET.conns.set(pid, conn); NET.onConn(pid); }
 function dropConn(pid) {
   if (!NET.conns.has(pid)) return;
-  NET.conns.delete(pid);
+  NET.conns.delete(pid); NET.pcs.delete(pid);
   for (const k of [...parts.keys()]) if (k.startsWith(pid + ':')) parts.delete(k);
   NET.onDrop(pid);
 }
@@ -105,6 +105,11 @@ export async function hostPeerJS() {
   await new Promise((res, rej) => { peer.on('open', res); peer.on('error', e => rej(new Error(niceErr(e)))); setTimeout(() => rej(new Error(niceErr({ type: 'network' }))), 15000); });
   Object.assign(NET, { peer, mode: 'peerjs', code });
   G.net.role = 'host'; G.net.id = 'p0';
+  openRoom(peer);
+  return code;
+}
+// the host's room: friends connect, get a player id, and talk through the host
+function openRoom(peer) {
   peer.on('disconnected', () => { try { peer.reconnect(); } catch { /* gone */ } });
   peer.on('connection', dc => {
     dc.on('open', () => {
@@ -118,7 +123,47 @@ export async function hostPeerJS() {
     });
   });
   peer.on('error', e => console.warn('[net] host: peer error', e?.type, e));
-  return code;
+}
+// ---------- the host left (room codes only): the crew carries on ----------
+// The next player in line claims the room code (the room server frees it a few seconds after the host is gone,
+// so this tries again for a while); everyone else connects to the same code again. Their old link to the room
+// server stays open, because voice chat runs over it.
+export async function takeOver() {
+  await loadPeerJS();
+  const id = PREFIX + NET.code.toLowerCase(), until = performance.now() + 90000;
+  while (performance.now() < until) {
+    const peer = new window.Peer(id, peerOpts());
+    const ok = await new Promise(res => { peer.on('open', () => res(true)); peer.on('error', () => res(false)); setTimeout(() => res(false), 8000); });
+    if (ok) {
+      peer.removeAllListeners?.('error');
+      NET.oldPeer = NET.peer; NET.peer = peer;
+      G.net.role = 'host'; G.net.id = 'p0';
+      openRoom(peer);
+      return true;
+    }
+    try { peer.destroy(); } catch { /* gone */ }
+    if (G.net.role === 'solo') return false;           // gave up in the meantime
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  return false;
+}
+export async function rejoinRoom() {
+  const until = performance.now() + 90000, id = PREFIX + NET.code.toLowerCase();
+  while (performance.now() < until && NET.peer && G.net.role === 'guest') {
+    const dc = NET.peer.connect(id, { reliable: true });
+    const ok = await new Promise(res => { dc.on('open', () => res(true)); dc.on('error', () => res(false)); setTimeout(() => res(false), 6000); });
+    if (ok) {
+      NET.why = '';
+      watchLink(dc, 'host');
+      dc.on('data', d => receive('p0', d));
+      dc.on('close', () => dropConn('p0'));
+      addConn('p0', { send: s => dc.send(s), close: () => dc.close() });
+      return true;
+    }
+    try { dc.close(); } catch { /* never opened */ }
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  return false;
 }
 export async function joinPeerJS(code) {
   await loadPeerJS();
@@ -177,6 +222,7 @@ function wireDC(pid, dc, pc) {
   dc.onmessage = e => receive(pid, e.data);
   dc.onclose = () => dropConn(pid);
   pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) dropConn(pid); };
+  NET.pcs.set(pid, pc);           // kept for voice chat: it adds its sound to this same link
   addConn(pid, { send: s => dc.send(s), close: () => { dc.close(); pc.close(); } });
 }
 export function becomeDirectHost() { NET.mode = 'direct'; G.net.role = 'host'; G.net.id = 'p0'; }
@@ -210,9 +256,10 @@ export async function directJoin(code, onOpen) {
 }
 
 export function leaveNet() {
+  try { NET.onLeave?.(); } catch (e) { console.warn(e); }
   for (const c of NET.conns.values()) try { c.close(); } catch { /* closed */ }
-  NET.conns.clear();
-  try { NET.peer?.destroy?.(); } catch { /* gone */ }
-  Object.assign(NET, { mode: null, peer: null, pending: null, code: '', why: '' });
+  NET.conns.clear(); NET.pcs.clear();
+  for (const p of [NET.peer, NET.oldPeer]) try { p?.destroy?.(); } catch { /* gone */ }
+  Object.assign(NET, { mode: null, peer: null, oldPeer: null, pending: null, code: '', why: '' });
   G.net.role = 'solo'; G.net.id = 'p0'; G.started = false;
 }

@@ -61,11 +61,16 @@ export function initLobby(h) {
   $('chat-send').onclick = sendChat;
   $('chat-in').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); e.stopPropagation(); });
   // messages
-  on('welcome', m => { G.net.id = m.id; hello(); });
+  on('welcome', m => {
+    G.net.id = m.id;
+    if (G.migrating) { send('p0', { t: 'hello', info: { name: S.name, coat: S.coat }, back: 1 }); H.rejoined?.(); return; }      // the host left and someone else took over: back in, no questions
+    hello();
+  });
   on('hello', (m, from) => {
     if (G.net.role !== 'host') return;
     const info = { name: String(m.info?.name || 'Survivor').slice(0, 16), coat: m.info?.coat || '#b4462e' };
     if (G.started) {      // the game is already running: the host is asked on screen (F1 yes, F2 no)
+      if (m.back && H.backIn?.(from, info)) return;     // one of the crew, back after the old host left
       if (H.askJoin?.(from, info)) send(from, { t: 'wait' });
       else refuse(from, 'The crew is in the opening scene right now. Try again in a minute or two.');
       return;

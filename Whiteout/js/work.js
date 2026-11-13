@@ -13,13 +13,16 @@ import { Home, STOVE_MAX } from './home.js';
 import { Hands } from './hands.js';
 import * as SFX from './sfx.js';
 import { applyShared } from './sync.js';
+import { initCraft, openBook, craftTick, layOut, wearTool, blowPower } from './craft.js';
+import { initFood, eat, stoveAct, fillAct, holeAct, iceBlow, makeHole, freezeHoles } from './food.js';
+import { lifeActs, busyHands } from './life.js';
 
 let GW = null;           // the running game (game.js's gm)
 let H = null;            // helpers from game.js: { hint, lock }
 const _f = new THREE.Vector3(), _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion();
 const X = new THREE.Vector3(1, 0, 0), UP = new THREE.Vector3(0, 1, 0);
 const PLANE = ['fur', 'wool', 'kit', 'flare'];
-const KEYS = ['primary', 'drop', 'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'inventory', 'light'];
+const KEYS = ['primary', 'drop', 'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'inventory', 'light', 'eat'];
 const HINT = {
   fur: 'You pull on the fur coat. It keeps the cold out far better than what you had on.',
   wool: 'You pull on the wool coat. Warmer than what you had on.',
@@ -31,6 +34,8 @@ const HINT = {
   sheet: 'Boards and sheets of metal patch the gaps in the shack: look at a gap and hold the use key.',
   branch: 'Branches burn fast, but they are free. Look at the stove with one in your hands and hold the use key.',
   log: 'Firewood. Hold it, look at the stove and hold the use key to put it in.',
+  stone: 'A good flat stone. At the workbench in the shack you can sharpen the axe on it, or make a stone axe.',
+  saxe: () => `A stone axe. Slow, and it won't last, but it chops. ${kn('primary')} swings it.`,
 };
 
 export function initWork(gm, helpers) {
@@ -42,6 +47,8 @@ export function initWork(gm, helpers) {
   gm.hands.setCoat(gm.myCoat);
   gm.prevK = new Set(); gm.invShown = -1; gm.pick = null; gm.bagOpen = false; gm.sT = 0; gm.heldT = 0; gm.sentRev = -1; gm.sN = 0;
   buildInvDom(gm);
+  initCraft(gm, { act, hint: H.hint, lock: H.lock, shout });            // the workbench and its book (craft.js)
+  initFood(gm, { act, hint: H.hint, shout, dropAt });                   // hunger, thirst, cooking, fishing (food.js)
   gm.wheel = e => {
     if (!gm.locked || gm.pauseOpen) return;
     gm.inv.sel = (gm.inv.sel + (e.deltaY > 0 ? 1 : HOT - 1)) % HOT; gm.inv.ver++;
@@ -55,26 +62,31 @@ export function workTick(gm, dt, env) {
   const p = gm.player, inv = gm.inv, hands = gm.hands, host = gm.role !== 'guest';
   // the keys, once per press
   const pressed = a => gm.inp.is(a) && !gm.prevK.has(a);
-  if (gm.locked && !gm.fainting && !p.seat) {
+  if (gm.locked && !gm.fainting && !p.seat && !p.mode) {
     for (let i = 0; i < HOT; i++) if (pressed('slot' + (i + 1))) { inv.sel = i; inv.ver++; }
-    if (pressed('drop') && inv.held()) dropHeld(gm, false);
+    if (pressed('drop') && inv.held() && !busyHands(gm)) dropHeld(gm, false);
     if (pressed('inventory')) openBag(gm);
     if (pressed('light')) { hands.lit = !hands.lit; SFX.flick(); if (hands.lit) H.hint(gm, 'lighter', 'Your lighter. It won\'t keep you warm, but it lights up the dark.'); }
-    if (pressed('primary') && inv.heldType() === 'axe' && hands.swing()) SFX.whoosh();
+    if (pressed('primary') && TYPES[inv.heldType()]?.tool && !busyHands(gm) && hands.swing()) SFX.whoosh();
+    if (pressed('eat')) eat(gm);
   }
   gm.prevK = new Set(KEYS.filter(a => gm.inp.is(a)));
+  craftTick(gm, dt);
   // the hands, the axe landing
   if (inv.ver !== gm.invShown) renderInv(gm);
-  hands.hold(p.seat ? null : inv.heldType());
-  const hit = hands.update(dt, { walk: p.seat ? 0 : p.walkAmt, phase: p.phase, hide: !!p.seat || gm.fainting });
+  const away = !!p.seat || !!p.mode || busyHands(gm);           // buckled in, not on your feet, or your hands are full of a friend
+  hands.hold(away ? null : inv.heldType());
+  if (p.mode) hands.lit = false;
+  const hit = hands.update(dt, { walk: away ? 0 : p.walkAmt, phase: p.phase, hide: away || gm.fainting });
   if (hit) axeHit(gm);
-  p.P.aR.sh.visible = !!p.seat || !hands.type; p.P.aL.sh.visible = !!p.seat || !hands.lit;
+  p.P.aR.sh.visible = away || !hands.type; p.P.aL.sh.visible = away || !hands.lit;
   // the shack: the host runs it, everyone draws it
   if (host) {
     const ev = [];
-    gm.home.sim(dt, env, ev);
+    gm.home.sim(dt * (gm.ts || 1), env, ev);
     if (ev.includes('blown') && gm.inShack) H.hint(gm, 'blown', 'The storm tore some of the packed snow out of the walls.', 5000, true);
     if (ev.includes('out') && gm.inShack) H.hint(gm, 'stove-out', 'The stove has burned out. Feed it before the shack goes cold.', 5000, true);
+    freezeHoles(gm);
     // a felled tree grows back after 5 days (if nobody stands on the stump)
     for (const ti of [...gm.world.felled]) {
       const t = gm.world.trees[ti];
@@ -93,6 +105,7 @@ export function workTick(gm, dt, env) {
   }
   gm.home.visuals(dt);
   const st = gm.home.stove;
+  if (gm.inShack && st.lit && st.pipe && st.wet > 0) H.hint(gm, 'wetsmoke', 'Wet wood: it smokes even with the pipe on. Dry your wood by the stove first.', 7000, true);
   if (gm.inShack && st.lit && !st.pipe) H.hint(gm, 'nopipe', 'Without its pipe, the smoke stays in the shack. The wind must have taken the pipe: it can\'t be far.', 7000, true);
   if (gm.heldT > 0) gm.heldT -= dt;
 }
@@ -117,8 +130,11 @@ function apply(gm, a, from) {
     case 'light': home.light(); break;
     case 'pipe': if (!home.fitPipe()) give(gm, from, 'pipe', 1, {}); break;
     case 'mend': home.mend(a.i, a.how); break;
+    case 'unmend': home.unmend(a.i); break;
     case 'door': if (a.op === 'fix') home.fixDoor(); else home.toggleDoor(); break;
     case 'chop': chop(gm, a); break;
+    case 'craft': layOut(gm, a.r); break;
+    case 'hole': makeHole(gm, a.x, a.z); break;
   }
 }
 // hand something to a player: yourself, or a guest (who puts it away when the host says so)
@@ -143,21 +159,24 @@ function axeHit(gm) {
   const ray = new R.Ray({ x: cam.position.x, y: cam.position.y, z: cam.position.z }, { x: _f.x, y: _f.y, z: _f.z });
   const hit = w.phys.castRay(ray, 2.3, true, undefined, undefined, p.col);
   const at = hit ? cam.position.clone().addScaledVector(_f, hit.timeOfImpact) : null;
+  // how hard this blow is (which axe, how sharp), and the edge it costs
+  const slot = gm.inv.held(), dmg = blowPower(slot), wood = () => { if (slot) wearTool(gm, slot, 1); };
+  if (hit && iceBlow(gm, hit, at, dmg)) { gm.hands.chips.burst(at, 12, '#e8f2fa', 1.5); shout(gm, 'clank', at); if (slot) wearTool(gm, slot, 2); return; }      // chopping a hole in the sea ice
   if (hit) {
     const h = hit.collider.handle;
     if (w.treeByCol.has(h)) {
       const ti = w.treeByCol.get(h), t = w.trees[ti], dx = t.x - p.pos.x, dz = t.z - p.pos.z, l = Math.hypot(dx, dz) || 1;
       gm.hands.chips.burst(at, 10, '#9a7448'); shout(gm, 'chop', at);
-      act(gm, { a: 'chop', kind: 'tree', i: ti, dir: [dx / l, dz / l] });
+      act(gm, { a: 'chop', kind: 'tree', i: ti, dir: [dx / l, dz / l], dmg }); wood();
       return;
     }
     if (w.propByCol.has(h)) {
       const i = w.propByCol.get(h);
-      if (w.props[i].kind === 'crate') { gm.hands.chips.burst(at, 10, '#a08a6a'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: 'prop', i }); return; }
+      if (w.props[i].kind === 'crate') { gm.hands.chips.burst(at, 10, '#a08a6a'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: 'prop', i, dmg }); wood(); return; }
     }
     if (w.stash.byCol.has(h)) {
       const it = w.stash.get(w.stash.byCol.get(h));
-      if (it && (it.type === 'trunk' || it.type === 'log')) { gm.hands.chips.burst(at, 10, '#9a7448'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: it.type, id: it.id }); return; }
+      if (it && (it.type === 'trunk' || it.type === 'log')) { gm.hands.chips.burst(at, 10, '#9a7448'); shout(gm, 'chop', at); act(gm, { a: 'chop', kind: it.type, id: it.id, dmg }); wood(); return; }
     }
   }
   // lying things have no collider: logs (and trunks on a guest) by where you look
@@ -168,10 +187,10 @@ function axeHit(gm) {
     const dist = _d.length();
     if (dist > (it.type === 'log' ? 1.9 : 2.4) || _d.dot(_f) / dist < 0.86) continue;
     gm.hands.chips.burst(near, 10, '#9a7448'); shout(gm, 'chop', near);
-    act(gm, { a: 'chop', kind: it.type, id: it.id });
+    act(gm, { a: 'chop', kind: it.type, id: it.id, dmg }); wood();
     return;
   }
-  if (at) { gm.hands.chips.burst(at, 6, '#e8f0f6', 1.2); SFX.clank(); }
+  if (at) { gm.hands.chips.burst(at, 6, '#e8f0f6', 1.2); SFX.clank(); if (slot) wearTool(gm, slot, 3); }      // rock, ice, a wall: hard on the edge
 }
 function closestOnTrunk(it, from, out) {
   _a.set(0, 1, 0).applyQuaternion(it.mesh.quaternion);
@@ -185,7 +204,8 @@ function chop(gm, a) {
   if (a.kind === 'tree') {
     const t = w.trees[a.i];
     if (!t || !t.up) return;
-    if (--t.hp > 0) return;
+    t.hp -= a.dmg ?? 1;
+    if (t.hp > 0.01) return;
     w.fell(a.i, gm.T);
     const dx = a.dir?.[0] ?? 1, dz = a.dir?.[1] ?? 0, ang = 0.9;
     _q.setFromAxisAngle(UP, t.rot);
@@ -195,8 +215,8 @@ function chop(gm, a) {
   } else if (a.kind === 'trunk') {
     const it = s.get(a.id);
     if (!it || it.type !== 'trunk') return;
-    it.data.hp = (it.data.hp ?? 3) - 1;
-    if (it.data.hp > 0) return;
+    it.data.hp = (it.data.hp ?? 3) - (a.dmg ?? 1);
+    if (it.data.hp > 0.01) return;
     const up = _a.set(0, 1, 0).applyQuaternion(it.mesh.quaternion).clone(), base = it.mesh.position.clone(), sc = (it.data.s || 1) * (it.data.sy || 1);
     const lq = new THREE.Quaternion().setFromUnitVectors(X, up);
     s.remove(a.id);
@@ -211,7 +231,8 @@ function chop(gm, a) {
   } else if (a.kind === 'prop') {
     const pr = w.props[a.i];
     if (!pr || pr.gone || pr.kind !== 'crate') return;
-    if (--pr.hp > 0) return;
+    pr.hp -= a.dmg ?? 1;
+    if (pr.hp > 0.01) return;
     const p = w.breakProp(a.i);
     if (!p) return;
     for (let k = 0; k < 3; k++) { _q.setFromAxisAngle(UP, Math.random() * 6.28); s.spawn({ type: 'board', p: [p.x, p.y + 0.1 + k * 0.06, p.z], q: _q.toArray(), v: [Math.random() * 2 - 1, 1.5, Math.random() * 2 - 1] }); }
@@ -252,7 +273,7 @@ function clear(gm, to, dist) {
 }
 export function findAct(gm, unbuckle) {
   const p = gm.player, w = gm.world, cam = gm.camera, inv = gm.inv, home = gm.home;
-  if (gm.fainting || !gm.locked || gm.bagOpen) return null;
+  if (gm.fainting || !gm.locked || gm.bagOpen || gm.bookOpen || p.mode) return null;
   if (p.seat) return { id: 'belt', text: 'Unbuckle your seatbelt', hold: 1.2, go: unbuckle };
   viewDir(gm, _f);
   let best = null, score = 0;
@@ -270,9 +291,10 @@ export function findAct(gm, unbuckle) {
   }
   // the stove
   {
-    const sc = look(w.shack.stove.pos, 1.9, 0.8), st = home.stove;
+    const sc = look(w.shack.stove.pos, 1.9, 0.8), st = home.stove, food = sc ? stoveAct(gm, held, st.temp) : null;
     if (sc) {
-      if (ht && TYPES[ht].fuel) offer(sc + 0.05, st.fuel >= STOVE_MAX - 30 ? { id: 'full', text: 'The stove is full', hold: 0 } : { id: 'feed', text: `Put ${nameOf(ht, { dry: held.dry })} in the stove`, hold: 0.6, go: () => feed(gm) });
+      if (food) offer(sc + 0.05, food);
+      else if (ht && TYPES[ht].fuel) offer(sc + 0.05, st.fuel >= STOVE_MAX - 30 ? { id: 'full', text: 'The stove is full', hold: 0 } : { id: 'feed', text: `Put ${nameOf(ht, { dry: held.dry })} in the stove`, hold: 0.6, go: () => feed(gm) });
       else if (ht === 'pipe' && !st.pipe) offer(sc + 0.05, { id: 'pipe', text: 'Fit the stove pipe', hold: 3, go: () => fitPipe(gm) });
       else if (!st.lit && st.fuel > 0) offer(sc + 0.05, { id: 'light', text: 'Light the stove with your lighter', hold: 2, go: () => { act(gm, { a: 'light' }); shout(gm, 'ignite', w.shack.stove.pos); H.hint(gm, 'lit', 'The fire takes. Patch the gaps and the shack holds on to its heat.', 6000); } });
       else offer(sc, { id: 'stove', text: home.status() + (st.fuel <= 0 ? ': wood goes in here' : ''), hold: 0 });
@@ -289,8 +311,16 @@ export function findAct(gm, unbuckle) {
     const boards = s.need > 1 ? `${s.need} boards` : 'a board';
     if (ht && TYPES[ht].patch && patches >= s.need) offer(sc, { id: 'mend' + i, text: s.kind === 'window' ? 'Board up the window' : `Nail ${boards} over ${what}`, hold: 1.4 * s.need, go: () => mend(gm, i, 2, s.need) });
     else if (s.snowOk && state === 0 && outside && !(ht && TYPES[ht].patch)) offer(sc, { id: 'snow' + i, text: 'Pack snow into the gap', hold: 3, go: () => mend(gm, i, 1, 0) });
+    else if (state === 1 && !(ht && TYPES[ht].patch)) offer(sc, { id: 'unsnow' + i, text: 'Knock the packed snow out of the gap', hold: 1.2, go: () => { act(gm, { a: 'unmend', i }); shout(gm, 'pack', s.pos); } });
     else offer(sc - 0.01, { id: 'gap' + i, text: `${what[0].toUpperCase() + what.slice(1)}: it needs ${boards}${s.need > 1 ? ' or sheets of metal' : ' or a sheet of metal'}${s.snowOk && state === 0 ? ', or snow packed in from outside' : ''}`, hold: 0 });
   });
+  // water and fish: the pot and the snow, the rod and a hole in the ice
+  { const f = fillAct(gm); if (f) offer(0.83, f); const h = holeAct(gm, look); if (h) offer(h[0], h[1]); }
+  // the workbench and the old owner's book on it
+  {
+    const sc = look(w.shack.bench.pos, 2.0, 0.8);
+    if (sc) offer(sc - 0.02, gm.crafting ? { id: 'busy', text: 'Working at the bench…', hold: 0 } : { id: 'bench', text: 'Open the crafting book on the workbench', hold: 0.4, go: () => openBook(gm) });
+  }
   // the door
   {
     const d = w.shack.door, sc = look(d.pos, 2.3, 0.78);
@@ -299,6 +329,8 @@ export function findAct(gm, unbuckle) {
       else offer(sc, { id: 'door' + home.door, text: home.door === 'open' ? 'Close the door' : 'Open the door', hold: 0.15, go: () => { act(gm, { a: 'door', op: 'toggle' }); shout(gm, 'door', d.pos); } });
     }
   }
+  // your crew: carry a downed friend, patch them up, wake a sleeper, pull someone out of the water; the bunk (life.js)
+  lifeActs(gm, look, offer);
   return best;
 }
 function take(gm, it) {
@@ -328,12 +360,12 @@ function mend(gm, i, how, need) {
 
 // ---------- co-op ----------
 function sharedSnap(gm, full) {
-  const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0) };
+  const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), ho: [...w.holes.values()].map(h => [h.id, h.x, h.z, h.at]), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0) };
   if (full) m.it = w.stash.snap();
   return m;
 }
 // a sound the whole crew should hear from where it happens: you hear it here, the others get told
-const FX = ['chop', 'fall', 'hammer', 'pack', 'door', 'ignite', 'clank'];
+const FX = ['chop', 'fall', 'hammer', 'pack', 'door', 'ignite', 'clank', 'grind'];
 function shout(gm, k, pos, arg) {
   SFX.at(gm.camera.position.distanceTo(pos), SFX[k], arg);
   if (gm.role !== 'solo') send('*', { t: 'g-fx', k, p: [Math.round(pos.x * 10) / 10, Math.round(pos.y * 10) / 10, Math.round(pos.z * 10) / 10], arg });
@@ -363,6 +395,8 @@ on('g-s', m => {
   if (gm.inShack && home.patch.filter(x => x === 1).length < snow && gm.env.storm > 0.5) H.hint(gm, 'blown', 'The storm tore some of the packed snow out of the walls.', 5000, true);
 });
 export const movingItems = gm => gm.world.stash.moving();
+// lay something down in the world at a spot (what you carried when you died, what skids away when the ice breaks)
+export function dropThing(gm, type, n, data, p) { act(gm, { a: 'drop', type, n, data, p, q: [0, 0, 0, 1], v: [0, 0.5, 0], w: [Math.random() - 0.5, 0, Math.random() - 0.5] }); }
 export function applyMovingItems(gm, list) { gm.world.stash.applyMoving(list || []); }
 
 // ---------- the hotbar and the backpack ----------
@@ -397,7 +431,7 @@ function buildInvDom(gm) {
   });
   gm.dom.bag.addEventListener('contextmenu', e => e.preventDefault());
 }
-const slotHtml = (s, i, sel, key, pick) => `<div class="bs ${s ? '' : 'empty'} ${sel ? 'on' : ''} ${pick ? 'pick' : ''}" data-i="${i}" title="${s ? nameOf(s.type, { dry: s.dry }, s.n) : ''}">${s ? `<i>${TYPES[s.type].icon}</i>${s.n > 1 ? `<b>${s.n}</b>` : ''}${TYPES[s.type].wood && s.dry < 0.8 ? `<em>${s.dry < 0.45 ? 'wet' : 'damp'}</em>` : ''}` : ''}${key ? `<small>${key}</small>` : ''}</div>`;
+const slotHtml = (s, i, sel, key, pick) => `<div class="bs ${s ? '' : 'empty'} ${sel ? 'on' : ''} ${pick ? 'pick' : ''}" data-i="${i}" title="${s ? nameOf(s.type, { dry: s.dry }, s.n) : ''}">${s ? `<i>${TYPES[s.type].icon}</i>${s.n > 1 ? `<b>${s.n}</b>` : ''}${TYPES[s.type].wood && s.dry < 0.8 ? `<em>${s.dry < 0.45 ? 'wet' : 'damp'}</em>` : ''}${TYPES[s.type].tool ? `<u class="${s.dry < 0.35 ? 'low' : ''}" style="width:${Math.round(s.dry * 100)}%"></u>` : ''}` : ''}${key ? `<small>${key}</small>` : ''}</div>`;
 function renderInv(gm) {
   const inv = gm.inv, d = gm.dom, prevHeld = gm.lastHeld;
   gm.invShown = inv.ver;

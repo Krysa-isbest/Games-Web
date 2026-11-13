@@ -53,11 +53,11 @@ export function mulberry(seed) {
 // One full day is 20 minutes: 8 of daylight (08:00 to 16:00) and 12 of night. T is the world time in seconds
 // and T = 0 is the first sunrise. The game starts at 03:20 in the night of the crash.
 export const DAY = 1200, SUN_UP = 480, T_START = -210;
-export const DIFF = {
-  easy: { name: 'Mild', drain: 0.6, storm: -0.12 },
-  normal: { name: 'Harsh', drain: 1, storm: 0 },
-  hard: { name: 'Brutal', drain: 1.45, storm: 0.1 },
-  whiteout: { name: 'Whiteout', drain: 2, storm: 0.2 },
+export const DIFF = {          // drain: body heat; food: hunger and thirst; storm: how often storms come
+  easy: { name: 'Mild', drain: 0.6, storm: -0.12, food: 0.6 },
+  normal: { name: 'Harsh', drain: 1, storm: 0, food: 1 },
+  hard: { name: 'Brutal', drain: 1.45, storm: 0.1, food: 1.3 },
+  whiteout: { name: 'Whiteout', drain: 2, storm: 0.2, food: 1.6 },
 };
 
 // everything the sky and the weather do at the world time T (bias: harder difficulties get more storms)

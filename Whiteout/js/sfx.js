@@ -87,7 +87,34 @@ export const hammer = once((ctx, t) => { for (let i = 0; i < 3; i++) { thud(ctx,
 export const pack = once((ctx, t) => { for (let i = 0; i < 3; i++) burst(ctx, t + i * 0.3, 'bandpass', 700, 1, 0.14, 0.02, 0.18); });
 export const ignite = once((ctx, t) => { burst(ctx, t, 'highpass', 3000, 0.7, 0.05, 0.002, 0.04); burst(ctx, t + 0.1, 'bandpass', 500, 0.8, 0.2, 0.25, 0.9); });
 export const flick = once((ctx, t) => { burst(ctx, t, 'highpass', 4000, 0.7, 0.08, 0.002, 0.03); burst(ctx, t + 0.04, 'bandpass', 900, 0.8, 0.04, 0.05, 0.2); });
+export const grind = once((ctx, t) => { burst(ctx, t, 'bandpass', 3800, 3, 0.07, 0.04, 0.22); burst(ctx, t + 0.05, 'highpass', 5000, 0.7, 0.03, 0.05, 0.18); });
+export const page = once((ctx, t) => { burst(ctx, t, 'bandpass', 2400, 0.7, 0.07, 0.03, 0.18); burst(ctx, t + 0.06, 'highpass', 4000, 0.7, 0.03, 0.02, 0.1); });
+// food and water
+export const munch = once((ctx, t) => { for (let i = 0; i < 3; i++) burst(ctx, t + i * 0.16, 'bandpass', 1400 + Math.random() * 600, 2, 0.08, 0.01, 0.06); });
+export const drink = once((ctx, t) => { for (let i = 0; i < 3; i++) { thud(ctx, t + i * 0.3, 220, 140, 0.1, 0.12); burst(ctx, t + i * 0.3, 'bandpass', 700, 3, 0.05, 0.02, 0.1); } });
+export const sizzle = once((ctx, t) => { burst(ctx, t, 'highpass', 3500, 0.7, 0.06, 0.2, 1.2); burst(ctx, t + 0.3, 'bandpass', 5000, 1, 0.04, 0.2, 0.8); });
+export const splash = once((ctx, t) => { burst(ctx, t, 'bandpass', 900, 0.8, 0.14, 0.01, 0.35); burst(ctx, t + 0.05, 'highpass', 2500, 0.7, 0.06, 0.02, 0.3); });
+export const reel = once((ctx, t) => burst(ctx, t, 'bandpass', 3200, 8, 0.05, 0.002, 0.03));
 export const door = once((ctx, t) => { thud(ctx, t, 110, 60, 0.25, 0.15); burst(ctx, t, 'bandpass', 400, 6, 0.06, 0.05, 0.3); });
+// step 6: thin ice, the water, being downed, sleeping, the ghost roulette
+export const creak = once((ctx, t, v = 1) => {          // the ice groaning under you: a low, slowly bending tone
+  const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(55 + Math.random() * 25, t); o.frequency.exponentialRampToValueAtTime(30 + Math.random() * 15, t + 0.9);
+  f.type = 'bandpass'; f.frequency.value = 260; f.Q.value = 6;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.12 * v * FAR), t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.0);
+  o.connect(f); f.connect(g); g.connect(bus); o.start(t); o.stop(t + 1.05);
+  burst(ctx, t + 0.3, 'bandpass', 3800, 6, 0.04 * v, 0.002, 0.05);
+});
+export const crack = once((ctx, t) => {                  // the ice gives way
+  for (let i = 0; i < 9; i++) burst(ctx, t + i * 0.035 + Math.random() * 0.02, 'bandpass', 2600 - i * 180, 4, 0.18, 0.002, 0.05);
+  thud(ctx, t + 0.3, 90, 35, 0.5, 0.5); burst(ctx, t + 0.32, 'bandpass', 700, 0.7, 0.35, 0.01, 0.7); burst(ctx, t + 0.4, 'highpass', 2500, 0.7, 0.12, 0.02, 0.5);
+});
+export const gasp = once((ctx, t, v = 1) => { burst(ctx, t, 'bandpass', 1100, 1.6, 0.16 * v, 0.06, 0.22); burst(ctx, t + 0.02, 'bandpass', 2400, 2, 0.05 * v, 0.05, 0.15); });
+export const beat = once((ctx, t, v = 1) => { thud(ctx, t, 60, 40, 0.25 * v, 0.12); thud(ctx, t + 0.22, 55, 38, 0.18 * v, 0.12); });
+export const alarm = once(ctx => { const t = ctx.currentTime; for (let i = 0; i < 4; i++) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t + i * 0.25); g.gain.exponentialRampToValueAtTime(0.06, t + i * 0.25 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.25 + 0.15); o.connect(g); g.connect(bus); o.start(t + i * 0.25); o.stop(t + i * 0.25 + 0.2); } });
+export const spin = once((ctx, t) => { for (let i = 0; i < 26; i++) burst(ctx, t + 2 * (1 - Math.pow(1 - i / 26, 1.6)), 'bandpass', 3400, 7, 0.05, 0.002, 0.025); });
+export const cash = once((ctx, t) => { for (const [f, d] of [[988, 0], [1319, 0.09], [1976, 0.18]]) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.07, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.35); o.connect(g); g.connect(bus); o.start(t + d); o.stop(t + d + 0.4); } });
+export const nope = once((ctx, t) => thud(ctx, t, 180, 90, 0.12, 0.25));
 export function land(speed, surface) {
   const ctx = ready();
   if (!ctx) return;

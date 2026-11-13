@@ -8,6 +8,8 @@ export function readSave(kind) {
 export function writeSave(kind, s) {
   try { localStorage.setItem(KEY[kind], JSON.stringify(s)); return true; } catch (e) { console.warn('could not save', e); return false; }
 }
+// a game that is over for good (permadeath): its save goes too
+export function clearSave(kind) { try { localStorage.removeItem(KEY[kind]); } catch { /* private mode */ } }
 // "Day 2 · 09:15, saved 12/11/2026, 18:02"
 export function saveLabel(s) {
   let when = '';

@@ -84,7 +84,7 @@ const PAGES = [
     <div class="kick">CO-OP · 1–4 PLAYERS</div><h3>Survive together, or freeze alone</h3>
     <p class="lead">Play alone or with up to 3 friends. Host a game with a room code, or with invite codes on your LAN or over Tailscale.</p>
     <div class="cards">${card('people', 'Split the work', 'One chops wood, one fishes, one patches the walls. Somebody watches the stove.')}${card('flame', 'Share the heat', 'Huddle together around the fire. Bodies in a small room keep it warmer.')}${card('wind', 'Voice in the wind', `Voice chat is spatial: in a blizzard your crew can\'t hear you from far away. Push to talk is ${kn('ptt')}.`)}${card('skull', 'Get them back up', 'A frozen friend can be carried back to the stove before it\'s too late.')}</div>
-    ${tip(`Ping a spot for your crew with ${kn('ping')}.`)}` },
+    ${tip('Sleep in shifts: while everyone sleeps the night flies by, but nobody feeds the stove. Out on the sea ice, dark ice is thin: crouch and crawl. If a friend goes through, crawl to the hole and pull.')}` },
   { id: 'controls', icon: 'keys', name: 'Controls', html: () => {
     const groups = {};
     for (const [a, d] of Object.entries(ACTIONS)) (groups[d.group] ||= []).push(a);

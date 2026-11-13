@@ -66,6 +66,22 @@ export function pose(P, k) {
     P.aR.sh.rotation.set(a, 0, 0.1); P.aR.el.rotation.set(-0.45, 0, 0);
   }
   if (k.lighter) { P.aL.sh.rotation.set(-1.0, 0, -0.1); P.aL.el.rotation.set(-0.6, 0, 0); }
+  // lie 0..1 = flat on your back (downed, asleep, carried); swim 0..1 = in the water, arms up on the edge of the ice
+  const lie = k.lie || 0, swim = k.swim || 0;
+  P.hips.rotation.x = -lie * Math.PI / 2;
+  if (lie > 0) {
+    P.hips.position.y += (0.14 - P.hips.position.y) * lie;
+    for (const l of [P.lL, P.lR]) { l.hip.rotation.x *= 1 - lie; l.kn.rotation.x *= 1 - lie; }
+    P.body.rotation.x *= 1 - lie; P.head.rotation.x = P.head.rotation.x * (1 - lie) + 0.15 * lie; P.head.rotation.z = (k.tilt ?? 0.25) * lie;
+    for (const [a, s] of [[P.aL, -1], [P.aR, 1]]) { a.sh.rotation.x *= 1 - lie; a.sh.rotation.z = a.sh.rotation.z * (1 - lie) + s * 0.25 * lie; a.el.rotation.x *= 1 - lie; }
+  }
+  if (swim > 0) {
+    const f = Math.sin((k.phase || 0) * 3) * 0.35;
+    P.aL.sh.rotation.set(-2.7 + f, 0, -0.35); P.aR.sh.rotation.set(-2.7 - f, 0, 0.35);
+    P.aL.el.rotation.set(-0.5, 0, 0); P.aR.el.rotation.set(-0.5, 0, 0);
+    P.lL.hip.rotation.x = 0.3 + f; P.lR.hip.rotation.x = 0.3 - f; P.lL.kn.rotation.x = 0.5; P.lR.kn.rotation.x = 0.5;
+    P.body.rotation.x = k.fp ? 0 : 0.25;
+  }
 }
 // the hand at the end of the right arm, to put the held item in
 export const rightHand = P => P.aR.el;

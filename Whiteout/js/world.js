@@ -141,7 +141,19 @@ function makeTerrain(R, wld, scene, sparkleU) {
     const a = j * (sn + 1) + i, b = a + sn + 1;
     si[t++] = a; si[t++] = b; si[t++] = a + 1; si[t++] = b; si[t++] = b + 1; si[t++] = a + 1;
   }
-  wld.phys.createCollider(R.ColliderDesc.trimesh(sv, si).setFriction(0.03).setFrictionCombineRule(R.CoefficientCombineRule.Min));
+  wld.iceCol = wld.phys.createCollider(R.ColliderDesc.trimesh(sv, si).setFriction(0.03).setFrictionCombineRule(R.CoefficientCombineRule.Min));
+  // holes chopped in the sea ice for fishing (build step 5): dark water in a ring of broken ice; they freeze over in a day
+  const holeWater = new THREE.MeshStandardMaterial({ color: '#0d1c26', roughness: 0.05, metalness: 0.3 }), holeRim = new THREE.MeshStandardMaterial({ color: '#dfeaf2', roughness: 0.6 });
+  const holeG = new THREE.CircleGeometry(0.32, 18).rotateX(-Math.PI / 2), rimG = new THREE.RingGeometry(0.3, 0.52, 18).rotateX(-Math.PI / 2);
+  wld.holes = new Map(); wld.holeN = 1;
+  wld.addHole = (id, x, z, at) => {
+    if (wld.holes.has(id)) return;
+    const g = new THREE.Group(), w = new THREE.Mesh(holeG, holeWater), r = new THREE.Mesh(rimG, holeRim);
+    w.position.y = 0.012; r.position.y = 0.018; g.add(w, r); g.position.set(x, ISL.SEA, z); scene.add(g);
+    wld.holes.set(id, { id, x, z, at, g, pos: new THREE.Vector3(x, ISL.SEA + 0.05, z) });
+    wld.holeN = Math.max(wld.holeN, id + 1);
+  };
+  wld.removeHole = id => { const h = wld.holes.get(id); if (h) { scene.remove(h.g); wld.holes.delete(id); } };
 }
 
 // ---------- pines and rocks ----------
@@ -240,12 +252,13 @@ function makeRocks(R, wld, scene, rng) {
     if (!seen.has(k)) { seen.add(k); pts.push(bp.getX(i), bp.getY(i), bp.getZ(i)); }
   }
   const geo = paint(base, (px, py, pz, nx, ny) => ny > 0.45 ? [0.86, 0.9, 0.95] : [0.3, 0.34, 0.4]);
-  const n = 460, im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), n);
+  const n = 460, im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), n), placed = [];
   for (let i = 0; i < n; i++) {
     let x = 0, z = 0, h = 0, tries = 0;
     do { x = (rng() - 0.5) * 940; z = (rng() - 0.5) * 940; h = wld.groundY(x, z); }
     while (++tries < 40 && (h < 0.5 || near(x, z, ISL.SHACK, 10) || near(x, z, ISL.WRECK, 18) || near(x, z, ISL.TOWER, 8)));
     const s = 0.4 + Math.pow(rng(), 2) * 2.6, sy = s * (0.5 + rng() * 0.5), y = h - s * 0.3;
+    placed.push([x, z, s]);
     _q.setFromEuler(_e.set(rng() * 3, rng() * 3, rng() * 3));
     im.setMatrixAt(i, _m.compose(_v.set(x, y, z), _q, _s.set(s, sy, s)));
     const hull = new Float32Array(pts.length);
@@ -256,6 +269,15 @@ function makeRocks(R, wld, scene, rng) {
   im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
   im.castShadow = true; im.receiveShadow = true;
   scene.add(im);
+  // loose stones beside the rocks near the shack: for a stone axe, or to sharpen the axe on (the workbench)
+  const near3 = placed.filter(([x, z]) => { const d = Math.hypot(x - ISL.SHACK.x, z - ISL.SHACK.z); return d > 15 && d < 220; });
+  for (let k = 0; k < 30 && near3.length; k++) {
+    const [x0, z0, s] = near3.splice(rng() * near3.length | 0, 1)[0], a = rng() * 6.28, r = s + 0.5 + rng() * 0.8;
+    const x = x0 + Math.cos(a) * r, z = z0 + Math.sin(a) * r, g = wld.groundY(x, z);
+    if (g < 0.4) continue;
+    _q.setFromEuler(_e.set(rng() * 3, rng() * 3, rng() * 3));
+    wld.stash.spawn({ type: 'stone', p: [x, g + 0.06, z], q: [_q.x, _q.y, _q.z, _q.w], rest: true });
+  }
 }
 
 // ---------- the shack, as you find it: a ruin ----------
@@ -420,11 +442,19 @@ function makeShack(R, wld, scene, rng) {
   doorCtl.pos = doorCtl.local.clone().applyMatrix4(M);
   wld.shack = { M, inv: M.clone().invert(), half: new THREE.Vector3(W0 / 2, H0 + 0.9, D0 / 2), y: y0, floor: FL, spots, door: doorCtl,
     stove: { pos: new THREE.Vector3(sx, FL + 0.5, sz + 0.3).applyMatrix4(M), glowM, light: sLight, pipe, chimney, indoor },
-    outside: new THREE.Vector3(1.3, 0, 4.2).applyMatrix4(M) };                                   // where you wake up if the smoke gets you in here
+    // the workbench under the window: where you look to open the book, where you lay things to work them, where the result lies
+    bench: { pos: new THREE.Vector3(-0.9, FL + 0.95, 1.6).applyMatrix4(M), lay: x => new THREE.Vector3(x, FL + 0.93, 1.62).applyMatrix4(M), out: new THREE.Vector3(-1.2, FL + 0.97, 1.6).applyMatrix4(M), outAt: k => new THREE.Vector3(-1.2, FL + 0.97 + Math.floor(k / 3) * 0.08, 1.42 + (k % 3) * 0.2).applyMatrix4(M), q: new THREE.Quaternion().setFromRotationMatrix(M) },
+    outside: new THREE.Vector3(1.3, 0, 4.2).applyMatrix4(M),                                     // where you wake up if the smoke gets you in here
+    // the bunk, and three spots on the floor beside it for the rest of the crew: where you lie when you sleep (or wake up after dying)
+    bunk: { pos: new THREE.Vector3(1.6, FL + 0.6, -1.5).applyMatrix4(M), yaw: ISL.SHACK.ry + Math.PI / 2,
+      spots: [[1.75, FL + 0.56, -1.5], [1.5, FL + 0.03, -0.55], [0.4, FL + 0.03, -1.4], [-0.2, FL + 0.03, -0.3]].map(a => new THREE.Vector3(...a).applyMatrix4(M)) } };
   wld.inShack = p => { _v.copy(p).applyMatrix4(wld.shack.inv); return Math.abs(_v.x) < W0 / 2 - 0.05 && Math.abs(_v.z) < D0 / 2 - 0.05 && _v.y > -0.3 && _v.y < H0 - 0.3; };
   // what lies here when you arrive: the one axe stuck in the chopping stump, the old (dry) firewood, boards fallen
   // from the roof, and the stove pipe half buried in the snow behind the shack
   placeItem(wld, M, 'axe', 3.455, 0.82, 2.4, 0, 0, -Math.PI / 2 + 0.45);
+  placeItem(wld, M, 'stone', 3.25, 0.05, 2.95, 0.3, 0.8, 0.2);                       // a flat whetstone by the stump, for the axe
+  placeItem(wld, M, 'pot', -1.0, FL + 0.1, -1.0, 0, 0.4, 0);                         // the old pot by the stove: melt snow in it
+  placeItem(wld, M, 'rod', 1.55, FL + 0.585, -1.45, 0, 0.15, 0);                      // the old owner's fishing rod on the bunk
   for (const [x, y, z] of [[3.55, 0.13, -1.75], [3.55, 0.13, -1.47], [3.55, 0.13, -1.19], [3.55, 0.36, -1.61], [3.55, 0.36, -1.33]]) placeItem(wld, M, 'log', x, y, z, 0, rnd(-0.08, 0.08), 0, { data: { dry: 1 } });
   for (const [x, z, a] of [[0.2, 0.4, 0.5], [-0.3, -0.9, 2.1], [1.3, 0.9, 1.2]]) placeItem(wld, M, 'board', x, FL + 0.035, z, 0, a, 0);
   { const px = -2.5, pz = -13; _v.set(px, 0, pz).applyMatrix4(M); const gy = wld.groundY(_v.x, _v.z) - y0; placeItem(wld, M, 'pipe', px, gy + 0.06, pz, 0, 0.7, 0.35, { buried: 0.45 }); }
@@ -525,6 +555,11 @@ function makeWreck(R, wld, scene, crew) {
   placeItem(wld, GM, 'wool', 0.45, FLOOR + 0.05, -3.9, 0, -0.7, 0);
   placeItem(wld, GM, 'kit', 0.9, FLOOR + 1.25, BULK - 0.1, Math.PI / 2, 0, 0);
   placeItem(wld, GM, 'flare', -0.42, FLOOR + 0.95, 4.5, 0, -Math.PI / 2, -Math.PI / 2);        // clipped to the back of the captain's seat, barrel down
+  // what's left of the in-flight service: salted nuts on the tables, a bottle of champagne rolled into the aisle
+  placeItem(wld, GM, 'snack', 0.7, FLOOR + 0.765, 0.15, 0, 0.4, 0);
+  placeItem(wld, GM, 'snack', -0.85, FLOOR + 0.765, -0.2, 0, 2.1, 0);
+  placeItem(wld, GM, 'snack', 0.2, FLOOR + 0.03, -3.2, 0, 1.2, 0);
+  placeItem(wld, GM, 'champ', -0.15, FLOOR + 0.05, 0.6, 0, 0.9, 0);
   for (const [x, z, a] of [[-4.2, -2.0, 0.4], [6.5, -9.0, 1.9], [-6.0, -8.5, 2.6], [3.2, 6.5, 0.8], [8.4, 5.2, 2.2]]) placeItem(wld, GM, 'sheet', x, 0.02, z, 0, a, 0);
   // the fire burning in the back of the cabin, the smoke along the ceiling, the red emergency light
   const fmat = new THREE.SpriteMaterial({ map: glowTex('rgba(255,230,160,1)', 'rgba(255,110,30,0.6)'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
@@ -878,7 +913,7 @@ export function buildWorld(R, scene, renderer, guest, crew = 1) {
     wld.growTrees(env.T);
     for (const p of wld.props) {
       if (p.gone) continue;
-      if (guest) {            // follow what the host sent
+      if (wld.guest) {        // follow what the host sent
         if (!p.to) continue;
         const k = 1 - Math.exp(-14 * dt);
         p.mesh.position.x += (p.to[0] - p.mesh.position.x) * k; p.mesh.position.y += (p.to[1] - p.mesh.position.y) * k; p.mesh.position.z += (p.to[2] - p.mesh.position.z) * k;
@@ -895,6 +930,19 @@ export function buildWorld(R, scene, renderer, guest, crew = 1) {
     }
   };
 
+  // the host left and this guest takes over the island: the loose things move by our own physics from now on
+  wld.becomeHost = () => {
+    if (!wld.guest) return;
+    wld.guest = false; wld.stash.guest = false;
+    for (const it of wld.stash.list.values()) { it.to = null; it.hidden = false; it.mesh.visible = true; it.base = it.mesh.position.y; }
+    for (const p of wld.props) {
+      if (p.gone || !p.body) continue;
+      p.to = null;
+      p.body.setBodyType(R.RigidBodyType.Dynamic, true);
+      p.body.setLinearDamping(0.15); p.body.setAngularDamping(0.7);
+      p.body.setTranslation(p.mesh.position, true); p.body.setRotation(quat(p.mesh.quaternion), true);
+    }
+  };
   wld.applyGfx();
   phys.step();          // one step so the first ray casts and the first footstep see every collider
   return wld;

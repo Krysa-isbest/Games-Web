@@ -8,7 +8,8 @@ import { openHowto } from './howto.js';
 import { initLobby, openPlay, playBack, profileChanged } from './lobby.js';
 import { dressPanel } from './frost.js';
 import { playCutscene } from './cutscene.js';
-import { startGame, preloadGame, inGame, gameApply, askJoin, gameChat } from './game.js';
+import { startGame, preloadGame, inGame, gameApply, askJoin, gameChat, backIn, rejoined } from './game.js';
+import { startVoice } from './voice.js';
 
 const $ = id => document.getElementById(id);
 const SCREENS = ['main', 'play', 'howto', 'settings', 'credits'];
@@ -114,12 +115,13 @@ function toMenu() { playBack(); stack.length = 0; go('main', false); }      // l
 function starting(lobby, how = {}) {
   const coop = G.net.role !== 'solo', players = lobby.players, meId = G.net.id, base = { players, meId, coop, openSettings: () => go('settings'), onQuit: toMenu };
   preloadGame();                                                             // the physics engine downloads while the cutscene plays
+  if (coop) startVoice();                                                    // voice chat from the cutscene on (the host's voice goes out over the plane's radio)
   if (how.cont) { startGame(G.net.role === 'guest' ? { ...base, join: true, crew: how.crew } : { ...base, load: how.save }); return; }
   playCutscene({ players, meId, coop, onBack: () => { if (!coop) go('main'); }, onDone: () => startGame(base) });
 }
 // the host let you into a game that is already running: no cutscene, the host sends the world
 function joining(m) {
-  preloadGame();
+  preloadGame(); startVoice();
   startGame({ players: m.players, meId: G.net.id, coop: true, join: true, crew: m.crew, openSettings: () => go('settings'), onQuit: toMenu });
 }
 
@@ -135,7 +137,7 @@ function apply(k) {
 initScene($('bg'));
 drawFrost();
 initSettings({ apply, toast });
-initLobby({ toast, go, starting, joining, askJoin, chat: gameChat });
+initLobby({ toast, go, starting, joining, askJoin, chat: gameChat, backIn, rejoined });
 renderProfile();
 $('ver').textContent = VERSION;
 $('fps').classList.toggle('hidden', !S.fps);

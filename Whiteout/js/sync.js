@@ -4,6 +4,7 @@
 // The island itself (the ground, where the trees and rocks stand) is never in here: everyone builds the same one.
 import { G, S } from './state.js';
 import * as ISL from './island.js';
+import { lifeRecord, lifeRestore } from './life.js';
 
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
 
@@ -15,6 +16,7 @@ export function worldState(gm) {
     items: w.stash.snap(), next: w.stash.next,
     home: home.snap(), air: r2(home.air),
     fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]),                                  // felled trees and when
+    ho: [...w.holes.values()].map(h => [h.id, h.x, h.z, h.at]),                                 // holes in the sea ice
     hp: w.trees.map((t, i) => (t.up && t.hp < 5 ? [i, t.hp] : 0)).filter(Boolean),               // trees with axe cuts in them
     go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0),                            // smashed crates
     props: w.props.map((p, i) => (p.gone ? 0 : [i, r3(p.mesh.position.x), r3(p.mesh.position.y), r3(p.mesh.position.z), r3(p.mesh.quaternion.x), r3(p.mesh.quaternion.y), r3(p.mesh.quaternion.z), r3(p.mesh.quaternion.w), p.hp])).filter(Boolean),
@@ -29,12 +31,13 @@ export function applyShared(gm, m) {
   for (const [i, at] of fe) if (w.trees[i]?.up) w.fell(i, at);
   for (const i of [...w.felled]) if (!fe.has(i)) w.unfell(i);
   for (const i of m.go || []) if (w.props[i] && !w.props[i].gone) w.breakProp(i);
+  if (m.ho) { const ids = new Set(m.ho.map(h => h[0])); for (const h of m.ho) w.addHole(...h); for (const id of [...w.holes.keys()]) if (!ids.has(id)) w.removeHole(id); }
 }
 // a guest: the whole world from the host, once, when joining
 export function applyWorld(gm, s) {
   gm.T = s.T; gm.Tnet = s.T; gm.TnetAt = performance.now();
   if (ISL.DIFF[s.diff]) G.lobby.opts.diff = s.diff;
-  applyShared(gm, { it: s.items, home: s.home, fe: s.fe, go: s.go });
+  applyShared(gm, { it: s.items, home: s.home, fe: s.fe, go: s.go, ho: s.ho || [] });
   gm.home.air = s.air || 0;
   for (const a of s.props || []) {
     const o = gm.world.props[a[0]];
@@ -52,6 +55,7 @@ export function loadWorld(gm, s) {
   for (const [i, at] of s.fe || []) w.fell(i, at);
   for (const [i, hp] of s.hp || []) if (w.trees[i]) w.trees[i].hp = hp;
   for (const i of s.go || []) w.breakProp(i);
+  for (const h of s.ho || []) w.addHole(...h);
   for (const a of s.props || []) {
     const o = w.props[a[0]];
     if (!o || o.gone) continue;
@@ -67,7 +71,9 @@ export function playerRecord(gm) {
   const p = gm.player, inv = gm.inv;
   return {
     name: S.name, p: [r2(p.pos.x), r2(p.pos.y), r2(p.pos.z)], yaw: r2(p.yaw), heat: Math.round(p.heat), out: gm.escaped && !gm.inCab ? 1 : 0,
+    hu: Math.round(p.hunger ?? 75), th: Math.round(p.thirst ?? 65),
     sel: inv.sel, coat: inv.coat || 0, slots: inv.slots.map(s => (s ? [s.type, s.n, r2(s.dry ?? 1)] : 0)),
+    ...(gm.life ? lifeRecord(gm) : {}),
   };
 }
 // put a record back on. Returns true if it also put you where you were (false: the caller picks a place)
@@ -76,6 +82,8 @@ export function restorePlayer(gm, rec, TYPES) {
   inv.slots = inv.slots.map((_, i) => { const s = rec.slots?.[i]; return s && TYPES[s[0]] ? { type: s[0], n: s[1], dry: s[2] ?? 1 } : null; });
   inv.sel = Math.min(4, Math.max(0, rec.sel | 0)); inv.coat = TYPES[rec.coat]?.wear ? rec.coat : null; inv.ver++;
   p.heat = Math.min(100, Math.max(0, +rec.heat || 50));
+  if (rec.hu != null) p.hunger = Math.min(100, Math.max(0, +rec.hu)); if (rec.th != null) p.thirst = Math.min(100, Math.max(0, +rec.th));
+  if (gm.life) lifeRestore(gm, rec);
   if (!rec.out || !Array.isArray(rec.p)) return false;
   p.teleport(rec.p[0], rec.p[1] + 0.1, rec.p[2]); p.yaw = +rec.yaw || 0;
   return true;

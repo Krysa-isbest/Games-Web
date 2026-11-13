@@ -39,11 +39,14 @@ export class Player {
     this.vel = new THREE.Vector3(); this.vy = 0;
     this.yaw = spawn.yaw; this.pitch = -0.04;
     this.grounded = false; this.steep = false; this.crouched = false; this.sprinting = false; this.moving = false;
-    this.surface = 'snow'; this.depth = 0; this.speed = 0; this.airT = 0; this.coyote = 0; this.atEdge = false;
+    this.surface = 'snow'; this.depth = 0; this.speed = 0; this.airT = 0; this.coyote = 0; this.atEdge = false; this.landT = 0;
     this.cr = 0; this.air = 1; this.phase = 0; this.walkAmt = 0; this.visY = spawn.y; this.sink = 0; this.dip = 0; this.fovKick = 0; this.t = 0;
     // set by the cold (game.js)
     this.heat = 78; this.slow = 1; this.shiver = 0; this.hug = 0; this.exposure = 1;
     this.half = H_STAND; this.seat = null;
+    // not on your feet (life.js, ice.js): "lie" downed on the ground, "sleep" in the bunk, "carried" over a friend's
+    // shoulder, "swim" in the water under the ice, "dead" a spectator. null = on your feet. heavy: carrying someone.
+    this.mode = null; this.lieYaw = 0; this.heavy = false;
     const phys = wld.phys;
     this.body = phys.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + H_STAND + RAD, spawn.z));
     this.col = phys.createCollider(R.ColliderDesc.capsule(H_STAND, RAD).setFriction(0), this.body);
@@ -79,6 +82,17 @@ export class Player {
     this.seat = null; this.col.setEnabled(true);
     this.teleport(at.x, at.y + 0.02, at.z);
   }
+  setMode(m) {
+    if (m === this.mode) return;
+    this.mode = m;
+    this.col.setEnabled(m === null || m === 'lie');
+    if (m === 'lie' || m === 'carried' || m === 'sleep') { this.lieYaw = this.yaw; this.pitch = Math.max(this.pitch, 0.35); }
+    if (m === 'lie' && this.crouched) { this.crouched = false; this.half = H_STAND; this.col.setHalfHeight(H_STAND); this.body.setTranslation({ x: this.pos.x, y: this.pos.y + H_STAND + RAD, z: this.pos.z }, true); }
+    this.vel.set(0, 0, 0); this.vy = 0; this.moving = false; this.speed = 0; this.sprinting = false;
+    this.P.g.visible = m !== 'dead';
+  }
+  // held somewhere from outside (carried, in the bunk, in the water): no physics, just there
+  hold(x, y, z) { this.pos.set(x, y, z); this.visY = y; this.body.setTranslation({ x, y: y + this.half + RAD, z }, true); }
   teleport(x, y, z) {
     this.pos.set(x, y, z); this.visY = y; this.vel.set(0, 0, 0); this.vy = 0;
     this.body.setTranslation({ x, y: y + this.half + RAD, z }, true);
@@ -98,7 +112,20 @@ export class Player {
   // one physics step of h seconds: called just before the world steps
   step(h, env, inp) {
     const w = this.w, p = this.pos;
-    if (this.seat) { inp.jump = 0; this.depth = 0; this.sprinting = false; return; }
+    if (this.seat || this.mode) {
+      inp.jump = 0; this.depth = 0; this.sprinting = false; this.moving = false; this.speed = 0;
+      if (this.mode === 'lie') {      // downed: you fall where you are, and lie there
+        this.vy = this.grounded ? -2 : Math.max(this.vy - GRAV * h, -45);
+        _d.x = 0; _d.y = this.vy * h; _d.z = 0;
+        this.cc.computeColliderMovement(this.col, _d, undefined, NO_AVATARS);
+        const m = this.cc.computedMovement(), t = this.body.translation();
+        this.grounded = this.cc.computedGrounded();
+        _n.x = t.x + m.x; _n.y = t.y + m.y; _n.z = t.z + m.z;
+        this.body.setNextKinematicTranslation(_n);
+        p.set(_n.x, _n.y - this.half - RAD, _n.z);
+      }
+      return;
+    }
     // ---- what you are asking for ----
     let fx = 0, fz = 0;
     if (inp.active) { fz = (inp.is('forward') ? 1 : 0) - (inp.is('back') ? 1 : 0); fx = (inp.is('right') ? 1 : 0) - (inp.is('left') ? 1 : 0); }
@@ -106,9 +133,11 @@ export class Player {
     if (len > 1) { fx /= len; fz /= len; }
     if (!len) inp.tog.sprint = false;                              // a toggled sprint ends when you stop
     this.setCrouch(inp.active && inp.held('crouch'));
-    this.sprinting = inp.active && inp.held('sprint') && fz > 0 && !this.crouched && this.heat > 6;
+    this.sprinting = inp.active && inp.held('sprint') && fz > 0 && !this.crouched && this.heat > 6 && !this.heavy;
     const quiet = inp.active && inp.held('walk');
     let sp = this.crouched ? SNEAK : this.sprinting ? SPRINT : quiet ? SLOW : WALK;
+    this.landT = Math.max(0, this.landT - h);
+    if (this.landT > 0.15) sp *= 0.65;                             // just landed: a moment to catch your feet (no bunny-hopping faster)
     if (fz < 0) sp *= 0.8;
     const depth = this.depth = this.surface === 'snow' ? w.snowDepth(p.x, p.z) : 0;
     sp *= (1 - depth * (this.sprinting ? 0.5 : 0.4)) * this.slow;  // deep snow and the cold slow you down
@@ -134,7 +163,7 @@ export class Player {
     const firm = this.grounded && !this.steep;
     this.coyote = firm ? 0.12 : Math.max(0, this.coyote - h);
     if (firm) this.vy = -2; else this.vy = Math.max(this.vy - GRAV * h, this.grounded ? -9 : -45);
-    if (inp.jump > 0 && this.coyote > 0) { this.vy = JUMP * (1 - depth * 0.3) * (this.crouched ? 0.75 : 1); inp.jump = 0; this.coyote = 0; this.grounded = false; }
+    if (inp.jump > 0 && this.coyote > 0 && this.landT <= 0) { this.vy = JUMP * (1 - depth * 0.3) * (this.crouched ? 0.75 : 1); inp.jump = 0; this.coyote = 0; this.grounded = false; }
     const fall = this.vy;
 
     // ---- the character controller works out where that really takes you ----
@@ -165,6 +194,7 @@ export class Player {
     this.speed = got / h;
     this.moving = this.grounded && this.speed > 0.4;
     if (this.grounded) {
+      if (this.airT > 0.15) this.landT = 0.35;                     // after any jump or drop: no new jump for a moment, slower for a moment
       if (this.airT > 0.28 && fall < -5) { this.dip = Math.min(0.28, -fall * 0.014); if (this.onLand) this.onLand(-fall, this.surface); }
       this.airT = 0;
       if (this.speed > 0.3) {                                      // the stride: footsteps, the head bob and the legs follow it
@@ -189,6 +219,7 @@ export class Player {
       pose(this.P, { fp: true, sit: 1, hug: this.hug });
       return;
     }
+    if (this.mode) { this.lying(dt, t); return; }
     this.cr += ((this.crouched ? 1 : 0) - this.cr) * k;
     this.air += ((this.grounded ? 0 : 1) - this.air) * (1 - Math.exp(-10 * dt));
     this.sink += (this.depth * 0.2 - this.sink) * (1 - Math.exp(-6 * dt));          // your legs sink into deep snow
@@ -216,5 +247,28 @@ export class Player {
     P.g.position.set(p.x, this.visY - this.sink, p.z);
     P.g.rotation.y = this.yaw + Math.PI;
     pose(P, { fp: true, crouch: this.cr, walk: this.walkAmt, phase: this.phase, air: this.air, hug: this.hug });
+  }
+  // the camera and the body when you are not on your feet
+  lying(dt, t) {
+    const cam = this.cam, p = this.pos, P = this.P, sh = this.shiver;
+    const jx = (Math.sin(t * 47) + Math.sin(t * 31.7 + 1.3)) * 0.0035 * sh, jy = (Math.sin(t * 43.1 + 2) + Math.sin(t * 27.3)) * 0.0035 * sh;
+    this.cr = 0; this.walkAmt = 0; this.sink = 0;
+    if (this.mode === 'swim') {       // in the water: only your head is out, your arms on the edge of the ice
+      const bob = Math.sin(t * 2.1) * 0.05;
+      this.visY = SEA - 1.28 + bob;
+      cam.position.set(p.x, SEA + 0.28 + bob, p.z);
+      cam.rotation.set(this.pitch + jy, this.yaw + jx, Math.sin(t * 1.3) * 0.03);
+      P.g.position.set(p.x, this.visY, p.z); P.g.rotation.set(0, this.yaw + Math.PI, 0);
+      pose(P, { fp: true, swim: 1, phase: t });
+    } else {                            // on your back: you look out of your own head
+      this.visY = p.y;
+      P.g.position.set(p.x, p.y, p.z); P.g.rotation.set(0, this.lieYaw + Math.PI, 0);
+      pose(P, { fp: true, lie: 1, tilt: 0.1 });
+      P.g.updateMatrixWorld(true);
+      P.head.getWorldPosition(cam.position); cam.position.y += 0.1;
+      cam.rotation.set(this.pitch + jy, this.yaw + jx, Math.sin(t * 0.5) * 0.02);
+    }
+    const hf = THREE.MathUtils.degToRad(clamp(+S.fov || 80, 60, 110)), vf = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(hf / 2) / cam.aspect));
+    if (Math.abs(vf - cam.fov) > 0.01) { cam.fov = vf; cam.updateProjectionMatrix(); }
   }
 }

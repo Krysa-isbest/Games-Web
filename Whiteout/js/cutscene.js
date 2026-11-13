@@ -17,6 +17,7 @@ import { menuAudio } from './audio.js';
 import { SCN, canvasTex, glowTex } from './scene.js';
 import * as IA from './intro-audio.js';
 import { TL } from './intro-audio.js';
+import { radioTalk, radioFrom } from './voice.js';
 
 const SEEN = 'whiteout.introSeen';
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -138,12 +139,12 @@ function radioPanel(open) {
   if (open) {
     const host = esc(C.ps[0].name);
     d.innerHTML = C.host
-      ? `<b>The radio</b><p>Hold <kbd>${esc(keyName(BINDS.ptt))}</kbd> and say something into the radio.</p><small>${C.coop ? 'Your real voice goes out to your crew once voice chat is in the game. ' : ''}Say nothing, and a line plays on its own.</small><div class="tx">● Transmitting</div>`
+      ? `<b>The radio</b><p>Hold <kbd>${esc(keyName(BINDS.ptt))}</kbd> and say something into the radio.</p><small>${C.coop ? 'Your crew hears your real voice over the radio. ' : ''}Say nothing, and a line plays on its own.</small><div class="tx">● Transmitting</div>`
       : `<b>The radio</b><p>${host} is on the radio…</p><div class="tx">● Transmitting</div>`;
     d.classList.remove('off');
   } else {
     if (C.ptt) ptt(false);
-    if (C.remote) { C.remote = false; IA.pttOff(); }
+    if (C.remote) { C.remote = false; IA.pttOff(); radioFrom('p0', false); }
     d.classList.add('off'); d.classList.remove('tx');
   }
 }
@@ -153,6 +154,7 @@ function ptt(down) {
   if (down === C.ptt) return;
   C.ptt = down;
   if (down) IA.pttOn(); else IA.pttOff();
+  radioTalk(down);                                   // voice chat: the host's microphone is open while they hold the radio
   C.dom.radio.classList.toggle('tx', down);
   if (C.coop) broadcast({ t: 'cs-ptt', on: down });
 }
@@ -174,6 +176,7 @@ function showEnd(skipped) {
   C.ended = true;
   cancelAnimationFrame(C.raf);
   if (C.ptt) { C.ptt = false; IA.pttOff(); }
+  radioTalk(false); radioFrom('p0', false);
   markSeen();
   IA.stop(skipped ? 0.8 : 3);
   const d = C.dom, args = C.args;
@@ -219,6 +222,7 @@ function listen() {
     const v = !!m.on && C.t < TL.reply - 0.2;
     if (v === C.remote) return;
     C.remote = v; if (v) IA.pttOn(); else IA.pttOff();
+    radioFrom('p0', v);                              // the host's real voice through the radio filter
     C.dom.radio.classList.toggle('tx', v);
   });
   on('cs-skip', () => { if (C && !C.host) doSkip(true); });
