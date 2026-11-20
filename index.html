@@ -53,7 +53,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .flags{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .flag.big{color:#fff;background:rgba(184,80,47,.94)}
 .flag.vr{color:#fff;background:rgba(32,120,160,.94)}
-.flag.play{color:#fff;background:rgba(46,140,80,.94)}
+.flag.pt{color:#fff;background:rgba(46,140,80,.94)}
 .flag{
   font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
@@ -788,7 +788,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag play">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
+        ${g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag pt">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
