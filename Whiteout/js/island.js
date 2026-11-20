@@ -10,6 +10,13 @@ export const EDGE = 610;          // how far out on the ice you can walk
 // the menu's island, three times as big: the shack, the wreck and the tower stand in the same places
 export const SHACK = { x: 0, z: 0, ry: 0.35 }, WRECK = { x: 102, z: -78, ry: -0.9 }, TOWER = { x: -276, z: 192 };
 const FLAT = [[SHACK, 11, 30, 0], [WRECK, 10, 28, -0.4], [TOWER, 7, 20, 0]];
+// step 7a: the plane's tail section, which broke off as the plane came down through the trees (behind the wreck,
+// beside the trail it tore), and the camp of a trawler's crew who died here years ago, in a clearing to the west.
+// (They sit on the ground as it is: flattening it would move trees, and saves count the trees by their place in the list.)
+export const TAIL = { x: 175, z: -172 }, CAMP = { x: -214, z: -94, ry: 0.6 };
+// step 7c: two caves in rocky outcrops, their mouths towards the shack: the ice cave to the east (always open), and one
+// to the south that is snowed shut until a storm blows its mouth clear (from day 3).
+export const ICECAVE = { x: 240, z: 0 }, SNOWCAVE = { x: -50, z: -220 };
 
 function rawHeight(x, z) {
   const r = Math.hypot(x, z), ang = Math.atan2(z, x);
@@ -60,6 +67,22 @@ export const DIFF = {          // drain: body heat; food: hunger and thirst; sto
   whiteout: { name: 'Whiteout', drain: 2, storm: 0.2, food: 1.6 },
 };
 
+// the weather of the day (step 7e), from the day number: 0 ordinary (58 %), 1 clear: go far (20 %), 2 fog: you get lost
+// a few metres from the shack (12 %), 3 a blizzard: stay in (10 %). The night of the crash is ordinary.
+export function dayWeather(day) {
+  if (day < 2) return 0;
+  const r = mulberry(day * 1543 + 77)();
+  return r < 0.58 ? 0 : r < 0.78 ? 1 : r < 0.9 ? 2 : 3;
+}
+const _wm = { day: 0, clear: 0, fog: 0, bliz: 0 };
+function weatherMix(T) {
+  const c = ((T + 360) % DAY + DAY) % DAY, day = 1 + Math.floor((T + 360) / DAY);         // c: world seconds since midnight
+  const a = dayWeather(day), k = c > DAY - 45 ? (c - (DAY - 45)) / 45 * 0.5 : c < 45 ? 0.5 + c / 90 : 1;   // the hour round midnight blends
+  const b = c > DAY - 45 ? dayWeather(day + 1) : c < 45 ? dayWeather(day - 1) : a;
+  const mix = (n) => (a === n ? k : 0) + (b === n ? 1 - k : 0);
+  _wm.day = a; _wm.clear = mix(1); _wm.fog = mix(2); _wm.bliz = mix(3);
+  return _wm;
+}
 // everything the sky and the weather do at the world time T (bias: harder difficulties get more storms)
 export function envAt(T, bias = 0, out = {}) {
   const c = ((T % DAY) + DAY) % DAY, d1 = c < 600 ? c : c - DAY;
@@ -73,11 +96,16 @@ export function envAt(T, bias = 0, out = {}) {
   // storms roll in every few minutes; gusts every few seconds
   const s = Math.sin(T * 0.01496 + 2.1) * 0.6 + Math.sin(T * 0.0363 + 0.7) * 0.4;
   out.storm = smooth(0.3, 0.9, s + bias);
+  // step 7e: the weather of the day (0 ordinary, 1 clear, 2 fog, 3 a blizzard), blended over the hour around midnight
+  const w = weatherMix(T);
+  out.weather = w.day;
+  out.storm = out.storm * (1 - w.clear * 0.85 - w.fog * 0.7) + (1 - out.storm) * w.bliz * 0.9;
+  out.fog = w.fog;
   const g = smooth(0.4, 0.62, fbm(T * 0.13, 7.31, 2));
   out.gust = clamp(g * (0.55 + 0.45 * out.storm) + out.storm * 0.45, 0, 1);
-  out.wind = 3.5 + g * 10 + out.storm * 13;                       // metres per second
+  out.wind = (3.5 + g * 10 + out.storm * 13) * (1 - 0.5 * out.fog); // metres per second (fog comes with still air)
   out.wdir = 0.34 + 0.45 * Math.sin(T * 0.0041 + 1);              // the way it blows, as an angle from +x towards +z
-  out.temp = lerp(-29, -13, out.light) - out.storm * 5;           // degrees C
+  out.temp = lerp(-29, -13, out.light) - out.storm * 5 - w.clear * 4 * (1 - out.light);   // degrees C (a clear night is colder)
   out.fire = 1 - smooth(-20, 220, T);                             // the wreck burns through the first night
   return out;
 }

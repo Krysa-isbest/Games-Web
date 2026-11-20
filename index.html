@@ -163,9 +163,41 @@ const GAMES = [
   },
   {
     file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
-    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening, getting out of the burning plane, the island with the cold, day and night and storms, the ruined shack you keep warm with the axe, firewood and the stove, the workbench with its crafting book, food and ice fishing, and co-op with saved games, voice chat, rescues, night shifts and thin ice.',
+    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening, getting out of the burning plane, the island with the cold, day and night and storms, the ruined shack you keep warm with the axe, firewood and the stove, the workbench with its crafting book, food and ice fishing, and co-op with saved games, voice chat, rescues, night shifts and thin ice, places out on the island (the plane\'s tail section, a dead survivors\' camp, the watchtower, two caves), an island that changes every day, and three ways to be rescued.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
+      { version: '0.13', date: '2026-11-20', notes: [
+        'Eat, drink and read with the left mouse: hold it for half a second with the thing in your hand (Q still works, and eats snow with empty hands). After you finish something with E, let go of E before the next thing starts, so you no longer close the door by accident. The door and the workbench take a little longer to use.',
+        'The map (M): a hand-drawn chart that fills in as you explore, with the places you found, guide ropes, your crew and pings. The journal (J): your objectives, the diary, and the journals and notes you have read. Ping a spot for your crew with the middle mouse button. New players get a line at the top telling them what to do next.',
+        'The weather of the day: some days are clear (go far, but the night is bitter), some foggy (you can hardly see), some a blizzard (stay in). Guide ropes: braid two silk scarves at the workbench, tie one end, walk, tie the other, and follow it home in the fog.',
+        'The night watch has work: snow piles up on the roof in a storm (push it off from outside under the eaves, faster with a shovel, or it breaks a board), storms tear boards off the walls and blow the door open. Snow shovels: an aluminium one in the plane\'s survival pack, a wooden one at the workbench. A shovel also digs out buried things and the snowed-in cave.',
+        'Pine-needle tea: water and a branch on the hot stove. It warms you and the warmth lasts. Frostbite, sickness and bleeding, and the first aid kit on yourself (hold the left mouse). Warm, well fed, hot drink. A falling tree hurts whoever is in its way.',
+        'The old hunter\'s plan in the snowed-in cave: build a winter den there (a log wall, a door, a fire, a bed). Colder and darker than the shack, but it doesn\'t burn down.',
+        'Your breath steams, footprints fill in with snow, frost grows on what you leave outside, and some nights something knocks on the door. For testing: an admin menu (type the code in Settings > General).',
+      ] },
+      { version: '0.12', date: '2026-11-20', notes: [
+        'The island changes every day. The deep snowdrifts lie somewhere else each morning: you see them, and they slow you down.',
+        'On about half the mornings a storm has uncovered a frozen crate somewhere out in the snow: dig it out and open it (hold E). Most mornings, wreckage from the plane washes up on the shore: suitcases, sheets of metal, and now and then a flare shell.',
+        'The ice cave, east of the shack: out of the wind and dark deep inside (bring your lighter or a torch), with ice that glows faintly blue. The trawler\'s skipper sheltered there on his way back from the tower and never left. His notebook is still there.',
+        'A second cave to the south is snowed shut. From day 3, the first storm blows its mouth clear, and somebody\'s old cache is inside, with a flare shell.',
+      ] },
+      { version: '0.11', date: '2026-11-20', notes: [
+        'Three ways off the island, as planned: the flare gun, burning the shack, and the watchtower\'s satellite phone. Each one ends with a helicopter, and you have to survive until it comes (about half a day; it waits out storms).',
+        'Every day something passes the island: a plane (day or night) or a ship (only at night), sometimes close, sometimes far. You hear it. Fire a flare while it is there: the closer, the darker and the clearer, the better the chance it is seen. A plane that saw you rocks its wings, a ship sounds its horn.',
+        'Burn the shack: with your lighter lit or a torch in your hand, look at its door from outside and hold E. It burns as a huge signal for half a day. If anything passes while it burns, they almost surely see it. If not, it is gone: no shelter, no stove, no bench. Sleep in the tail section, the tent or the tower then, and the dead wake up in the tail section.',
+        'The watchtower: stairs wind up round it to a cabin at the top. Break the padlock with the axe, read the old hunter\'s note, find the battery where he hid it, bring it back up and call (not in a storm).',
+        'The helicopter lands beside the shack. Climb aboard. In co-op it waits 90 seconds after the first one is in, then lifts off: the end, with who made it home (and the flight recorder, if someone brought it).',
+        'Long falls hurt now: fall off the tower stairs and you may not get up.',
+      ] },
+      { version: '0.10', date: '2026-11-20', notes: [
+        'The tail section: the back of the plane came down further back, where it tore through the trees (look for the red fin). Inside: the baggage hold, a galley cart, the flight recorder and the plane\'s survival pack.',
+        'The camp: in the forest to the west, under a red rag on a pole, a trawler crew camped and died years ago. Two tents, a sled, their supply box, and one of them still sitting at the dead fire.',
+        'Suitcases and boxes open now (hold E): at the wreck, at the tail, at the camp.',
+        'Flare shells: three on the whole island. Hold the left mouse button with the flare gun to fire one: it climbs high, hangs under its parachute and lights the island red. Everyone sees it. (Who could see it from outside comes with the endings.)',
+        'The first journal: hold it and press Q to read it. Its last pages go into the crafting book: snowshoes (deep snow holds you up) and a torch (light and a little warmth, for a few minutes).',
+        'New things: an old parka (the warmest coat yet), caviar and canned beans, silk scarves that burn, the flight recorder.',
+        'The tail section and the tents keep the wind off you. A game saved before this version gets the new places\' things laid out when you continue it.',
+      ] },
       { version: '0.9', date: '2026-11-13', notes: [
         'Voice chat: push to talk (V) or an open mic, set in Settings > Audio & voice. Voices come from where your friends stand, get quieter and duller with distance, and a blizzard swallows them. In the opening cutscene the host\'s real voice goes out over the plane\'s radio.',
         'Health: frozen stiff, starving or parched, it drains. At zero you are downed: you lie in the snow with a timer running. A friend can carry you to the fire (once you are warm you get up) or patch you up with the first aid kit.',

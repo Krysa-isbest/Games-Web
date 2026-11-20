@@ -54,7 +54,7 @@ const PAGES = [
     <div class="kick">HUNGER</div><h3>Eat, drink, keep going</h3>
     <p class="lead">Hunger and thirst drain slowly, but an empty stomach makes the cold hit harder.</p>
     <div class="cards">${card('fish', 'Ice fishing', 'Chop a hole in the sea ice, drop a line and wait. Quiet, cold and safe-ish.')}${card('bow', 'Hunting', 'Hares, birds, and bigger animals inland. Something else hunts out there too.')}${card('flame', 'Cook it', 'Raw meat makes you sick. Cook on the stove or a campfire.')}${card('drop', 'Melt snow', 'Eating snow costs you heat. Melt it in a pot first.')}</div>
-    ${tip(`Eat or drink what you hold with ${kn('eat')}. Food from the plane goes off: eat that first.`)}` },
+    ${tip(`Eat or drink what you hold: hold ${kn('primary')} a moment (or press ${kn('eat')}). Pine needles in hot water make a tea that keeps you warm for hours.`)}` },
   { id: 'tech', icon: 'bench', name: 'Techniques', html: () => `
     <div class="kick">KNOW-HOW</div><h3>Work smart, waste nothing</h3>
     <p class="lead">Nothing on this island comes back fast. Every log, plank and nail is either warmth tonight or a better shack tomorrow. Choose well.</p>
@@ -73,13 +73,13 @@ const PAGES = [
   { id: 'dead', icon: 'skull', name: 'The ones before you', html: () => `
     <div class="kick">SURVIVORS</div><h3>You are not the first</h3>
     <p class="lead">Others were stranded here before you. You'll find what's left of them: frozen camps, collapsed tents, a cabin with the door barred from the inside.</p>
-    <div class="cards">${card('bag', 'Better gear', 'Real cold-weather clothes, a rifle, an ice axe, snowshoes. Things the jet never had.')}${card('note', 'Their journals', `They wrote down what they learned, and what went wrong. Read them in your journal (${kn('journal')}).`)}${card('skull', 'What happened to them', 'Some froze. Some didn\'t. Pay attention to how they died.')}</div>
-    ${tip('Journals often mark places on your map. Check it after reading.')}` },
+    <div class="cards">${card('bag', 'Better gear', 'Real cold-weather clothes, a rifle, an ice axe, snowshoes. Things the jet never had.')}${card('note', 'Their journals', `They wrote down what they learned, and what went wrong. Hold one and hold ${kn('primary')} a moment to read it. The journal (${kn('journal')}) keeps what you read, the objectives and the diary; the map is ${kn('map')}. What they knew how to make goes into the crafting book.`)}${card('skull', 'What happened to them', 'Some froze. Some didn\'t. Pay attention to how they died.')}</div>
+    ${tip('Look for the red fin of the plane\'s tail behind the wreck, and for a red rag on a pole above the trees to the west. Suitcases and boxes open: hold the use key.')}` },
   { id: 'escape', icon: 'flare', name: 'Getting out', html: () => `
     <div class="kick">THE END</div><h3>Three ways off the island</h3>
     <p class="lead">Ships pass far out at sea, and a plane flies over now and then. Someone has to see you. Each way out has a price.</p>
-    <div class="cards">${card('flare', 'The flare gun', 'The pilot had one. Find it in the wreck, find the shells, and wait for the right moment: you only get a few.')}${card('flame', 'Burn the shack', 'The biggest signal fire on the island. If nobody comes, you\'ve just burned your only shelter.')}${card('tower', 'The tower\'s satellite phone', 'The old watchtower on the far side has a satellite phone. Getting there, and getting in, is the hard part.')}</div>
-    ${tip('Rescue takes time to arrive. Whatever you choose, you have to survive until they get there.')}` },
+    <div class="cards">${card('flare', 'The flare gun', 'The pilot had one. Find it in the wreck, find the shells, and wait for the right moment: you only get a few.')}${card('flame', 'Burn the shack', 'The biggest signal fire on the island. If nobody comes, you\'ve just burned your only shelter.')}${card('tower', 'The tower\'s satellite phone', 'The old watchtower has a satellite phone. Getting up there and getting in is one part; it also needs a battery that someone hid.')}</div>
+    ${tip('Something passes the island every day: listen for engines, watch for lights at sea. A flare only helps if someone can see it. Rescue takes time to arrive: whatever you choose, you have to survive until they get there.')}` },
   { id: 'crew', icon: 'people', name: 'Playing together', html: () => `
     <div class="kick">CO-OP · 1–4 PLAYERS</div><h3>Survive together, or freeze alone</h3>
     <p class="lead">Play alone or with up to 3 friends. Host a game with a room code, or with invite codes on your LAN or over Tailscale.</p>

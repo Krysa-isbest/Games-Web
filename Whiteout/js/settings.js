@@ -31,7 +31,8 @@ function general() {
     toggle('Head bob', 'headBob', 'The camera sways as you walk.') +
     head('Mouse') + slider('Mouse sensitivity', 'sens', 0.1, 3, 0.05) + toggle('Invert mouse Y', 'invertY') +
     head('Interface') + toggle('Hints', 'hints', 'Short tips the first time you meet something new.') + toggle('Subtitles', 'subtitles', 'For radio messages and survivors\' notes read aloud.') +
-    choice('Temperature', 'temp', [['c', '°C'], ['f', '°F']]) + toggle('FPS counter', 'fps');
+    choice('Temperature', 'temp', [['c', '°C'], ['f', '°F']]) + toggle('FPS counter', 'fps') +
+    head('Testing') + row('Code', 'Leave it empty.', `<input class="txt short" data-s="code" value="${esc(S.code || '')}" autocomplete="off" spellcheck="false">`);
 }
 function graphics() {
   return choice('Quality preset', 'preset', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra'], ['custom', 'Custom']], 'Pick one, then fine-tune below. You can see every change behind this window.') +
@@ -62,7 +63,7 @@ function controls() {
     choice('Walk slowly', 'walkMode', [['hold', 'Hold'], ['toggle', 'Toggle']]) +
     '<p class="snote">Click a key, then press the new key or mouse button. Esc cancels, Backspace clears it.</p>';
   const groups = {};
-  for (const [a, d] of Object.entries(ACTIONS)) (groups[d.group] ||= []).push(a);
+  for (const [a, d] of Object.entries(ACTIONS)) if (!d.hidden) (groups[d.group] ||= []).push(a);
   for (const [g, list] of Object.entries(groups)) {
     h += head(g);
     for (const a of list) {

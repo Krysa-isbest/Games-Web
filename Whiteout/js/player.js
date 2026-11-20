@@ -47,6 +47,7 @@ export class Player {
     // not on your feet (life.js, ice.js): "lie" downed on the ground, "sleep" in the bunk, "carried" over a friend's
     // shoulder, "swim" in the water under the ice, "dead" a spectator. null = on your feet. heavy: carrying someone.
     this.mode = null; this.lieYaw = 0; this.heavy = false;
+    this.shoes = false;                // snowshoes in your things (finds.js): deep snow holds you up
     const phys = wld.phys;
     this.body = phys.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + H_STAND + RAD, spawn.z));
     this.col = phys.createCollider(R.ColliderDesc.capsule(H_STAND, RAD).setFriction(0), this.body);
@@ -139,7 +140,7 @@ export class Player {
     this.landT = Math.max(0, this.landT - h);
     if (this.landT > 0.15) sp *= 0.65;                             // just landed: a moment to catch your feet (no bunny-hopping faster)
     if (fz < 0) sp *= 0.8;
-    const depth = this.depth = this.surface === 'snow' ? w.snowDepth(p.x, p.z) : 0;
+    const depth = this.depth = this.surface === 'snow' ? w.snowDepth(p.x, p.z) * (this.shoes ? 0.35 : 1) : 0;
     sp *= (1 - depth * (this.sprinting ? 0.5 : 0.4)) * this.slow;  // deep snow and the cold slow you down
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const wx = -sy * fz + cy * fx, wz = -cy * fz - sy * fx;        // the way you want to go, in the world

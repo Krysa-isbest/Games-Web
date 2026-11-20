@@ -1,5 +1,5 @@
 // Shared state, settings (saved in the browser) and small helpers.
-export const VERSION = 'Prototype v0.9';
+export const VERSION = 'Prototype v0.13';
 
 export const G = {
   net: { role: 'solo', id: 'p0' },     // solo | host | guest
@@ -17,6 +17,7 @@ export const DEFAULTS = {
   // audio
   vol: 0.8, menuMusic: 0.25, music: 0.6, sfx: 1, wind: 0.8, ui: 0.6,
   voice: true, voiceMode: 'ptt', mic: '', micVol: 1, voiceVol: 1, noise: true,
+  code: '',                  // Settings > General > Testing: 6767 opens the admin menu on F2 (admin.js)
   // controls
   sprintMode: 'hold', crouchMode: 'hold', walkMode: 'hold',
   // network

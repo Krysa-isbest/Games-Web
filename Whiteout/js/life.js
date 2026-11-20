@@ -27,6 +27,7 @@ import { TYPES } from './items.js';
 import { LS } from './voice.js';
 import { readSave, clearSave } from './save.js';
 import { openRoulette } from './roulette.js';
+import { diaryNote } from './obj.js';
 
 let GL = null, H = null;          // the game, and helpers from game.js: { hint, chat, lock, quit, reload, drop, closeUI }
 const DOWN_T = { easy: 90, normal: 75, hard: 60, whiteout: 50 };
@@ -43,7 +44,9 @@ export function initLife(gm, helpers) {
   p.hp ??= 100; p.wet ??= 0; p.rest ??= 70;
   gm.ts = 1;
   gm.life = { st: 'up', downT: 0, downMax: 75, carrier: null, carrying: null, pulling: null, pullPh: 0, zone: 0.5, pullT: 0, perma: false, respawnT: 0, deadReal: 0,
-    restedUntil: -1e9, gloomUntil: -1e9, woken: false, spot: 0, wakeEvery: 2, nextWake: 0, specI: 0, specPid: null, prevK: new Set(), beatT: 0, endT: 0, ended: false, together: 0 };
+    restedUntil: -1e9, gloomUntil: -1e9, woken: false, spot: 0, wakeEvery: 2, nextWake: 0, specI: 0, specPid: null, prevK: new Set(), beatT: 0, endT: 0, ended: false, together: 0,
+    // step 7e: frostbite (fb builds up to 1), sick, bleeding (world seconds left), and the buffs: a hot drink, warm, well fed
+    fb: 0, sick: 0, coughT: 20, bleed: 0, coldSleep: 0, hotUntil: -1e9, warmUntil: -1e9, fedUntil: -1e9, restK: 0.6 };
   gm.dom.root.insertAdjacentHTML('beforeend', `<div class="gm-hp hidden"><small>Health</small><div class="gm-bar"><i></i></div></div><div class="gm-buffs"></div>
     <div class="gm-life hidden"><b></b><p></p><div class="gl-bar"><i></i></div><small></small></div>
     <div class="gm-pull hidden"><small>Pull! Click when the mark is in the light part</small><div class="gp-bar"><u></u><i></i></div><small class="gp-k"></small></div>
@@ -88,6 +91,7 @@ export function lifeTick(gm, dt, env) {
     const all = [L.st === 'dead', ...[...gm.avatars.values()].map(a => lsOf(a) === LS.dead)];
     if (all.every(Boolean)) { L.endT += dt; if (L.endT > 3) endAll(gm, true); } else L.endT = 0;
   }
+  ailments(gm, dt * ts);
   if (L.st === 'up') {
     if (p.wet > 0.3) H.hint(gm, 'soaked', 'You are soaked. Wet clothes let the cold straight in: dry off by the stove or a fire.', 6000, true);
     if (p.rest < 20) H.hint(gm, 'tired', 'You are exhausted: you move slower and can\'t sprint. Sleep in the bunk tonight.', 6000, true);
@@ -106,9 +110,50 @@ export function lifeMods(gm) {
   if (L.carrying) slow *= 0.62;
   if (L.st === 'down' || L.st === 'carried') drain *= 0.7;           // curled up, out of the worst of it
   if (L.st === 'sleep') drain *= 0.8;
+  if (T < L.hotUntil) drain *= 0.8;
+  if (T < L.warmUntil) drain *= 0.88;
+  if (L.sick) drain *= 1.15;
+  if (gm.god) drain = 0;
   p.heavy = !!L.carrying || p.rest < 10;
   return { drain, gain, slow };
 }
+// ---------- step 7e: what can go wrong with you, and what helps (design.md 7c) ----------
+// Frostbite: freezing out in the open too long; your hands are slow (everything you hold the use key for takes 40 %
+// longer). Warm water, tea or the first aid kit fix it. Sick: a cold night's sleep, or bad fish: coughing, the cold
+// gets in faster. A warm night's sleep or the kit cures it. Bleeding: a falling tree, a bad fall: health drains until
+// it stops by itself (a few minutes) or the kit bandages it. Warm: after you have warmed up through by a fire or the
+// stove, the cold takes a while to get back in. A hot drink (tea) does the same, more.
+function ailments(gm, dt) {
+  const L = gm.life, p = gm.player, T = gm.T;
+  if (L.st === 'dead') return;
+  if (L.st === 'up' && p.heat < 15 && !gm.inside && !gm.god) { L.fb = Math.min(1, L.fb + dt / 150); if (L.fb >= 1) H.hint(gm, 'frostbite', 'Frostbite: you can\'t feel your fingers, and everything takes longer. Warm water, tea or the first aid kit will help.', 7000, true); }
+  if (L.bleed > 0) { L.bleed = Math.max(0, L.bleed - dt); if (!gm.god) p.hp = Math.max(0, p.hp - 0.12 * dt); if (p.hp <= 0 && L.st === 'up') goDown(gm); }
+  if (L.sick) { L.coughT -= dt; if (L.coughT <= 0) { L.coughT = 25 + Math.random() * 30; SFX.cough(0.9); } }
+  if (L.st === 'up' && p.heat > 85 && ((gm.byStove || 0) > 0.5 || (gm.byFire || 0) > 0.5 || (gm.pitHeat || 0) > 0.4)) { if (L.warmUntil < T) H.hint(gm, 'warm', 'You are warm through. The cold will take a while to get back in.', 5000); L.warmUntil = T + 45; }
+}
+export const frostbitten = gm => (gm.life?.fb || 0) >= 1;
+// something hits you hard (a falling tree, a long fall): health, and maybe bleeding
+export function hurt(gm, dmg, bleed = true) {
+  const L = gm.life, p = gm.player;
+  if (!L || L.st !== 'up' || gm.god) return;
+  p.hp = Math.max(0, p.hp - dmg);
+  if (bleed && dmg >= 20) { L.bleed = Math.max(L.bleed, 180); H.hint(gm, 'bleeding', 'You are bleeding. It will stop by itself in a while, or bandage it with the first aid kit.', 6000, true); }
+  if (p.hp <= 0) goDown(gm);
+}
+// the first aid kit on yourself (the left mouse while you hold it): bandages, the medicine, the warmth back in your hands
+export function selfKit(gm) {
+  const L = gm.life, p = gm.player, inv = gm.inv;
+  if (!(L.bleed > 0 || L.fb >= 1 || L.sick || p.hp < 80)) { H.hint(gm, 'kit-no' + Math.floor(gm.T / 20), 'You don\'t need the first aid kit now. Keep it for when it counts.', 3500, true); return false; }
+  if (inv.heldType() !== 'kit') return false;
+  inv.take(inv.sel, 1);
+  L.bleed = 0; L.fb = 0; L.sick = 0; p.hp = Math.max(p.hp, 75);
+  SFX.grab();
+  H.hint(gm, 'kit-used' + Math.floor(gm.T), 'You bandage yourself, take the painkillers and the medicine. You feel better.', 5000, true);
+  return true;
+}
+// warm water and tea thaw frostbite; food can make you sick; a good meal keeps you fed longer (food.js)
+export function drankWarm(gm, tea) { const L = gm.life; if (!L) return; L.fb = 0; if (tea) L.hotUntil = gm.T + 3 * NIGHT_HOUR; }
+export function foodEffects(gm, cooked, raw) { const L = gm.life; if (!L) return; if (cooked && gm.player.hunger > 70) L.fedUntil = gm.T + 4 * NIGHT_HOUR; if (raw) L.sick = 1; }
 
 // ---------- health ----------
 function health(gm, dt) {
@@ -117,7 +162,8 @@ function health(gm, dt) {
   if (p.heat <= 0.5) d -= 1.5;
   if (p.hunger <= 0) d -= 0.06;
   if (p.thirst <= 0) d -= 0.1;
-  if (!d && p.heat > 35 && p.hunger > 15 && p.thirst > 15) d = 0.22;
+  if (!d && p.heat > 35 && p.hunger > 15 && p.thirst > 15 && !(gm.life.bleed > 0)) d = 0.22;
+  if (gm.god) d = Math.max(d, 0);
   p.hp = clamp(p.hp + d * dt, 0, 100);
   if (p.heat <= 0.5) H.hint(gm, 'freezing', 'You are freezing to death. Get to a fire, now.', 5000, true);
   if (p.hp <= 0) goDown(gm);
@@ -188,13 +234,15 @@ export function die(gm, why) {
   H.chat(null, L.perma ? 'You are dead. For you the island is over: watch over your crew.' : 'You died. You wake up in the shack tomorrow morning, with nothing.');
 }
 function respawn(gm) {
-  const L = gm.life, p = gm.player, b = gm.world.shack.bunk, sp = b.spots[freeSpot(gm, 1)];
+  const L = gm.life, p = gm.player, b = gm.world.shack.bunk, burned = gm.world.burned;
+  const den = burned && gm.den?.sealed ? gm.world.places.find(x => x.id === 'snowcave')?.wake : null;           // the cave home, if you made one
+  const sp = burned ? den || gm.world.places.find(x => x.id === 'tail')?.wake || b.spots[1] : b.spots[freeSpot(gm, 1)];
   L.st = 'up'; p.setMode(null);
   p.teleport(sp.x, sp.y + 0.1, sp.z); p.yaw = b.yaw;
   p.heat = 45; p.hp = 60; p.rest = 10; p.wet = 0;
   L.gloomUntil = L.respawnT + ISL.SUN_UP;        // until the evening
   tell('back');
-  H.hint(gm, 'reborn' + Date.now(), 'You wake up on the floor of the shack, stiff and miserable. Whatever you carried lies where you died: go back for it before the snow covers it.', 8000, true);
+  H.hint(gm, 'reborn' + Date.now(), burned ? 'You wake up on the cold metal floor of the tail section, stiff and miserable. Whatever you carried lies where you died.' : 'You wake up on the floor of the shack, stiff and miserable. Whatever you carried lies where you died: go back for it before the snow covers it.', 8000, true);
 }
 // the end of a solo game: back to the last morning, or game over
 function soloEnd(gm, why) {
@@ -217,7 +265,7 @@ function endAll(gm, sendIt) {
   showEnd(gm, 'Nobody is left', `The island took the whole crew. You lasted until day ${day}.${perma ? '' : ' The host can continue from the last morning\'s save.'}`, [['Quit to the menu', () => H.quit(gm)]]);
 }
 on('g-end', m => { const gm = GL; if (gm && gm.ready && gm.role === 'guest') { gm.env.day = m.day || gm.env.day; endAll(gm, false); } });
-function showEnd(gm, title, text, buttons) {
+export function showEnd(gm, title, text, buttons) {
   const d = gm.dom.end;
   d.querySelector('h2').textContent = title; d.querySelector('p').textContent = text;
   const box = d.querySelector('.gm-endb'); box.innerHTML = '';
@@ -287,12 +335,15 @@ function freeSpot(gm, from = 0) {
   for (let i = from; i < b.spots.length; i++) if (!taken(i)) return i;
   return Math.max(1, from);
 }
-function sleep(gm) {
+// here: sleep where you are (true: in the tail section, the tent or the tower once the shack is gone), or at a spot
+// (a Vector3: the bed of branches in the cave home), not in the bunk; restK: how well you rest there
+export function sleep(gm, here = false, restK = 0.6) {
   const L = gm.life, p = gm.player, b = gm.world.shack.bunk;
   if (L.st !== 'up') return;
   putDown(gm); L.pulling = null;
   H.closeUI(gm);
-  const i = L.spot = freeSpot(gm, 0), sp = b.spots[i];
+  const i = L.spot = here ? -1 : freeSpot(gm, 0), sp = here ? (L.here = here === true ? p.pos.clone() : here.clone()) : b.spots[i];
+  L.restK = restK; L.coldSleep = 0;
   L.st = 'sleep'; L.woken = false; L.specI = 0;
   gm.hands.lit = false;
   p.yaw = b.yaw; p.setMode('sleep'); p.hold(sp.x, sp.y, sp.z);
@@ -301,10 +352,11 @@ function sleep(gm) {
     : `You sleep, and the night runs fast. Keep the stove fed: you get up to check it (${kn('slot1')}–${kn('slot4')} sets how often). R: the ghost roulette.`, 9000, true);
 }
 function sleeping(gm, dt, env, pressed) {
-  const L = gm.life, p = gm.player, ts = gm.ts || 1, sp = gm.world.shack.bunk.spots[L.spot];
+  const L = gm.life, p = gm.player, ts = gm.ts || 1, sp = L.spot < 0 ? L.here : gm.world.shack.bunk.spots[L.spot];
   p.hold(sp.x, sp.y, sp.z);
   const warm = smooth(15, 55, p.heat);
-  p.rest = Math.min(100, p.rest + dt * ts * 100 / (6 * NIGHT_HOUR) * (0.35 + 0.65 * warm) * (L.spot === 0 ? 1 : 0.8));
+  p.rest = Math.min(100, p.rest + dt * ts * 100 / (6 * NIGHT_HOUR) * (0.35 + 0.65 * warm) * (L.spot === 0 ? 1 : L.spot < 0 ? L.restK : 0.8));
+  if (p.heat < 25) L.coldSleep += dt * ts;                  // a cold night's sleep makes you sick
   p.hp = Math.min(100, p.hp + dt * ts * 0.6);
   if (!gm.coop) for (const [k, h] of [['slot1', 1], ['slot2', 2], ['slot3', 4], ['slot4', 0]]) if (pressed(k)) { L.wakeEvery = h; L.nextWake = h ? gm.T + h * NIGHT_HOUR : Infinity; }
   const why = env.hours >= 8 && env.hours < 16 ? 'morning' : p.heat < 12 ? 'cold' : gm.smoke > 0.5 ? 'smoke' : !gm.coop && gm.T >= L.nextWake ? 'alarm' : '';
@@ -313,7 +365,7 @@ function sleeping(gm, dt, env, pressed) {
 export function wake(gm, why, by) {
   const L = gm.life, p = gm.player, b = gm.world.shack.bunk;
   if (L.st !== 'sleep') return;
-  const sp = b.spots[L.spot === 0 ? 1 : L.spot];
+  const sp = L.spot < 0 ? L.here : b.spots[L.spot === 0 ? 1 : L.spot];
   L.st = 'up'; p.setMode(null);
   p.teleport(sp.x, sp.y + 0.1, sp.z);
   if (why === 'woken') L.woken = true;
@@ -321,14 +373,18 @@ export function wake(gm, why, by) {
   else if (why === 'woken') H.hint(gm, 'woken' + Date.now(), `${nameOf(by)} shakes you awake. Your rest is spoiled for tonight.`, 6000, true);
   else if (why === 'cold') H.hint(gm, 'coldwake' + Date.now(), 'The cold wakes you. The stove must be dying.', 6000, true);
   else if (why === 'smoke') H.hint(gm, 'smokewake' + Date.now(), 'You wake up coughing: the shack is full of smoke.', 6000, true);
-  else if (why === 'morning') {
+  else if (why === 'heli') H.hint(gm, 'heliwake' + Date.now(), 'The thump of rotors wakes you: a helicopter!', 6000, true);
+  if (L.coldSleep > 2 * NIGHT_HOUR && !L.sick) { L.sick = 1; H.hint(gm, 'sick' + Math.floor(gm.T), 'You wake up shivering and coughing: you slept too cold, and now you are sick. A warm night\'s sleep, or the first aid kit, will cure it.', 7000, true); }
+  else if (why === 'morning' && L.sick && p.heat > 50 && L.coldSleep < 30) { L.sick = 0; H.hint(gm, 'cured' + Math.floor(gm.T), 'A warm night: the fever is gone.', 5000, true); }
+  L.coldSleep = 0;
+  if (why === 'morning') {
     if (p.rest >= 80 && !L.woken && p.heat > 35) { L.restedUntil = Math.floor(gm.T / ISL.DAY) * ISL.DAY + ISL.SUN_UP; H.hint(gm, 'rested' + Date.now(), 'Morning. You slept well in the warm: Rested. You move a little faster and feel the cold less today.', 7000, true); }
     else H.hint(gm, 'morning' + Date.now(), 'Morning. It was a long, cold night.', 5000, true);
   }
 }
 // ---------- the night runs faster while the crew sleeps (the host or solo decides; guests follow) ----------
 export function timeScale(gm, env) {
-  if (!(env.hours >= 16 || env.hours < 8)) return 1;
+  if (!(env.hours >= 16 || env.hours < 8) || (gm.ends?.res && gm.ends.res.land >= 0)) return 1;         // (and never while the helicopter is here)
   const sts = [lifeCode(gm), ...[...gm.avatars.values()].map(lsOf)].filter(s => s !== LS.dead);
   if (!sts.length || sts.some(s => s === LS.down || s === LS.carried || s === LS.swim)) return 1;
   const asleep = sts.filter(s => s === LS.sleep).length;
@@ -355,6 +411,7 @@ export function lifeActs(gm, look, offer) {
       if (sc) offer(sc + 0.1, { id: 'pull' + pid, text: `Reach out to ${name}: pull them out of the water`, hold: 0.4, go: () => startPull(gm, pid) });
     }
   }
+  if (gm.world.burned) { if (gm.shelter && isNight(gm.env) && !L.carrying) offer(0.3, { id: 'sleephere', text: 'Lie down here and sleep', hold: 1, go: () => sleep(gm, true) }); return; }
   const b = gm.world.shack.bunk, sc = look(b.pos, 2.3, 0.8);
   if (sc && !L.carrying) offer(sc - 0.03, isNight(gm.env) ? { id: 'sleep', text: 'Lie down and sleep', hold: 1, go: () => sleep(gm) } : { id: 'bunk', text: 'The bunk: you can sleep here at night (18:00 to 06:30)', hold: 0 });
 }
@@ -381,13 +438,14 @@ on('g-help', (m, from) => {
       break;
     case 'kit': if (L.st === 'down' || L.st === 'carried') getUp(gm, 'kit'); break;
     case 'wake': if (L.st === 'sleep') wake(gm, 'woken', from); break;
+    case 'tree': hurt(gm, 55); H.hint(gm, 'tree-hit' + Date.now(), 'The falling tree catches you and throws you into the snow.', 5000, true); SFX.land(14, 'snow'); break;
   }
 });
 // a line in the chat for the rest of the crew: someone is down, died, fell through the ice…
-export function tell(k) { if (GL?.coop) send('*', { t: 'g-life', k }); }
+export function tell(k) { if (GL) diaryNote(GL, k === 'perma' ? 'dead' : k, 'me'); if (GL?.coop) send('*', { t: 'g-life', k }); }
 const SAY = { down: n => `${n} is down! Carry them to the fire, or use the first aid kit.`, up: n => `${n} is back on their feet.`, dead: n => `${n} died. They wake up in the shack in the morning.`,
   perma: n => `${n} died.`, back: n => `${n} woke up in the shack.`, ice: n => `${n} fell through the ice! Crawl to them and pull them out.`, out: n => `${n} climbed out of the water.` };
-on('g-life', (m, from) => { const gm = GL; if (gm && gm.ready && from && SAY[m.k]) H.chat(null, SAY[m.k](nameOf(from))); });
+on('g-life', (m, from) => { const gm = GL; if (gm && gm.ready && from && SAY[m.k]) { H.chat(null, SAY[m.k](nameOf(from))); diaryNote(gm, m.k === 'perma' ? 'dead' : m.k, from); } });
 // someone left the game: whoever I carried or was carried by
 export function lifeDropped(gm, pid) {
   const L = gm.life;
@@ -448,6 +506,13 @@ export function lifeHud(gm) {
     if (p.rest < 20) chips.push(['bad', '🥱 Exhausted']);
     if (T < L.gloomUntil) chips.push(['bad', '🌧 Gloomy']);
     if (gm.ts > 1) chips.push(['', `⏩ Night ×${gm.ts}`]);
+    if (T < L.hotUntil) chips.push(['good', '🍵 Hot drink']);
+    if (T < L.warmUntil) chips.push(['good', '🔥 Warm']);
+    if (T < L.fedUntil) chips.push(['good', '🍖 Well fed']);
+    if (L.fb >= 1) chips.push(['bad', '🧊 Frostbite']);
+    if (L.sick) chips.push(['bad', '🤒 Sick']);
+    if (L.bleed > 0) chips.push(['bad', '🩸 Bleeding']);
+    if (gm.god) chips.push(['', '🛠 God mode']);
   }
   const html = chips.map(([k, t]) => `<span class="${k}">${t}</span>`).join('');
   if (gm.txt.buffs !== html) { gm.txt.buffs = html; d.buffs.innerHTML = html; }
@@ -478,13 +543,15 @@ function setT(gm, key, el, text) { if (gm.txt[key] !== text) { gm.txt[key] = tex
 // ---------- saved with you (sync.js) ----------
 export function lifeRecord(gm) {
   const L = gm.life, p = gm.player;
-  return { hp: Math.round(p.hp), wet: Math.round(p.wet * 100) / 100, rest: Math.round(p.rest), dead: L.st === 'dead' ? (L.perma ? 1 : 2) : 0, rT: L.st === 'dead' ? Math.round(L.respawnT) : 0 };
+  return { hp: Math.round(p.hp), wet: Math.round(p.wet * 100) / 100, rest: Math.round(p.rest), dead: L.st === 'dead' ? (L.perma ? 1 : 2) : 0, rT: L.st === 'dead' ? Math.round(L.respawnT) : 0,
+    fb: Math.round(L.fb * 100) / 100, sick: L.sick, bleed: Math.round(L.bleed) };
 }
 export function lifeRestore(gm, rec) {
   const L = gm.life, p = gm.player;
   if (rec.hp != null) p.hp = clamp(+rec.hp, 1, 100);
   if (rec.wet != null) p.wet = clamp(+rec.wet, 0, 1);
   if (rec.rest != null) p.rest = clamp(+rec.rest, 0, 100);
+  if (rec.fb != null) L.fb = clamp(+rec.fb, 0, 1); if (rec.sick) L.sick = 1; if (rec.bleed) L.bleed = +rec.bleed || 0;
   if (rec.dead && gm.coop) {          // you were dead when you left: still are
     L.st = 'dead'; L.perma = rec.dead === 1; L.respawnT = +rec.rT || 0; L.deadReal = performance.now() - 60000;
     p.setMode('dead');

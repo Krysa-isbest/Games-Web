@@ -39,6 +39,29 @@ export const TYPES = {
   champ: { name: 'a bottle of champagne', short: 'Champagne', icon: '🍾', stack: 1, take: 0.5, h: 0.05, food: { hunger: 3, thirst: 18, heat: -5, drink: true } },
   // step 6: carried anywhere in your things, they help you climb out if the ice breaks under you
   picks: { name: 'a pair of ice picks', short: 'Ice picks', icon: '🔱', stack: 1, take: 0.5, h: 0.04 },
+  // step 7a: the tail section and the dead survivors' camp. read: Q opens it. light: burns while you hold it (dry = how much is left)
+  shells: { name: 'a flare shell', short: 'Flare shells', icon: '🧨', stack: 3, take: 0.5, h: 0.03 },
+  journal: { name: 'a frozen journal', short: 'Journal', icon: '📓', stack: 1, take: 0.6, h: 0.025, read: true },
+  blackbox: { name: 'the flight recorder', short: 'Flight recorder', icon: '🟧', stack: 1, take: 1.4, h: 0.09 },
+  silk: { name: 'a silk scarf', short: 'Silk scarves', icon: '🧣', stack: 4, fuel: 40, take: 0.3, h: 0.012 },
+  parka: { name: 'the old parka', short: 'Parka', icon: '🧥', stack: 1, wear: 0.62, color: '#5b6e3a', take: 1.5, h: 0.06 },
+  caviar: { name: 'a tin of caviar', short: 'Caviar', icon: '🥫', stack: 3, take: 0.4, h: 0.02, food: { hunger: 14, thirst: -6 } },
+  beans: { name: 'a can of beans', short: 'Beans', icon: '🥫', stack: 3, take: 0.4, h: 0.055, food: { hunger: 32, thirst: -2, heat: 1 } },
+  torch: { name: 'a torch', short: 'Torch', icon: '🔥', stack: 1, take: 0.4, h: 0.04, light: true },
+  snowshoes: { name: 'a pair of snowshoes', short: 'Snowshoes', icon: '🎾', stack: 1, take: 0.6, h: 0.03 },
+  // step 7b: the satellite phone's battery, hidden under the shack's floor
+  battery: { name: 'the phone\'s battery', short: 'Phone battery', icon: '🔋', stack: 1, take: 1.0, h: 0.05 },
+  // step 7c: what a storm uncovers and what washes ashore (opened where they lie: daily.js), and the skipper's journal
+  cache: { name: 'a frozen crate', short: 'Frozen crate', icon: '📦', stack: 1, noTake: true, h: 0.25 },
+  flotsam: { name: 'wreckage', short: 'Wreckage', icon: '🧳', stack: 1, noTake: true, h: 0.14 },
+  journal2: { name: 'the skipper\'s notebook', short: 'Notebook', icon: '📔', stack: 1, take: 0.6, h: 0.02, read: true },
+  // step 7e: shovels (snow off the roof, digging out what is buried, a drift in a cave's mouth), guide ropes, pine tea,
+  // and the old hunter's plan for a winter den in the snowed-in cave
+  shovel: { name: 'the snow shovel', short: 'Snow shovel', icon: '⛏️', stack: 1, take: 0.6, h: 0.03, dig: 1 },
+  wshovel: { name: 'a wooden shovel', short: 'Wooden shovel', icon: '🥄', stack: 1, take: 0.5, h: 0.03, dig: 0.6 },
+  rope: { name: 'a coil of rope', short: 'Rope', icon: '🪢', stack: 2, take: 0.5, h: 0.05 },
+  pottea: { name: 'a pot of pine tea', short: 'Pine tea', icon: '🍵', stack: 1, take: 0.5, h: 0.09 },
+  plan: { name: 'a folded plan', short: 'The den plan', icon: '📜', stack: 1, take: 0.4, h: 0.01, read: true },
 };
 export const TYPE_LIST = Object.keys(TYPES);
 const wet = d => (d >= 0.8 ? 'dry' : d >= 0.45 ? 'damp' : 'wet');
@@ -69,6 +92,7 @@ const mats = () => MAT || (MAT = {
   water: std('#4a7290', { roughness: 0.1, metalness: 0.2 }), fishM: std('#9fb0bc', { roughness: 0.35, metalness: 0.4 }), fishDark: std('#5d6e66', { roughness: 0.4, metalness: 0.3 }),
   cooked: std('#9a6232', { roughness: 0.7 }), snackM: std('#b8352a', { roughness: 0.5 }), gold: std('#c9a35a', { roughness: 0.3, metalness: 0.9 }), bottle: std('#1d3a2a', { roughness: 0.2, metalness: 0.3 }),
   twig: std('#3a2a1c', { roughness: 1 }), stone: std('#6d727a', { roughness: 0.95, flatShading: true }), lash: std('#8a7350', { roughness: 1 }),
+  silkM: std('#7a2f6a', { roughness: 0.35 }), parkaM: std('#5b6e3a', { roughness: 1 }), flame: new THREE.MeshBasicMaterial({ color: '#ffb24a' }),
 });
 const GEO = {};
 const geo = (k, make) => GEO[k] || (GEO[k] = make());
@@ -104,6 +128,66 @@ export function meshFor(type) {
       part(g, geo('saxeL', () => new THREE.CylinderGeometry(0.032, 0.032, 0.07, 8).rotateZ(Math.PI / 2)), M.lash, 0.28, 0, 0);
       break;
     case 'stone': part(g, geo('stone', () => new THREE.DodecahedronGeometry(0.08, 0).scale(1.2, 0.75, 1)), M.stone); break;
+    case 'shells':    // a fat red cartridge with a brass base
+      part(g, cylX('shellB', 0.022, 0.09, 10), M.red, 0.01, 0, 0);
+      part(g, cylX('shellR', 0.025, 0.02, 10), M.gold, -0.045, 0, 0);
+      break;
+    case 'journal':   // a small swollen notebook with a strap
+      part(g, box('jrnB', 0.17, 0.035, 0.23), M.cork);
+      part(g, box('jrnP', 0.162, 0.03, 0.224), M.white, 0.006, 0, 0);
+      part(g, box('jrnS', 0.02, 0.037, 0.232), M.dark, -0.05, 0, 0);
+      break;
+    case 'blackbox':  // orange, with a white stripe and the round beacon at one end
+      part(g, box('bbB', 0.34, 0.16, 0.2), M.orange, 0, 0.01, 0);
+      part(g, box('bbS', 0.345, 0.03, 0.205), M.white, 0, 0.05, 0);
+      part(g, cylX('bbC', 0.07, 0.12, 12), M.orange, 0.16, -0.02, 0);
+      break;
+    case 'silk': part(g, box('silk', 0.32, 0.024, 0.22), M.silkM); part(g, box('silk2', 0.3, 0.006, 0.05), M.gold, 0, 0.014, 0.07); break;
+    case 'caviar': part(g, geo('cavT', () => new THREE.CylinderGeometry(0.06, 0.06, 0.035, 14)), M.gold); part(g, geo('cavL', () => new THREE.CylinderGeometry(0.045, 0.045, 0.037, 14)), M.dark); break;
+    case 'beans': part(g, geo('beanC', () => new THREE.CylinderGeometry(0.04, 0.04, 0.11, 12)), M.steel); part(g, geo('beanL', () => new THREE.CylinderGeometry(0.0405, 0.0405, 0.07, 12)), M.snackM); break;
+    case 'torch':     // a branch with a scarf wrapped round its end (along x like the axe, the head at +x), and its flame
+      part(g, cylX('torchS', 0.022, 0.6, 6), M.twig, -0.05, 0, 0);
+      part(g, cylX('torchH', 0.045, 0.14, 8), M.silkM, 0.24, 0, 0);
+      part(g, geo('torchF', () => new THREE.ConeGeometry(0.05, 0.16, 7).rotateZ(-Math.PI / 2)), M.flame, 0.37, 0, 0);
+      break;
+    case 'snowshoes':
+      for (const s of [-1, 1]) {
+        part(g, geo('shoeF', () => new THREE.TorusGeometry(0.16, 0.012, 5, 16).rotateX(Math.PI / 2).scale(1.8, 1, 1)), M.twig, 0, 0, s * 0.1);
+        part(g, box('shoeL', 0.5, 0.006, 0.02), M.lash, 0, 0, s * 0.1); part(g, box('shoeL2', 0.02, 0.006, 0.22), M.lash, 0.04, 0, s * 0.1);
+      }
+      break;
+    case 'shovel': case 'wshovel': {   // a short shaft (along x, the blade at +x)
+      const al = type === 'shovel';
+      part(g, cylX('shovS', 0.018, 0.75, 6), al ? M.dark : M.twig, -0.1, 0, 0);
+      part(g, box('shovB' + type, 0.28, 0.02, 0.24), al ? M.steel : M.board, 0.38, 0, 0);
+      part(g, box('shovG', 0.04, 0.03, 0.12), M.dark, -0.47, 0, 0);
+      break;
+    }
+    case 'rope': part(g, geo('ropeC', () => new THREE.TorusGeometry(0.12, 0.03, 6, 16).rotateX(Math.PI / 2)), M.lash); part(g, geo('ropeC2', () => new THREE.TorusGeometry(0.09, 0.025, 6, 14).rotateX(Math.PI / 2)), M.lash, 0, 0.03, 0); break;
+    case 'pottea':
+      part(g, geo('potB', () => new THREE.CylinderGeometry(0.14, 0.12, 0.17, 16, 1, true)), M.potM);
+      part(g, geo('potF', () => new THREE.CircleGeometry(0.12, 16).rotateX(-Math.PI / 2)), M.potM, 0, -0.084, 0);
+      part(g, geo('teaT', () => new THREE.CircleGeometry(0.135, 16).rotateX(-Math.PI / 2)), M.cooked, 0, 0.04, 0);
+      break;
+    case 'plan': part(g, box('planB', 0.22, 0.008, 0.16), M.white); part(g, box('planL', 0.16, 0.009, 0.01), M.dark, 0, 0, 0.02); break;
+    case 'cache':     // an old wooden crate, frozen shut, snow on its lid
+      part(g, box('cacheB', 0.7, 0.5, 0.5), M.cork);
+      part(g, box('cacheS', 0.72, 0.06, 0.52), M.snowTop, 0, 0.27, 0);
+      for (const x of [-0.25, 0.25]) part(g, box('cacheR', 0.04, 0.52, 0.52), M.dark, x, 0, 0);
+      break;
+    case 'flotsam':   // a battered suitcase tangled in a strip of the plane's skin
+      part(g, box('flotB', 0.66, 0.24, 0.46), M.snackM);
+      part(g, box('flotP', 0.9, 0.02, 0.3), M.sheet, 0.1, 0.13, 0.08, 0, 0.5, 0.15);
+      break;
+    case 'journal2':  // a small black notebook, its pages warped
+      part(g, box('jr2B', 0.14, 0.025, 0.2), M.dark);
+      part(g, box('jr2P', 0.132, 0.02, 0.194), M.white, 0.005, 0, 0);
+      break;
+    case 'battery':   // a heavy black block wrapped in oilcloth, two terminals
+      part(g, box('batB', 0.16, 0.1, 0.12), M.dark);
+      part(g, box('batC', 0.17, 0.06, 0.125), M.cork, 0, -0.01, 0);
+      for (const s of [-1, 1]) part(g, geo('batT', () => new THREE.CylinderGeometry(0.01, 0.01, 0.02, 6)), s < 0 ? M.red : M.steel, s * 0.045, 0.06, 0);
+      break;
     case 'picks':     // two short wooden grips with a sharp stone point each, tied together by a cord
       for (const s of [-1, 1]) {
         part(g, cylX('pickH', 0.022, 0.22, 6), M.twig, 0, 0, s * 0.05);
@@ -139,8 +223,8 @@ export function meshFor(type) {
     case 'board': part(g, box('board', 1.2, 0.03, 0.18), M.board); break;
     case 'sheet': part(g, box('sheet', 0.8, 0.02, 0.55), M.sheet); break;
     case 'pipe': part(g, cylX('pipe', 0.075, 1.1, 12), M.pipe); break;
-    case 'fur': case 'wool': {
-      const m = type === 'fur' ? M.fur : M.wool;
+    case 'fur': case 'wool': case 'parka': {
+      const m = type === 'fur' ? M.fur : type === 'parka' ? M.parkaM : M.wool;
       part(g, box('coatA', 0.62, 0.07, 0.48), m); part(g, box('coatB', 0.5, 0.06, 0.12), m, 0, 0.055, -0.2);
       break;
     }
@@ -228,6 +312,7 @@ export class Stash {
     if (v) body.setLinvel({ x: v[0], y: v[1], z: v[2] }, true);
     if (w) body.setAngvel({ x: w[0], y: w[1], z: w[2] }, true);
     it.body = body; it.rest = false; it.sleepT = 0; it.buried = 0;
+    if (it.frost) { this.scene.remove(it.frost); it.frost = null; }
   }
   // it lies still: no more physics
   settle(it) {
@@ -241,6 +326,7 @@ export class Stash {
     if (!it) return null;
     if (it.body) { for (let i = 0; i < it.body.numColliders(); i++) this.byCol.delete(it.body.collider(i).handle); this.phys.removeRigidBody(it.body); it.body = null; }
     this.scene.remove(it.mesh);
+    if (it.frost) { this.scene.remove(it.frost); it.frost = null; }          // (step 7e: the frost on it, fx.js)
     this.list.delete(id); this.rev++;
     return it;
   }

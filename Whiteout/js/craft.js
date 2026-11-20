@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { TYPES, meshFor, DULL } from './items.js';
 import { kn, BINDS } from './keys.js';
 import * as SFX from './sfx.js';
+import { JOURNAL, JOURNAL2, PLAN } from './story.js';
 
 let H = null;            // helpers from work.js: { act, hint, lock, shout }
 
@@ -18,6 +19,11 @@ export const RECIPES = {
   sharpen: { title: 'Keeping the axe sharp', need: [], tool: 'stone', sharpen: true, time: 3, sound: 'grind' },
   saxe: { title: 'A stone axe', need: [['branch', 2], ['stone', 1]], out: [['saxe', 1]], time: 3.5, sound: 'hammer' },
   picks: { title: 'Ice picks', need: [['branch', 1], ['stone', 2]], out: [['picks', 1]], time: 3, sound: 'hammer' },
+  // learn: only once someone in the crew has read that journal (finds.js)
+  snowshoes: { title: 'Snowshoes', need: [['branch', 2], ['board', 1]], out: [['snowshoes', 1]], time: 3.5, sound: 'hammer', learn: 'journal' },
+  torch: { title: 'A torch', need: [['branch', 1], ['silk', 1]], out: [['torch', 1]], time: 2, sound: 'pack', learn: 'journal' },
+  wshovel: { title: 'A wooden shovel', need: [['board', 1], ['branch', 1]], out: [['wshovel', 1]], time: 3, sound: 'hammer' },
+  rope: { title: 'A guide rope', need: [['silk', 2]], out: [['rope', 1]], time: 3, sound: 'pack' },
 };
 // the pages, two to a spread
 const INK = '#2b2836';
@@ -50,6 +56,14 @@ const SPREADS = [
     right: () => `<p>Drink it warm: it puts some heat back in you.</p>
       <p>Don't eat snow. <s>Just a little</s> It cools you from the inside, and out here you can't afford it.</p>
       <p class="margin">The champagne from the plane? Alcohol only feels warm.</p>` },
+  { need: 'journal', left: () => page('snowshoes', SKETCH.shoes, 'Copied from the trawler cook\'s journal: two bent branches for the frame, a board split thin for the cross pieces, lashed tight.'),
+    right: () => recipeSide('snowshoes', ['Keep them in your pack: in deep snow they hold you up on top.', 'In a different hand: "Arne\'s. They work."']) },
+  { need: 'journal', left: () => page('torch', SKETCH.torch, 'A dry branch with cloth wound round the end. Silk burns well.'),
+    right: () => recipeSide('torch', ['It gives light, and a little warmth on your hands. It won\'t last long: a few minutes in your hand.', 'Copied from the journal of the Nordstjerna.']) },
+  { left: () => page('wshovel', SKETCH.shovel, 'A board for the blade, a branch for the handle. The snow on the roof has to come off before it breaks the boards.'),
+    right: () => recipeSide('wshovel', ['Push it off from the ground, under the eaves. Don\'t climb up there.', 'It digs out what the snow has buried, too.']) },
+  { left: () => page('rope', SKETCH.rope, 'Scarves torn in strips and braided: sixty metres of rope.'),
+    right: () => recipeSide('rope', ['Tie one end, walk, tie the other. In fog or a whiteout you follow it home.', 'You can untie it again and take it with you.']) },
   { left: () => `<div class="torn"></div><p class="faint">A page has been torn out here. Only the edge is left: <i>"…the bow wants dry yew, cut in the dark of the m…"</i></p>`,
     right: () => `<p class="faint">The next pages are stuck together with something dark.</p><p class="faint">Somebody wrote in the corner, in a different hand: <i>"don't open the barred cabin"</i>.</p>
       <p class="note">More pages may turn up: earlier survivors kept journals.</p>` },
@@ -66,6 +80,10 @@ const SKETCH = {
     <path d="M90 60 q-6 -14 2 -26 M110 58 q-6 -14 2 -26 M130 60 q-6 -14 2 -26"/>`,
   picks: `<path d="M40 150 l60 -60 M120 150 l60 -60"/><path d="M100 90 l14 -22 l-2 16z M180 90 l14 -22 l-2 16z"/><path d="M40 150 q40 30 80 0" stroke-dasharray="3 4"/>
     <path d="M30 190 q80 -20 160 0"/><path d="M60 186 l10 -12 l6 9 l8 -14 l6 10" stroke-width="1.6"/>`,
+  shoes: `<ellipse cx="70" cy="110" rx="34" ry="78"/><ellipse cx="150" cy="110" rx="34" ry="78"/><path d="M40 90 h60 M40 130 h60 M120 90 h60 M120 130 h60 M70 40 v140 M150 40 v140" stroke-width="1.4"/>`,
+  torch: `<path d="M110 200 l-6 -120"/><path d="M96 92 q8 -18 18 -6 q6 -14 2 -30 q18 18 6 40 z"/><path d="M98 80 l24 -4 M97 92 l26 -3" stroke-width="1.5"/><path d="M80 40 q10 -12 4 -26 M140 44 q-8 -12 0 -24" stroke-dasharray="2 5"/>`,
+  shovel: `<path d="M60 190 l70 -110"/><path d="M122 92 l30 -48 l34 22 l-30 48 z"/><path d="M50 196 l22 -12"/>`,
+  rope: `<path d="M40 120 q30 -40 60 0 t60 0 t40 -10"/><path d="M40 128 q30 -40 60 0 t60 0 t40 -10" stroke-dasharray="3 3"/><path d="M40 100 v60 M200 100 v60"/>`,
   saxe: `<path d="M50 190 l100 -140"/><path d="M58 192 l100 -140"/><path d="M135 45 q30 -14 48 6 q-6 22 -36 20 z"/>
     <path d="M140 64 l14 12 M146 58 l14 12 M152 52 l14 12"/><path d="M30 120 q20 -20 46 -8" stroke-dasharray="4 5"/>`,
 };
@@ -98,18 +116,25 @@ export function initCraft(gm, helpers) {
 }
 
 // ---------- the book ----------
-export function openBook(gm) {
+// mode: 'craft' (the old owner's crafting book on the bench) or 'journal' (a journal you found: story.js)
+export function openBook(gm, mode = 'craft') {
   if (gm.bookOpen) return;
   gm.bookOpen = true; gm.inp.clear();
+  gm.bookMode = mode; gm.spread = mode !== 'craft' ? 0 : gm.craftSpread || 0;
+  gm.dom.book.classList.toggle('journal', mode !== 'craft');
+  gm.dom.book.querySelector('[data-close]').textContent = mode !== 'craft' ? 'Close the journal' : 'Close the book';
   gm.dom.book.classList.remove('hidden');
   render(gm);
   SFX.page?.();
   document.exitPointerLock?.();
-  H.hint(gm, 'book', 'The old owner\'s crafting book. Not every page is here: earlier survivors\' journals may have more.', 6000);
+  if (mode === 'craft') H.hint(gm, 'book', 'The old owner\'s crafting book. Not every page is here: earlier survivors\' journals may have more.', 6000);
 }
+// the spreads of the open book (the crafting book shows the pages learned from journals too)
+const pages = gm => (gm.bookMode === 'journal' ? JOURNAL : gm.bookMode === 'journal2' ? JOURNAL2 : gm.bookMode === 'plan' ? PLAN : SPREADS.filter(s => !s.need || gm.known?.has(s.need)));
 export function closeBook(gm) {
   if (!gm.bookOpen) return;
   gm.bookOpen = false;
+  if (gm.bookMode === 'craft') gm.craftSpread = gm.spread;
   gm.dom.book.classList.add('hidden');
   H.lock(gm);
 }
@@ -124,7 +149,7 @@ export function bookKey(gm, e) {
 }
 const kn2 = a => BINDS[a];
 function flip(gm, dir) {
-  const n = Math.max(0, Math.min(SPREADS.length - 1, gm.spread + dir));
+  const n = Math.max(0, Math.min(pages(gm).length - 1, gm.spread + dir));
   if (n === gm.spread || gm.turning) return;
   gm.turning = true; SFX.page?.();
   const out = dir > 0 ? gm.dom.bkR : gm.dom.bkL, inn = dir > 0 ? gm.dom.bkL : gm.dom.bkR;
@@ -138,9 +163,9 @@ function flip(gm, dir) {
 }
 export function render(gm) {
   if (!gm.bookOpen) return;
-  const s = SPREADS[gm.spread];
+  const list = pages(gm), s = list[Math.min(gm.spread, list.length - 1)], craft = gm.bookMode === 'craft';
   gm.dom.bkL.innerHTML = s.left(); gm.dom.bkR.innerHTML = s.right();
-  gm.dom.bkL.classList.toggle('stain', gm.spread === 1); gm.dom.bkR.classList.toggle('stain2', gm.spread === 3);
+  gm.dom.bkL.classList.toggle('stain', craft && gm.spread === 1); gm.dom.bkR.classList.toggle('stain2', craft && gm.spread === 3);
   gm.dom.bkN.textContent = `${gm.spread * 2 + 1}–${gm.spread * 2 + 2}`;
   const box = gm.dom.bkR.querySelector('[data-recipe]');
   if (box) box.outerHTML = needs(gm, box.dataset.recipe);
@@ -162,6 +187,7 @@ function needs(gm, id) {
 export function canMake(gm, id) {
   const r = RECIPES[id], inv = gm.inv;
   if (gm.crafting) return 'You are already working on something.';
+  if (r.learn && !gm.known?.has(r.learn)) return 'Nobody here knows how to make this yet.';
   for (const [t, n] of r.need) if (inv.count(x => x === t) < n) return `You need ${n} ${TYPES[t].short.toLowerCase()}${n > 1 ? (t === 'branch' ? 'es' : 's') : ''}.`;
   if (r.tool === 'axe' && !inv.count(t => !!TYPES[t].tool)) return 'You need an axe to work it.';
   if (r.sharpen) {

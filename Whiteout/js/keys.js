@@ -20,13 +20,13 @@ export const ACTIONS = {
   slot4: { def: 'Digit4', name: 'Hotbar slot 4', group: 'Inventory' },
   slot5: { def: 'Digit5', name: 'Hotbar slot 5', group: 'Inventory' },
   inventory: { def: 'Tab', name: 'Backpack', group: 'Inventory' },
-  craft: { def: 'KeyB', name: 'Crafting / building', group: 'Inventory' },
-  journal: { def: 'KeyJ', name: 'Journal and notes', group: 'Inventory' },
+  craft: { def: 'KeyB', name: 'Crafting / building', group: 'Inventory', hidden: true },        // (not used yet: hidden from the controls menu)
+  journal: { def: 'KeyJ', name: 'Journal: objectives, diary, notes', group: 'Inventory' },
   map: { def: 'KeyM', name: 'Map', group: 'Inventory' },
   ptt: { def: 'KeyV', name: 'Push to talk', group: 'Crew' },
   ping: { def: 'Mouse1', name: 'Ping a spot', group: 'Crew' },
   chat: { def: 'Enter', name: 'Text chat', group: 'Crew' },
-  emote: { def: 'KeyH', name: 'Wave / emote', group: 'Crew' },
+  emote: { def: 'KeyH', name: 'Wave / emote', group: 'Crew', hidden: true },
 };
 const KEY = 'whiteout.keys';
 export const BINDS = Object.fromEntries(Object.entries(ACTIONS).map(([k, a]) => [k, a.def]));

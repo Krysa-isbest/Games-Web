@@ -114,7 +114,45 @@ export const beat = once((ctx, t, v = 1) => { thud(ctx, t, 60, 40, 0.25 * v, 0.1
 export const alarm = once(ctx => { const t = ctx.currentTime; for (let i = 0; i < 4; i++) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t + i * 0.25); g.gain.exponentialRampToValueAtTime(0.06, t + i * 0.25 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.25 + 0.15); o.connect(g); g.connect(bus); o.start(t + i * 0.25); o.stop(t + i * 0.25 + 0.2); } });
 export const spin = once((ctx, t) => { for (let i = 0; i < 26; i++) burst(ctx, t + 2 * (1 - Math.pow(1 - i / 26, 1.6)), 'bandpass', 3400, 7, 0.05, 0.002, 0.025); });
 export const cash = once((ctx, t) => { for (const [f, d] of [[988, 0], [1319, 0.09], [1976, 0.18]]) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.07, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.35); o.connect(g); g.connect(bus); o.start(t + d); o.stop(t + d + 0.4); } });
+export const flareShot = once((ctx, t) => { thud(ctx, t, 140, 50, 0.4, 0.25); burst(ctx, t, 'bandpass', 900, 0.8, 0.3, 0.003, 0.2); burst(ctx, t + 0.05, 'highpass', 3000, 0.7, 0.12, 0.05, 1.6); });
+export const knock = once((ctx, t) => { thud(ctx, t, 130, 70, 0.4, 0.12); burst(ctx, t, 'bandpass', 500, 3, 0.1, 0.003, 0.08); });
 export const nope = once((ctx, t) => thud(ctx, t, 180, 90, 0.12, 0.25));
+// step 7b: a ship's horn far out (two long blasts), and sounds that keep going while something is there:
+// loop('plane') engines high and far off, loop('rotor') a helicopter, loop('fire') a big fire. set(volume 0..1, pitch ~1).
+export const horn = once((ctx, t) => {
+  for (const d of [0, 1.9]) for (const f of [92, 138]) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = f; lp.type = 'lowpass'; lp.frequency.value = 600;
+    g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.09 * FAR, t + d + 0.15); g.gain.setValueAtTime(0.09 * FAR, t + d + 1.3); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 1.7);
+    o.connect(lp); lp.connect(g); g.connect(bus); o.start(t + d); o.stop(t + d + 1.8);
+  }
+});
+export function loop(kind) {
+  const ctx = ready();
+  if (!ctx) return { set() {}, stop() {} };
+  const out = ctx.createGain(); out.gain.value = 0; out.connect(bus);
+  const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true;
+  const f = ctx.createBiquadFilter(); src.connect(f);
+  let osc = null, am = null, base = 0;
+  if (kind === 'plane') {
+    f.type = 'bandpass'; f.frequency.value = 500; f.Q.value = 0.6; f.connect(out);
+    osc = ctx.createOscillator(); osc.type = 'sawtooth'; base = 78; osc.frequency.value = base;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300; const og = ctx.createGain(); og.gain.value = 0.5;
+    osc.connect(lp); lp.connect(og); og.connect(out);
+  } else if (kind === 'rotor') {
+    f.type = 'lowpass'; f.frequency.value = 650;
+    am = ctx.createGain(); am.gain.value = 0.4; f.connect(am); am.connect(out);
+    osc = ctx.createOscillator(); osc.type = 'square'; base = 11; osc.frequency.value = base;            // the blades chopping the air
+    const depth = ctx.createGain(); depth.gain.value = 0.5; osc.connect(depth); depth.connect(am.gain);
+  } else {
+    f.type = 'lowpass'; f.frequency.value = 900; f.connect(out);
+  }
+  src.start(); osc?.start();
+  return {
+    set(v, p = 1) { const t = ctx.currentTime; out.gain.setTargetAtTime(Math.max(0, v) * (kind === 'fire' ? 0.35 : 0.22), t, 0.15); if (osc) osc.frequency.setTargetAtTime(base * p, t, 0.2); },
+    stop() { try { src.stop(); osc?.stop(); out.disconnect(); } catch { /* stopped */ } },
+  };
+}
 export function land(speed, surface) {
   const ctx = ready();
   if (!ctx) return;

@@ -16,6 +16,14 @@ import { applyShared } from './sync.js';
 import { initCraft, openBook, craftTick, layOut, wearTool, blowPower } from './craft.js';
 import { initFood, eat, stoveAct, fillAct, holeAct, iceBlow, makeHole, freezeHoles } from './food.js';
 import { lifeActs, busyHands } from './life.js';
+import { initFinds, findsTick, findsActs, findsApply, findsEat } from './finds.js';
+import { initEnds, endsTick, endsActs, endsApply, endsSnap } from './ends.js';
+import { initDaily, dailyTick, dailyActs, dailyApply, dailySnap } from './daily.js';
+import { initWatch, watchTick, watchActs, watchApply, watchSnap } from './watch.js';
+import { initDen, denTick, denActs, denApply, denSnap } from './den.js';
+import { initFx, fxTick, ropeClick, ropeActs, ropeApply } from './fx.js';
+import { selfKit, hurt, sleep as sleepAt } from './life.js';
+import { diaryNote } from './obj.js';
 
 let GW = null;           // the running game (game.js's gm)
 let H = null;            // helpers from game.js: { hint, lock }
@@ -36,7 +44,22 @@ const HINT = {
   log: 'Firewood. Hold it, look at the stove and hold the use key to put it in.',
   stone: 'A good flat stone. At the workbench in the shack you can sharpen the axe on it, or make a stone axe.',
   saxe: () => `A stone axe. Slow, and it won't last, but it chops. ${kn('primary')} swings it.`,
+  shells: 'Flare shells! Load the flare gun and fire them into the sky, when someone is close enough to see.',
+  journal: () => `A journal, swollen with damp and frozen stiff. Hold it and hold ${kn('primary')} a moment (or press ${kn('eat')}) to read it.`,
+  blackbox: 'The flight recorder: orange, heavy, unbroken. Whatever happened to Flight 2207 is on it.',
+  silk: 'A silk scarf. Useless against this cold, but it burns well: kindling, or wound round a branch, a torch.',
+  parka: 'An old parka, stiff with frost but whole. Warmer than anything from the plane.',
+  snowshoes: 'Snowshoes. Carry them, and deep snow holds you up on top.',
+  torch: 'A torch. It burns while you hold it: light all round you, a little warmth, a few minutes.',
+  battery: 'The satellite phone\'s battery, wrapped in oilcloth. Take it up to the tower.',
+  journal2: () => `A small black notebook, the pages warped. Hold it and hold ${kn('primary')} a moment (or press ${kn('eat')}) to read it.`,
+  shovel: 'A small aluminium snow shovel from the plane\'s survival pack. Snow off the roof, buried things dug out, a drift cleared.',
+  wshovel: 'A wooden shovel. Slower than a real one, but it moves snow.',
+  rope: () => `A coil of rope. Hold it and click (${kn('primary')}) to tie one end, walk, click again: a guide rope to follow home in fog.`,
+  plan: () => `A plan, drawn in pencil on the back of a map. Hold it and hold ${kn('primary')} a moment (or press ${kn('eat')}) to read it.`,
 };
+// what the left mouse uses up or opens when you hold it in your hand for a moment (step 7e): food, drink, things to read, the kit
+const USE = t => !!(t && (TYPES[t]?.food || TYPES[t]?.read || t === 'potwater' || t === 'pottea' || t === 'potsnow' || t === 'blackbox' || t === 'kit'));
 
 export function initWork(gm, helpers) {
   GW = gm; H = helpers;
@@ -49,6 +72,13 @@ export function initWork(gm, helpers) {
   buildInvDom(gm);
   initCraft(gm, { act, hint: H.hint, lock: H.lock, shout });            // the workbench and its book (craft.js)
   initFood(gm, { act, hint: H.hint, shout, dropAt });                   // hunger, thirst, cooking, fishing (food.js)
+  initFinds(gm, { act, hint: H.hint, shout, announce: H.announce || (() => {}) });     // containers, the journal, flares, the torch (finds.js)
+  initEnds(gm, { act, hint: H.hint, shout, quit: H.quit || (() => {}) });              // the ways off the island (ends.js)
+  initDaily(gm, { act, hint: H.hint });                                                 // the island changing every day (daily.js)
+  initWatch(gm, { act, hint: H.hint, shout });                                         // the night watch, the mysteries (watch.js)
+  initDen(gm, { act, hint: H.hint, shout });                                           // the winter den in the snowed-in cave (den.js)
+  initFx(gm, { act, hint: H.hint });                                                   // breath, footprints, frost, guide ropes (fx.js)
+  gm.useT = 0;
   gm.wheel = e => {
     if (!gm.locked || gm.pauseOpen) return;
     gm.inv.sel = (gm.inv.sel + (e.deltaY > 0 ? 1 : HOT - 1)) % HOT; gm.inv.ver++;
@@ -68,10 +98,23 @@ export function workTick(gm, dt, env) {
     if (pressed('inventory')) openBag(gm);
     if (pressed('light')) { hands.lit = !hands.lit; SFX.flick(); if (hands.lit) H.hint(gm, 'lighter', 'Your lighter. It won\'t keep you warm, but it lights up the dark.'); }
     if (pressed('primary') && TYPES[inv.heldType()]?.tool && !busyHands(gm) && hands.swing()) SFX.whoosh();
-    if (pressed('eat')) eat(gm);
-  }
+    if (pressed('eat') && !findsEat(gm)) eat(gm);
+    // step 7e: the left mouse uses what you hold: a short hold eats, drinks or reads it (so a click can't waste it)
+    const ht = inv.heldType();
+    if (USE(ht) && !busyHands(gm) && gm.inp.is('primary')) {
+      if (gm.useT >= 0) { gm.useT += dt; if (gm.useT >= 0.5) { gm.useT = -1; if (ht === 'kit') selfKit(gm); else if (!findsEat(gm)) eat(gm); } }
+    } else gm.useT = 0;
+    gm.dom.root.style.setProperty('--use', gm.useT > 0 ? (gm.useT / 0.5).toFixed(2) : '0'); gm.dom.root.classList.toggle('using', gm.useT > 0.05);
+    if (pressed('primary') && ht === 'rope') ropeClick(gm);
+  } else { gm.useT = 0; gm.dom.root.classList.remove('using'); }
   gm.prevK = new Set(KEYS.filter(a => gm.inp.is(a)));
   craftTick(gm, dt);
+  findsTick(gm, dt, env);
+  endsTick(gm, dt, env);
+  dailyTick(gm, dt, env);
+  watchTick(gm, dt, env);
+  denTick(gm, dt);
+  fxTick(gm, dt, env);
   // the hands, the axe landing
   if (inv.ver !== gm.invShown) renderInv(gm);
   const away = !!p.seat || !!p.mode || busyHands(gm);           // buckled in, not on your feet, or your hands are full of a friend
@@ -83,7 +126,7 @@ export function workTick(gm, dt, env) {
   // the shack: the host runs it, everyone draws it
   if (host) {
     const ev = [];
-    gm.home.sim(dt * (gm.ts || 1), env, ev);
+    if (!gm.world.burned) gm.home.sim(dt * (gm.ts || 1), env, ev);
     if (ev.includes('blown') && gm.inShack) H.hint(gm, 'blown', 'The storm tore some of the packed snow out of the walls.', 5000, true);
     if (ev.includes('out') && gm.inShack) H.hint(gm, 'stove-out', 'The stove has burned out. Feed it before the shack goes cold.', 5000, true);
     freezeHoles(gm);
@@ -132,9 +175,15 @@ function apply(gm, a, from) {
     case 'mend': home.mend(a.i, a.how); break;
     case 'unmend': home.unmend(a.i); break;
     case 'door': if (a.op === 'fix') home.fixDoor(); else home.toggleDoor(); break;
-    case 'chop': chop(gm, a); break;
+    case 'chop': chop(gm, a, from); break;
     case 'craft': layOut(gm, a.r); break;
     case 'hole': makeHole(gm, a.x, a.z); break;
+    case 'open': case 'learn': findsApply(gm, a); break;
+    case 'end': endsApply(gm, a); break;
+    case 'cache': dailyApply(gm, a); break;
+    case 'watch': watchApply(gm, a); break;
+    case 'den': denApply(gm, a); break;
+    case 'rope': ropeApply(gm, a, from, give); break;
   }
 }
 // hand something to a player: yourself, or a guest (who puts it away when the host says so)
@@ -147,7 +196,7 @@ function give(gm, to, type, n, data) {
 }
 function gotHint(gm, type, data) {
   const h = HINT[type];
-  if (h) H.hint(gm, 'got-' + type, typeof h === 'function' ? h() : h, 7000, PLANE.includes(type));
+  if (h) H.hint(gm, 'got-' + type, typeof h === 'function' ? h() : h, 7000, PLANE.includes(type) || ['shells', 'journal', 'blackbox', 'parka'].includes(type));
   if (TYPES[type].wood && (data?.dry ?? 1) < 0.45) H.hint(gm, 'wet', 'This wood is wet: it barely burns. Leave it on the floor by the burning stove for a few minutes to dry.', 7000, true);
   H.hint(gm, 'hotbar', `${kn('slot1')}–${kn('slot5')} or the mouse wheel pick what you hold. ${kn('drop')} drops it. ${kn('inventory')} opens your backpack.`, 8000);
 }
@@ -198,8 +247,14 @@ function closestOnTrunk(it, from, out) {
   const k = Math.max(0, Math.min(L, _d.subVectors(from, it.mesh.position).dot(_a)));
   return out.copy(it.mesh.position).addScaledVector(_a, k);
 }
+// step 7e: a felled tree comes down on whoever stands in its way (along where it falls, within its length)
+function treeHits(gm, t, dx, dz) {
+  const L = 4.6 * t.s * t.sy, inWay = pos => { const rx = pos.x - t.x, rz = pos.z - t.z, along = rx * dx + rz * dz; return along > 0.8 && along < L && Math.abs(rx * dz - rz * dx) < 0.8 + 0.25 * t.s; };
+  if (inWay(gm.player.pos) && gm.life?.st === 'up') { hurt(gm, 55); H.hint(gm, 'tree-hit' + Date.now(), 'The falling tree catches you and throws you into the snow.', 5000, true); SFX.land(14, 'snow'); }
+  for (const [pid, a] of gm.avatars || []) if (inWay(a.pos) && (a.to?.ls ?? 0) === 0) send(pid, { t: 'g-help', k: 'tree' });
+}
 // the host: what an axe blow does
-function chop(gm, a) {
+function chop(gm, a, from) {
   const w = gm.world, s = w.stash;
   if (a.kind === 'tree') {
     const t = w.trees[a.i];
@@ -208,6 +263,8 @@ function chop(gm, a) {
     if (t.hp > 0.01) return;
     w.fell(a.i, gm.T);
     const dx = a.dir?.[0] ?? 1, dz = a.dir?.[1] ?? 0, ang = 0.9;
+    diaryNote(gm, 'tree', from);
+    setTimeout(() => { if (!gm.ended && gm.player) treeHits(gm, t, dx, dz); }, 1200);        // step 7e: whoever stands where it comes down
     _q.setFromAxisAngle(UP, t.rot);
     s.spawn({ type: 'trunk', data: { s: t.s, sy: t.sy, hp: 3 }, p: [t.x, t.y + 0.25, t.z], q: [_q.x, _q.y, _q.z, _q.w], w: [dz * ang, 0, -dx * ang], v: [dx * 0.3, 0, dz * 0.3] });
     shout(gm, 'fall', _b.set(t.x, t.y + 1.5, t.z));
@@ -287,10 +344,10 @@ export function findAct(gm, unbuckle) {
     if (!sc) continue;
     const name = nameOf(it.type, it.data, it.n), dig = it.buried > 0.3;
     if (!inv.room(it.type, it.n)) offer(sc, { id: 'full' + it.id, text: `${name[0].toUpperCase() + name.slice(1)}: your hands and your backpack are full`, hold: 0 });
-    else offer(sc, { id: 'it' + it.id, text: `${dig ? 'Dig out' : 'Pick up'} ${name}`, hold: (TYPES[it.type].take || 0.4) + it.buried * 2.5, go: () => take(gm, it) });
+    else offer(sc, { id: 'it' + it.id, text: `${dig ? 'Dig out' : 'Pick up'} ${name}`, hold: (TYPES[it.type].take || 0.4) + it.buried * 2.5 * (1 - 0.7 * (TYPES[ht]?.dig || 0)), go: () => take(gm, it) });
   }
-  // the stove
-  {
+  // the stove (gone with the shack if it burned: the gaps, the bench and the door too)
+  if (!w.burned) {
     const sc = look(w.shack.stove.pos, 1.9, 0.8), st = home.stove, food = sc ? stoveAct(gm, held, st.temp) : null;
     if (sc) {
       if (food) offer(sc + 0.05, food);
@@ -301,7 +358,7 @@ export function findAct(gm, unbuckle) {
     }
   }
   // the gaps in the shack
-  w.shack.spots.forEach((s, i) => {
+  if (!w.burned) w.shack.spots.forEach((s, i) => {
     const state = home.patch[i];
     if (state === 2) return;
     const sc = look(s.pos, s.reach, s.kind === 'wall' ? 0.9 : 0.86);
@@ -317,20 +374,26 @@ export function findAct(gm, unbuckle) {
   // water and fish: the pot and the snow, the rod and a hole in the ice
   { const f = fillAct(gm); if (f) offer(0.83, f); const h = holeAct(gm, look); if (h) offer(h[0], h[1]); }
   // the workbench and the old owner's book on it
-  {
+  if (!w.burned) {
     const sc = look(w.shack.bench.pos, 2.0, 0.8);
-    if (sc) offer(sc - 0.02, gm.crafting ? { id: 'busy', text: 'Working at the bench…', hold: 0 } : { id: 'bench', text: 'Open the crafting book on the workbench', hold: 0.4, go: () => openBook(gm) });
+    if (sc) offer(sc - 0.02, gm.crafting ? { id: 'busy', text: 'Working at the bench…', hold: 0 } : { id: 'bench', text: 'Open the crafting book on the workbench', hold: 0.6, go: () => openBook(gm) });
   }
   // the door
-  {
+  if (!w.burned) {
     const d = w.shack.door, sc = look(d.pos, 2.3, 0.78);
     if (sc) {
       if (home.door === 'broken') offer(sc, ht && TYPES[ht].patch && patches >= 2 ? { id: 'fix', text: 'Fix the door with 2 boards', hold: 3, go: () => { if (gm.inv.use(t => TYPES[t].patch, 2)) { act(gm, { a: 'door', op: 'fix' }); shout(gm, 'hammer', d.pos); } } } : { id: 'door', text: 'The door hangs off one hinge: 2 boards would fix it', hold: 0 });
-      else offer(sc, { id: 'door' + home.door, text: home.door === 'open' ? 'Close the door' : 'Open the door', hold: 0.15, go: () => { act(gm, { a: 'door', op: 'toggle' }); shout(gm, 'door', d.pos); } });
+      else offer(sc, { id: 'door' + home.door, text: home.door === 'open' ? 'Close the door' : 'Open the door', hold: 0.5, go: () => { act(gm, { a: 'door', op: 'toggle' }); shout(gm, 'door', d.pos); } });
     }
   }
   // your crew: carry a downed friend, patch them up, wake a sleeper, pull someone out of the water; the bunk (life.js)
   lifeActs(gm, look, offer);
+  findsActs(gm, look, offer);                                           // suitcases and boxes to open (finds.js)
+  endsActs(gm, look, offer);                                            // the tower, the phone, the floorboard, burning the shack, the helicopter (ends.js)
+  dailyActs(gm, look, offer);                                           // a frozen crate a storm uncovered, wreckage on the shore (daily.js)
+  watchActs(gm, look, offer);                                           // snow on the roof (watch.js)
+  denActs(gm, look, offer, sleepAt);                                    // the winter den (den.js)
+  ropeActs(gm, look, offer);                                            // untying a guide rope (fx.js)
   return best;
 }
 function take(gm, it) {
@@ -360,8 +423,10 @@ function mend(gm, i, how, need) {
 
 // ---------- co-op ----------
 function sharedSnap(gm, full) {
-  const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), ho: [...w.holes.values()].map(h => [h.id, h.x, h.z, h.at]), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0) };
-  if (full) m.it = w.stash.snap();
+  const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), ho: [...w.holes.values()].map(h => [h.id, h.x, h.z, h.at]), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0),
+    op: w.props.map((p, i) => (p.open ? i : -1)).filter(i => i >= 0), kn: [...(gm.known || [])], en: endsSnap(gm), dm: dailySnap(gm),
+    wa: watchSnap(gm), dn: denSnap(gm), rp: gm.ropes || [] };
+  if (full) { m.it = w.stash.snap(); m.dy = gm.diary || []; }
   return m;
 }
 // a sound the whole crew should hear from where it happens: you hear it here, the others get told

@@ -596,3 +596,41 @@ body.game-settings #s-settings { z-index: 70; background: rgba(3, 8, 14, 0.6); }
 .rl-msg { min-height: 26px; margin-top: 10px; text-align: center; font-weight: 600; }
 .rl-n { display: inline-grid; place-items: center; min-width: 28px; height: 28px; margin-right: 6px; border-radius: 50%; color: #fff; }
 @media (max-width: 700px) { .gm-hp { left: 50px; grid-template-columns: 48px 120px; } .gm-voice { right: 14px; } .gm-buffs { left: 14px; } .gm-life b { font-size: 26px; } }
+
+/* ---------- step 7a: the journal (the same book, older damp paper, a cramped hand) ---------- */
+.book.journal .bk-page { background-color: #d9cfb4; color: #2c2a22; font: italic 500 18px/1.4 var(--serif); filter: sepia(0.25) saturate(0.85); }
+.book.journal .bk-page::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 70% 80%, rgba(90, 70, 40, 0.22), transparent 55%), radial-gradient(ellipse at 15% 20%, rgba(120, 110, 90, 0.18), transparent 45%); }
+.book.journal .j-day { margin: 0 0 4px; font: 600 13px var(--ui); font-style: normal; letter-spacing: 0.18em; text-transform: uppercase; color: #6d5a3c; }
+.book.journal .j-sub { font-size: 16px; color: #5a5446; }
+.book.journal .j-note { margin-top: 14px; padding: 8px 10px; font-size: 16px; border-left: 2px solid rgba(120, 40, 30, 0.45); color: #5a2a20; }
+.book.journal .j-sig { text-align: right; font-size: 24px; }
+
+/* ---------- step 7b: help is coming, the helicopter ---------- */
+.gm-rescue { position: absolute; right: 28px; top: 100px; max-width: min(420px, 60vw); padding: 7px 14px; text-align: right; font-size: 14px; font-weight: 600; color: #fff; background: rgba(4, 10, 17, 0.65); border-right: 3px solid var(--ember); border-radius: 4px; pointer-events: none; text-shadow: 0 1px 3px #000; }
+.gm-voice { top: 148px; }
+@media (max-width: 700px) { .gm-rescue { right: 14px; top: 92px; } }
+
+/* ---------- step 7e: objectives, using what you hold, ropes, the map, the journal, the admin menu ---------- */
+.gm-goal { position: absolute; left: 50%; top: 20px; transform: translateX(-50%); max-width: min(560px, 70vw); padding: 5px 14px; font-size: 14px; font-weight: 600; color: #f2f6f9; background: rgba(4, 10, 17, 0.5); border-radius: 12px; pointer-events: none; text-shadow: 0 1px 3px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-ask:not(.hidden) ~ .gm-goal { top: 64px; }
+.gm-use { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; pointer-events: none; opacity: 0; background: conic-gradient(var(--ember) calc(var(--use, 0) * 360deg), rgba(255, 255, 255, 0.18) 0); -webkit-mask: radial-gradient(circle, transparent 8px, #000 9px); mask: radial-gradient(circle, transparent 8px, #000 9px); }
+.game.using .gm-use { opacity: 1; }
+.gm-rope { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); padding: 6px 12px; font-size: 14px; font-weight: 600; color: #fff; background: rgba(4, 10, 17, 0.6); border-radius: 4px; pointer-events: none; }
+.gm-map, .gm-journal, .gm-admin { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 16px; background: rgba(3, 8, 14, 0.6); backdrop-filter: blur(4px); animation: fadeIn 0.25s both; }
+.gm-mapbox { padding: 18px 18px 10px; background: #e9dfc6; border-radius: 4px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(120, 90, 40, 0.35); text-align: center; }
+.gm-mapbox canvas { display: block; width: min(80vh, 86vw); height: min(80vh, 86vw); image-rendering: auto; filter: sepia(0.25); border: 1px solid rgba(80, 60, 30, 0.4); }
+.gm-mapbox small { display: block; margin-top: 8px; font: italic 500 15px var(--serif); color: #4a3a26; }
+.gm-journal .panel, .gm-admin .panel { width: min(640px, 94vw); max-height: 86vh; overflow: auto; }
+.gj-tabs { display: flex; justify-content: center; margin: 4px 0 12px; }
+.gj-body { min-height: 160px; }
+.gj-goals { list-style: none; padding: 0; margin: 0; }
+.gj-goals li { padding: 6px 2px; border-bottom: 1px solid rgba(43, 40, 54, 0.12); }
+.gj-goals li.done { opacity: 0.55; text-decoration: line-through; }
+.gj-day { margin: 0 0 10px; line-height: 1.5; font-family: var(--serif); font-size: 17px; }
+.gj-day b { margin-right: 6px; font-family: var(--ui); font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+.gj-none { opacity: 0.7; font-style: italic; }
+.gj-body .btn { display: block; margin: 0 0 8px; width: 100%; text-align: left; }
+.ga-body h4 { margin: 12px 0 6px; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.7; }
+.ga-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ga-info { font-size: 13px; line-height: 1.5; }
+.ga-row select { padding: 5px 8px; }

@@ -38,6 +38,14 @@ import { bookKey, closeBook } from './craft.js';
 import { initLife, lifeTick, lifeMods, lifeView, lifeHud, lifeKey, lifeCode, modeAct, timeScale, spectating, lifeDropped, goDown, die, tell, lifeEnded } from './life.js';
 import { initIce, iceTick } from './ice.js';
 import { closeRoulette } from './roulette.js';
+import { endsView } from './ends.js';
+import { initObj, objTick } from './obj.js';
+import { initMapUI, mapKey, mapTick, pingHere, closeMapUI, mapUIOpen } from './mapui.js';
+import { initAdmin, toggleAdmin, adminAllowed } from './admin.js';
+import { print } from './fx.js';
+import { hurt, frostbitten } from './life.js';
+import { denLight } from './den.js';
+import { ropeHud } from './fx.js';
 import { startVoice, voiceTick, voiceFlat, voiceHello, speaking, voiceErr, LS } from './voice.js';
 import { foodTick } from './food.js';
 import { meshFor, TYPES } from './items.js';
@@ -125,7 +133,7 @@ function buildDom(gm) {
     <div class="gm-side"><div class="gm-smoke"><small>Smoke</small><div class="gm-bar"><i></i></div></div></div>
     <div class="gm-click">Click to look around</div>
     <div class="gm-chat"><div class="gm-chatlog"></div><input class="gm-chatin hidden" maxlength="140" placeholder="Say something to your crew… (Enter sends)" autocomplete="off" spellcheck="false"></div>
-    <div class="gm-ask hidden"></div><div class="gm-voice"></div><div class="gm-banner hidden"></div>
+    <div class="gm-ask hidden"></div><div class="gm-voice"></div><div class="gm-banner hidden"></div><div class="gm-use"></div><div class="gm-rope hidden"></div>
     <div class="gm-pause hidden"><div class="panel">
       <header class="p-head"><h2>Paused</h2><span class="p-sub"></span></header>
       <div class="gm-pmenu">
@@ -146,7 +154,7 @@ function buildDom(gm) {
   gm.dom = { root: d, canvas: q('.gm-canvas'), frost: q('.gm-frost'), heat: q('.gm-heat'), bar: q('.gm-bar i'), state: q('.gm-heat small'), clock: q('.gm-clock b'), day: q('.gm-day'), air: q('.gm-air'),
     obj: q('.gm-obj'), hint: q('.gm-hint'), pause: q('.gm-pause'), sub: q('.gm-pause .p-sub'), note: q('.gm-note'), cover: q('.gm-cover'),
     smokefx: q('.gm-smokefx'), faint: q('.gm-faint'), act: q('.gm-act'), actText: q('.gm-act span'), smokeBox: q('.gm-smoke'), smokeBar: q('.gm-smoke i'), hu: q('.gn.hu'), huBar: q('.gn.hu i'), th: q('.gn.th'), thBar: q('.gn.th i'),
-    chatLog: q('.gm-chatlog'), chatIn: q('.gm-chatin'), ask: q('.gm-ask'), voice: q('.gm-voice'), banner: q('.gm-banner'), saveB: q('[data-a="save"]'), quitB: q('[data-a="quit"]'), invite: q('.gm-invite'), inviteP: q('.gm-invite p'), direct: q('.gm-direct') };
+    chatLog: q('.gm-chatlog'), chatIn: q('.gm-chatin'), ask: q('.gm-ask'), voice: q('.gm-voice'), banner: q('.gm-banner'), rope: q('.gm-rope'), saveB: q('[data-a="save"]'), quitB: q('[data-a="quit"]'), invite: q('.gm-invite'), inviteP: q('.gm-invite p'), direct: q('.gm-direct') };
   q('[data-a="resume"]').onclick = () => resume(gm, true);
   q('[data-a="settings"]').onclick = () => gm.args.openSettings?.();
   gm.dom.saveB.onclick = () => { const ok = saveGame(gm); gm.dom.saveB.textContent = ok ? 'Saved' : gm.escaped ? 'Could not save' : 'Get out of the plane first'; setTimeout(() => { gm.dom.saveB.textContent = 'Save the game'; }, 2000); };
@@ -189,8 +197,14 @@ function build(gm, R) {
   gm.seat = world.seat(idx); gm.myCoat = lookFor(players[idx]).coat;
   if (gm.mode === 'new') p.sit(gm.seat);                // you wake up still buckled into your seat
   else { const o = world.shack.outside; p.teleport(o.x, world.groundY(o.x, o.z) + 0.15, o.z); p.yaw = ISL.SHACK.ry; }      // until the save or the host says where you are
-  p.onStep = (surface, loud, depth) => SFX.step(surface, loud, depth);
-  p.onLand = (speed, surface) => SFX.land(speed, surface);
+  p.onStep = (surface, loud, depth) => { SFX.step(surface, loud, depth); if (surface === 'snow') { gm.stepSide = -(gm.stepSide || 1); print(gm, p.pos.x, p.pos.z, p.yaw, gm.stepSide); } };
+  p.onLand = (speed, surface) => {
+    SFX.land(speed, surface);
+    if (speed > 13 && gm.life?.st === 'up') {           // a long fall hurts (off the tower's stairs, say): from about 4 m up
+      hurt(gm, (speed - 13) * 9);
+      hint(gm, 'fall' + Math.floor(gm.T), p.hp > 0 ? 'You land hard. Something in you cracks.' : 'You hit the ground, hard, and everything goes dark.', 4000, true);
+    }
+  };
   // post: bloom, then grain, a vignette, the cold grade and frost (the menu's look), anti-aliased when it's on
   const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: S.aa ? 4 : 0 });
   const composer = gm.composer = new EffectComposer(renderer, rt);
@@ -217,7 +231,10 @@ function build(gm, R) {
   });
   composer.addPass(gm.final);
   gfx(gm, false);
-  initWork(gm, { hint, lock });                         // the inventory, the hands, the shack's stove and gaps (work.js)
+  initWork(gm, { hint, lock, announce, quit });
+  initObj(gm, { announce });                                            // objectives and the diary (obj.js)
+  initMapUI(gm, { lock, hint });                                        // the map, the journal, pings (mapui.js)
+  initAdmin(gm, { lock, hint, give: (g, t, n) => { const left = g.inv.add(t, n, { dry: 1 }); if (left) g.world.stash.spawn({ type: t, n: left, data: { dry: 1 }, p: [g.player.pos.x, g.player.pos.y + 1, g.player.pos.z], v: [0, 1, 0] }); } });                         // the inventory, the hands, the shack's stove and gaps (work.js)
   initLife(gm, { hint, chat: gameChat, lock, quit, reload, drop: dropThing, closeUI });            // health, downed, death, sleep (life.js)
   initIce(gm, { hint, drop: dropThing, die, goDown, tell, closeUI });                             // thin ice (ice.js)
   if (gm.coop) startVoice();
@@ -282,7 +299,7 @@ function tick(gm, dt) {
   const diff = diffNow(), env = ISL.envAt(gm.T, diff.storm, gm.env);
   W.gust = env.gust; W.wind = env.wind; W.t += dt;                // the wind you hear follows the wind you see
   // physics in small steps: you move, then the world moves
-  gm.inp.active = gm.locked && !gm.fainting && !gm.chatOpen && !gm.waitState && !gm.bookOpen && !gm.rouletteOpen && !lifeEnded(gm);
+  gm.inp.active = gm.locked && !gm.fainting && !gm.chatOpen && !gm.waitState && !gm.bookOpen && !gm.rouletteOpen && !lifeEnded(gm) && !gm.adminOpen && !mapUIOpen(gm);
   const n = clamp(Math.ceil(dt / 0.02), 1, 4), h = dt / n;
   for (let i = 0; i < n; i++) {
     w.phys.timestep = h;
@@ -295,8 +312,12 @@ function tick(gm, dt) {
   iceTick(gm, dt, env);
   plane(gm, dt, env);
   workTick(gm, dt, env);
+  objTick(gm, dt, env);
+  mapTick(gm, dt);
   p.view(dt, env);
   lifeView(gm);                                          // asleep or dead: you watch your crew
+  endsView(gm);                                          // aboard the helicopter, waiting for the others
+  { let dk = 0; for (const c of Object.values(w.caves || {})) dk = Math.max(dk, c.dark(gm.camera.position) * (c === w.caves.snowcave ? 1 - 0.75 * denLight(gm) : 1)); w.dark = (w.dark || 0) + (dk - (w.dark || 0)) * Math.min(1, dt * 2.5); }       // deep in a cave it gets dark
   w.update(dt, env, gm.camera);
   voiceTick(gm, env, spectating(gm), pid => { const a = pid && gm.avatars.get(pid); return a ? { pos: a.pos, ls: a.to?.ls || 0, inShack: w.inShack(a.pos) } : null; });
   if (gm.coop && gm.started && voiceErr() === 'mic') hint(gm, 'nomic', 'No microphone (or the browser said no): you can still hear your crew. Settings > Audio & voice.', 7000, true);
@@ -320,7 +341,7 @@ function tick(gm, dt) {
 // goes (life.js), and at night the whole of it runs faster while the crew sleeps (gm.ts).
 function survive(gm, dt, env, diff) {
   const p = gm.player, w = gm.world;
-  const inShack = gm.inShack = w.inShack(p.pos), inCab = gm.inCab = !!p.seat || w.inCabin(p.pos), inside = gm.inside = inShack || inCab;
+  const inShack = gm.inShack = w.inShack(p.pos), inCab = gm.inCab = !!p.seat || w.inCabin(p.pos), shel = gm.shelter = inShack || inCab ? '' : w.shelter(p.pos), inside = gm.inside = inShack || inCab || !!shel;
   const L = gm.life, mods = lifeMods(gm);
   if (L.st === 'dead') { gm.cold = 0; p.shiver = 0; p.hug = 0; p.slow = 1; GAME.wind = inShack ? 0.5 : 0.8; GAME.fire = 0; return; }
   // out of the wind behind something solid? one ray against the wind, a few times a second
@@ -333,14 +354,14 @@ function survive(gm, dt, env, diff) {
   }
   // the shack: the more of it is patched (k), the less wind gets in, and the more of the stove's heat stays
   const home = gm.home, k = home.k, st = home.stove;
-  const open = (inShack ? 0.25 * (1 - 0.85 * k) : inside ? 0.25 : 1 - 0.6 * gm.lee) * (p.crouched || p.mode ? 0.85 : 1);     // how much of the wind reaches you
+  const open = (inShack ? 0.25 * (1 - 0.85 * k) : shel === 'tent' ? 0.45 : shel === 'cave' ? (gm.inDen ? 0 : 0.08) : inside ? 0.25 : 1 - 0.6 * gm.lee) * (p.crouched || p.mode ? 0.85 : 1);     // how much of the wind reaches you
   p.exposure += (open - p.exposure) * Math.min(1, dt * 3);
-  const fd = Math.hypot(p.pos.x - w.fire.pos.x, p.pos.z - w.fire.pos.z), byFire = gm.byFire = Math.max(env.fire * smooth(9, 2.2, fd), inCab ? env.fire * 0.2 : 0);
+  const fd = Math.hypot(p.pos.x - w.fire.pos.x, p.pos.z - w.fire.pos.z), byFire = gm.byFire = Math.max(env.fire * smooth(9, 2.2, fd), inCab ? env.fire * 0.2 : 0, gm.burnHeat || 0);
   const byStove = gm.byStove = inShack ? st.temp * smooth(2.2, 1.0, p.pos.distanceTo(w.shack.stove.pos)) : 0;
   const cold = -env.temp / 24, chill = env.wind / 10 * p.exposure;
-  const drain = diff.drain * cold * (0.1 * (inShack ? 0.6 * (1 - 0.5 * k) : inside ? 0.6 : 1) + 0.14 * chill) * (1 - byFire * 0.6) * coatWarmth(gm) * (gm.foodMul || 1);
+  const drain = diff.drain * cold * (0.1 * (inShack ? 0.6 * (1 - 0.5 * k) : shel === 'tent' ? 0.8 : shel === 'cave' ? (gm.inDen ? 0.3 : 0.45) : inside ? 0.6 : 1) + 0.14 * chill) * (1 - byFire * 0.6) * coatWarmth(gm) * (gm.foodMul || 1);
   const sun = env.light * (1 - env.storm) * (inside ? 0.05 : 0.14);             // daylight warms you a little, mostly out in the sun
-  const gain = 0.04 + sun + (p.moving ? (p.sprinting ? 0.1 : 0.035) : 0) + byFire * 1.3 + (inShack ? home.air * 1.2 + byStove * 0.45 : 0);
+  const gain = 0.04 + sun + (p.moving ? (p.sprinting ? 0.1 : 0.035) : 0) + byFire * 1.3 + (inShack ? home.air * 1.2 + byStove * 0.45 : 0) + (gm.torch ? 0.3 : 0) + (gm.pitHeat || 0) * 1.1;
   const rate = gm.started && L.st !== 'swim' ? gain * mods.gain - drain * mods.drain : 0;      // in the water, ice.js runs the cold
   p.heat = clamp(p.heat + rate * dt * gm.ts, 0, 100);
   gm.rate += (rate * gm.ts - gm.rate) * Math.min(1, dt * 2);
@@ -392,11 +413,15 @@ function interact(gm, dt) {
   const act = gm.player.mode ? (gm.locked && !gm.rouletteOpen ? modeAct(gm) : null) : findAct(gm, () => unbuckle(gm));
   if (!act || act.id !== gm.act?.id) gm.holdT = 0;
   gm.act = act;
-  if (act && act.hold && gm.inp.is('use')) {
+  // step 7e: after something is done, let go of the use key before the next thing starts (no chaining into the door);
+  // frostbitten hands are slow
+  if (gm.needRelease && !gm.inp.is('use')) gm.needRelease = false;
+  const hold = act && act.hold ? act.hold * (frostbitten(gm) ? 1.4 : 1) : 0;
+  if (act && hold && gm.inp.is('use') && !gm.needRelease) {
     gm.holdT += dt;
-    if (gm.holdT >= act.hold) { gm.holdT = 0; gm.act = null; act.go(); }
+    if (gm.holdT >= hold) { gm.holdT = 0; gm.act = null; gm.needRelease = true; act.go(); }
   } else gm.holdT = Math.max(0, gm.holdT - dt * 3);
-  gm.dom.act.style.setProperty('--k', act && act.hold ? (gm.holdT / act.hold).toFixed(3) : '0');
+  gm.dom.act.style.setProperty('--k', hold ? (gm.holdT / hold).toFixed(3) : '0');
 }
 function unbuckle(gm) {
   gm.player.stand(gm.seat.aisle);
@@ -444,7 +469,7 @@ function hud(gm, dt) {
   d.bar.style.width = p.heat.toFixed(1) + '%';
   const st = HEAT.find(s => p.heat >= s[0]);
   if (d.heat.dataset.s !== st[1]) d.heat.dataset.s = st[1];
-  const where = gm.inCab ? 'In the plane' : gm.byFire > 0.25 ? 'By the fire' : gm.inShack ? `In the shack · ${sealedText(gm.home.k)}${gm.byStove > 0.2 ? ' · by the stove' : ''}` : gm.lee > 0.35 ? 'Out of the wind' : env.wind * p.exposure > 13 ? 'In the wind' : '';
+  const where = gm.inCab ? 'In the plane' : gm.shelter === 'tail' ? 'In the tail section' : gm.shelter === 'tent' ? 'In the tent' : gm.shelter === 'tower' ? 'In the watchtower' : gm.shelter === 'cave' ? (gm.inDen ? 'In the den' : 'In the cave') : gm.aboard ? 'In the helicopter' : gm.byFire > 0.25 ? 'By the fire' : gm.inShack ? `In the shack · ${sealedText(gm.home.k)}${gm.byStove > 0.2 ? ' · by the stove' : ''}` : gm.lee > 0.35 ? 'Out of the wind' : env.wind * p.exposure > 13 ? 'In the wind' : '';
   const arrow = gm.rate > 0.05 ? ' ▲' : gm.rate < -0.3 ? ' ▼▼' : gm.rate < -0.04 ? ' ▼' : '';
   setText(gm, 'state', d.state, st[2] + arrow + (where ? ' · ' + where : ''));
   setText(gm, 'clock', d.clock, clockText(env));
@@ -461,6 +486,7 @@ function hud(gm, dt) {
   d.smokeBar.style.width = (gm.smoke * 100).toFixed(1) + '%';
   d.smokeBox.classList.toggle('bad', gm.smoke > 0.7);
   d.smokefx.style.opacity = (gm.smokeView * 0.8).toFixed(3);
+  { const rt = ropeHud(gm); setText(gm, 'rope', d.rope, rt); d.rope.classList.toggle('hidden', !rt); }
   if (gm.act) { setText(gm, 'act', d.actText, (gm.act.hold ? `Hold ${kn('use')} · ` : '') + gm.act.text); d.act.classList.add('show'); d.act.classList.toggle('nohold', !gm.act.hold); }
   else d.act.classList.remove('show');
   if (gm.pauseOpen) setText(gm, 'sub', d.sub, `Day ${env.day} · ${clockText(env)}`);
@@ -560,6 +586,15 @@ function closeChat(gm, sendIt = false) {
   if (sendIt) say(inp.value);
   inp.value = ''; inp.classList.add('hidden'); inp.blur();
 }
+// a place found for the first time: its name, big, for a few seconds (finds.js)
+function announce(gm, title, text, kicker = 'Found') {
+  const o = gm.dom.obj;
+  o.innerHTML = `<small></small><b></b><span></span>`; o.querySelector('small').textContent = kicker;
+  o.querySelector('b').textContent = title; o.querySelector('span').textContent = text;
+  o.classList.add('show');
+  clearTimeout(gm.objT);
+  gm.objT = setTimeout(() => o.classList.remove('show'), 9000);
+}
 function objective(gm) {
   const o = gm.dom.obj;
   o.innerHTML = gm.escaped
@@ -625,12 +660,16 @@ function listen(gm) {
       if (GM !== gm || gm.ended) return;
       // someone is asking to join: F1 lets them in, F2 doesn't (wherever you are, even in a menu)
       if ((e.code === 'F1' || e.code === 'F2') && gm.asks.length) { e.preventDefault(); if (!e.repeat) answerAsk(gm, e.code === 'F1'); return; }
+      // the admin menu (the code in the settings, solo or the host): F2
+      if (e.code === 'F2' && !e.repeat && (gm.adminOpen || adminAllowed(gm)) && !gm.chatOpen) { e.preventDefault(); toggleAdmin(gm); return; }
+      if (gm.adminOpen) { if (e.code === 'Escape') { e.preventDefault(); toggleAdmin(gm); } return; }
       // typing to the crew: the keys go to the text box
       if (gm.chatOpen) {
         if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); closeChat(gm, true); } else if (e.code === 'Escape') closeChat(gm);
         return;
       }
       if (gm.rouletteOpen) { if (e.code === 'Escape') { e.preventDefault(); closeRoulette(gm); } return; }      // the ghost roulette takes the keys
+      if (mapKey(gm, e)) return;                                              // the map (M), the journal (J)
       if (lifeEnded(gm)) return;                                              // the end screen: only its buttons
       if (bookKey(gm, e)) return;                                             // reading the crafting book: its own keys
       if (lifeKey(gm, e)) return;                                             // watching the crew: R, the arrows
@@ -649,8 +688,9 @@ function listen(gm) {
     },
     ku: e => gm.inp.key(e.code, false),
     md: e => {
-      if (GM !== gm || !gm.ready || gm.ended || gm.bagOpen || gm.bookOpen || gm.waitState || gm.rouletteOpen || lifeEnded(gm)) return;      // the backpack takes its own clicks
+      if (GM !== gm || !gm.ready || gm.ended || gm.bagOpen || gm.bookOpen || gm.waitState || gm.rouletteOpen || lifeEnded(gm) || gm.adminOpen || mapUIOpen(gm)) return;      // the backpack takes its own clicks
       if (!gm.locked) { if (!gm.pauseOpen && e.button === 0) lock(gm); return; }
+      if ('Mouse' + e.button === BINDS.ping && !gm.player.mode) pingHere(gm);      // mark a spot for the crew
       gm.inp.key('Mouse' + e.button, true, false);
     },
     mu: e => gm.inp.key('Mouse' + e.button, false),
@@ -664,7 +704,7 @@ function listen(gm) {
         if (!gm.started) { gm.started = true; if (gm.mode === 'new') objective(gm); setTimeout(() => { if (GM === gm) hint(gm, 'keys', `Move: ${kn('forward')} ${kn('left')} ${kn('back')} ${kn('right')} · Sprint: ${kn('sprint')} · Crouch: ${kn('crouch')} · Jump: ${kn('jump')} · Use (hold): ${kn('use')} · Lighter: ${kn('light')}${gm.coop ? ` · Chat: ${kn('chat')}` : ''}`, 9000); }, 3000); }
       } else {
         gm.inp.clear(); closeChat(gm);
-        if (was && !gm.bagOpen && !gm.bookOpen && !gm.rouletteOpen && !lifeEnded(gm)) { gm.unlockAt = performance.now(); openPause(gm); }
+        if (was && !gm.bagOpen && !gm.bookOpen && !gm.rouletteOpen && !lifeEnded(gm) && !gm.adminOpen && !mapUIOpen(gm)) { gm.unlockAt = performance.now(); openPause(gm); }
       }
     },
     ple: () => closePause(gm),
@@ -691,7 +731,7 @@ function unlisten(gm) {
 
 // ---------- the crew (the frame for co-op) ----------
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
-const TYPE_COLOR = { fur: '#e9dfcf', wool: '#33465a' };
+
 function net(gm, dt) {
   if (gm.role === 'solo' || gm.waitState) return;
   const p = gm.player;
@@ -710,7 +750,7 @@ function net(gm, dt) {
     const hd = gm.hands, coat = gm.inv.coat ? gm.inv.coat : 0;
     const lie = p.mode && p.mode !== 'swim';
     send('*', { t: 'g-p', p: [r2(p.pos.x), r2(p.visY - p.sink), r2(p.pos.z)], yaw: r2(p.seat ? p.seat.yaw : lie ? p.lieYaw : p.yaw), pit: r2(p.pitch), cr: p.crouched ? 1 : 0, wk: r2(p.walkAmt), ph: r2(p.phase), air: p.grounded ? 0 : 1, hug: r2(p.hug), st: p.seat ? 1 : 0,
-      coat: coat || gm.myCoat, h: hd.type || 0, sw: hd.sw >= 0 ? r2(hd.sw / 0.55) : 0, li: hd.lit ? 1 : 0, ls: lifeCode(gm), cb: gm.life.carrier || 0 });
+      coat: coat || gm.myCoat, h: hd.type || 0, sw: hd.sw >= 0 ? r2(hd.sw / 0.55) : 0, li: hd.lit ? 1 : 0, ls: lifeCode(gm), cb: gm.life.carrier || 0, ab: gm.aboard ? 1 : 0 });
   }
   if (gm.role !== 'host') return;
   gm.propT -= dt;
@@ -776,7 +816,7 @@ function crew(gm, dt) {
       a.yaw += Math.atan2(Math.sin(dy), Math.cos(dy)) * k;
     }
     const lie = ls === LS.down || ls === LS.sleep || ls === LS.carried ? 1 : 0;
-    a.P.g.visible = a.tag.visible = ls !== LS.dead;
+    a.P.g.visible = a.tag.visible = ls !== LS.dead && !to.ab;            // dead, or already aboard the helicopter
     a.cr += ((to.cr ? 1 : 0) - a.cr) * k; a.wk += ((+to.wk || 0) - a.wk) * k;
     // their stride follows how far they really moved here, so the legs don't jump with every message
     if (dt > 0) a.ph += Math.min(6, Math.hypot(a.pos.x - ox, a.pos.z - oz) / dt) * dt * (to.cr ? 5.2 : 2.6);
@@ -785,13 +825,18 @@ function crew(gm, dt) {
     a.tag.material.opacity = 1 - smooth(18, 40, a.pos.distanceTo(gm.camera.position));
     pose(a.P, { crouch: lie ? 0 : a.cr, walk: lie ? 0 : a.wk, phase: ls === LS.swim ? performance.now() / 1000 : a.ph, air: to.air && !lie ? 1 : 0, hug: to.h ? 0 : +to.hug || 0, look: -(+to.pit || 0) * 0.6, sit: to.st ? 1 : 0, hold: !!to.h && !lie, swing: +to.sw || 0, lighter: !!to.li, lie, swim: ls === LS.swim ? 1 : 0 });
     // their coat (a coat they found has its own colour) and what they hold in their hand
-    const cc = TYPE_COLOR[to.coat] || to.coat;
+    const cc = TYPES[to.coat]?.color || to.coat;
     if (cc && cc !== a.coat) { a.coat = cc; a.P.coat.color.set(cc); }
     if ((to.h || null) !== (a.held || null)) {
       a.held = to.h || null;
       a.heldMesh?.removeFromParent();
       a.heldMesh = to.h ? meshFor(to.h) : null;
-      if (a.heldMesh) { a.heldMesh.position.set(0, -0.3, 0.05); if (to.h === 'axe' || to.h === 'saxe') a.heldMesh.rotation.set(Math.PI / 2, Math.PI / 2, 0); else a.heldMesh.rotation.set(0, Math.PI / 2, 0); rightHand(a.P).add(a.heldMesh); }
+      if (a.heldMesh) {
+        a.heldMesh.position.set(0, -0.3, 0.05);
+        if (to.h === 'axe' || to.h === 'saxe' || to.h === 'torch') a.heldMesh.rotation.set(Math.PI / 2, Math.PI / 2, 0); else a.heldMesh.rotation.set(0, Math.PI / 2, 0);
+        if (to.h === 'torch') { const l = new THREE.PointLight('#ff9a48', 2.4, 14, 1.5); l.position.set(0.4, 0, 0); a.heldMesh.add(l); }       // their torch lights up round them too
+        rightHand(a.P).add(a.heldMesh);
+      }
     }
     if (a.body) {
       a.body.setNextKinematicTranslation({ x: a.pos.x, y: a.pos.y + 0.9, z: a.pos.z });
@@ -830,7 +875,7 @@ function dropped(gm, pid, migrating = false) {
 
 // ---------- step 6 helpers ----------
 // close whatever is open before something takes you off your feet (downed, the ice, sleep)
-function closeUI(gm) { if (gm.bagOpen) closeBag(gm); if (gm.bookOpen) closeBook(gm); closeChat(gm); }
+function closeUI(gm) { if (gm.bagOpen) closeBag(gm); if (gm.bookOpen) closeBook(gm); closeChat(gm); closeMapUI(gm); if (gm.adminOpen) toggleAdmin(gm); }
 // solo, Mild or Harsh: dead, and back to the last morning's save
 function reload(gm, save) {
   if (GM !== gm) return;

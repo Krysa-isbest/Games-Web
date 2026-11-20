@@ -37,6 +37,7 @@ export class Hands {
     const m = meshFor(type);
     m.traverse(o => { o.castShadow = false; });
     if (type === 'axe' || type === 'saxe') { m.rotation.set(0, Math.PI, Math.PI / 2); m.position.set(0, 0.2, 0); this.slot.rotation.set(-0.45, 0, 0); }
+    else if (type === 'torch') { m.rotation.set(0, Math.PI, Math.PI / 2); m.position.set(0, 0.12, 0); this.slot.rotation.set(-0.25, 0, 0.1); }      // held up, burning end on top
     else if (type === 'rod') { m.rotation.set(0, 0, 0.45); m.position.set(0.3, 0.02, 0); this.slot.rotation.set(0, Math.PI / 2, 0); }      // the grip in the glove, the tip out in front, raised
     else if (type === 'flare') { m.rotation.set(-Math.PI / 2, 0, 0); m.position.set(0.03, 0.02, 0); this.slot.rotation.set(0, Math.PI / 2, 0); }      // held like a pistol: grip in the glove, barrel forward
     else if (type === 'log' || type === 'split' || type === 'branch' || type === 'board' || type === 'pipe') { m.position.set(-0.14, 0.06, -0.08); m.scale.setScalar(0.85); this.slot.rotation.set(0, 0.25, 0); }

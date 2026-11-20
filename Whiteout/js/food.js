@@ -16,6 +16,7 @@ import { TYPES, nameOf } from './items.js';
 import { SEA, DAY } from './island.js';
 import { smooth } from './scene.js';
 import * as SFX from './sfx.js';
+import { drankWarm, foodEffects } from './life.js';
 
 let H = null;      // helpers from work.js: { act, hint, shout, dropAt }
 const _v = new THREE.Vector3();
@@ -34,7 +35,7 @@ export function initFood(gm, helpers) {
 export function foodTick(gm, dt, env, diff) {
   const p = gm.player;
   if (gm.started && !gm.waitState && gm.life?.st !== 'dead') {
-    const k = (diff.food || 1) * (p.sprinting ? 1.4 : 1) * (gm.ts || 1);          // the night runs faster while the crew sleeps
+    const k = (diff.food || 1) * (p.sprinting ? 1.4 : 1) * (gm.ts || 1) * (gm.T < (gm.life?.fedUntil ?? -1e9) ? 0.7 : 1) * (gm.god ? 0 : 1);       // well fed: slower          // the night runs faster while the crew sleeps
     p.hunger = Math.max(0, p.hunger - dt * 100 / (DAY * 1.6) * k);       // a day and a half from full to empty on Harsh
     p.thirst = Math.max(0, p.thirst - dt * 100 / (DAY * 1.1) * k);       // a little over a day
   }
@@ -43,7 +44,7 @@ export function foodTick(gm, dt, env, diff) {
   gm.foodMul = (hu > 85 ? 0.9 : 1) * (1 + 0.15 * smooth(25, 5, hu) + 0.25 * smooth(5, 0, hu)) * (1 + 0.1 * smooth(25, 5, th) + 0.2 * smooth(5, 0, th));
   gm.foodSlow = 1 - 0.15 * smooth(5, 0, hu) - 0.15 * smooth(5, 0, th);
   if (gm.started) {
-    if (hu < 25) H.hint(gm, 'hungry', `You're hungry, and the cold gets to you faster. Eat something (${kn('eat')} eats what you hold). Fish are under the sea ice.`, 7000, true);
+    if (hu < 25) H.hint(gm, 'hungry', `You're hungry, and the cold gets to you faster. Eat something: hold ${kn('primary')} a moment with food in your hand (or press ${kn('eat')}). Fish are under the sea ice.`, 7000, true);
     if (th < 25) H.hint(gm, 'thirsty', `You're thirsty. Melt snow in the pot on the stove and drink it. Eating snow (${kn('eat')} with empty hands) costs body heat.`, 7000, true);
   }
   // a pot of water cools down in your hands (its "dry" number is how warm it is)
@@ -51,7 +52,7 @@ export function foodTick(gm, dt, env, diff) {
   if (gm.potT <= 0) {
     gm.potT = 1;
     let changed = false;
-    for (const s of gm.inv.slots) if (s?.type === 'potwater' && s.dry > 0) { s.dry = Math.max(0, s.dry - 1 / 120); changed = true; }
+    for (const s of gm.inv.slots) if ((s?.type === 'potwater' || s?.type === 'pottea') && s.dry > 0) { s.dry = Math.max(0, s.dry - 1 / 120); changed = true; }
     if (changed) gm.inv.ver++;
   }
   fishTick(gm, dt, env);
@@ -66,6 +67,16 @@ export function eat(gm) {
     inv.slots[inv.sel] = { type: 'pot', n: 1, dry: 1 }; inv.ver++;
     SFX.drink?.();
     H.hint(gm, 'drank', warm ? 'Warm water. It goes down like a fire in your chest.' : 'Cold water: better than nothing. Warm it on the stove next time.', 5000, true);
+    if (warm) drankWarm(gm, false);
+    return;
+  }
+  if (s?.type === 'pottea') {          // step 7e: pine-needle tea: water, warmth, and the hot drink lasts
+    const warm = s.dry > 0.3;
+    p.thirst = Math.min(100, p.thirst + 40); p.heat = Math.min(100, p.heat + 18 * s.dry);
+    inv.slots[inv.sel] = { type: 'pot', n: 1, dry: 1 }; inv.ver++;
+    SFX.drink?.();
+    if (warm) drankWarm(gm, true);
+    H.hint(gm, 'tea' + Math.floor(gm.T / 30), warm ? 'Pine-needle tea: bitter and hot. The warmth stays in you for hours.' : 'Cold tea. It quenches your thirst, nothing more.', 5000, true);
     return;
   }
   if (s?.type === 'potsnow') { H.hint(gm, 'frozen', 'It\'s snow. Melt it on the burning stove first.', 4000, true); gm.hints.delete('frozen'); return; }
@@ -74,13 +85,15 @@ export function eat(gm) {
     inv.take(inv.sel, 1);
     p.hunger = clamp(p.hunger + (f.hunger || 0), 0, 100); p.thirst = clamp(p.thirst + (f.thirst || 0), 0, 100); p.heat = clamp(p.heat + (f.heat || 0), 0, 100);
     if (f.drink) SFX.drink?.(); else SFX.munch?.();
+    if (s.type === 'fishc' || s.type === 'bigfishc' || s.type === 'beans') foodEffects(gm, true, false);         // a proper meal: Well fed
     if (s.type === 'champ') H.hint(gm, 'champ', 'The bubbles go straight to your head. It feels warm, but it isn\'t: it takes the heat out of you.', 6000, true);
     if (f.raw) {
       H.hint(gm, 'raw', 'Raw fish. It fills you less than cooked, and it might not stay down. Cook it on the burning stove.', 6000, true);
       if (Math.random() < 0.4) setTimeout(() => {           // food poisoning
         if (!gm.player) return;
         p.hunger = Math.max(0, p.hunger - 18); p.thirst = Math.max(0, p.thirst - 14); p.heat = Math.max(0, p.heat - 6);
-        SFX.cough(1.1); H.hint(gm, 'sick' + Date.now(), 'Your stomach turns, and the fish comes back up. You feel weak and cold.', 5000, true);
+        SFX.cough(1.1); H.hint(gm, 'sick' + Date.now(), 'Your stomach turns, and the fish comes back up. You feel weak, cold and sick.', 5000, true);
+        foodEffects(gm, false, true);
       }, 8000);
     }
     return;
@@ -100,7 +113,10 @@ export function stoveAct(gm, held, temp) {
   const hot = temp > 0.35, cold = { id: 'cold', text: 'The stove isn\'t hot enough to cook on: light it and let it warm up', hold: 0 };
   if (TYPES[ht].cook) return hot ? { id: 'cook', text: `Cook ${nameOf(ht)} on the stove`, hold: 5, sound: true, go: () => swapHeld(gm, ht, TYPES[ht].cook, 1, 'The fish sizzles and turns golden.') } : cold;
   if (ht === 'potsnow') return hot ? { id: 'melt', text: 'Melt the snow on the stove', hold: 6, sound: true, go: () => swapHeld(gm, 'potsnow', 'potwater', 1, 'The snow melts into warm water. Drink it before it cools.') } : cold;
+  // step 7e: with a branch in your things, brew pine-needle tea from the water
+  if (ht === 'potwater' && gm.inv.count(t => t === 'branch') > 0) return hot ? { id: 'tea', text: 'Brew pine-needle tea (uses a branch)', hold: 3, sound: true, go: () => { if (!gm.inv.use(t => t === 'branch', 1)) return; swapHeld(gm, 'potwater', 'pottea', 1, 'Pine needles in hot water: tea. Drink it hot.'); } } : cold;
   if (ht === 'potwater' && held.dry < 0.9) return hot ? { id: 'warm', text: 'Warm the water on the stove', hold: 3, go: () => swapHeld(gm, 'potwater', 'potwater', 1) } : cold;
+  if (ht === 'pottea' && held.dry < 0.9) return hot ? { id: 'warmtea', text: 'Warm the tea on the stove', hold: 3, go: () => swapHeld(gm, 'pottea', 'pottea', 1) } : cold;
   return null;
 }
 function swapHeld(gm, from, to, n, hint) {
