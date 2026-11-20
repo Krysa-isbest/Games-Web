@@ -1,5 +1,5 @@
 // Shared state, settings (saved in the browser) and small helpers.
-export const VERSION = 'Prototype v0.13';
+export const VERSION = 'Prototype v0.13.1';
 
 export const G = {
   net: { role: 'solo', id: 'p0' },     // solo | host | guest

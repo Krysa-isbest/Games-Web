@@ -32,6 +32,7 @@ export function worldState(gm) {
     en: endsSnap(gm),                                                                          // the ways off the island (step 7b)
     dm: dailySnap(gm),                                                                         // the morning's finds, the snowed-in cave (step 7c)
     wa: watchSnap(gm), dn: denSnap(gm), rp: gm.ropes || [], dy: gm.diary || [],                // the watch, the den, the ropes, the diary (step 7e)
+    ob: [...(gm.ob || [])],                                                                    // the crew's objectives done
   };
 }
 // what the host and a guest share all the time (work.js sends it twice a second; `it` only when the list changed)
@@ -52,12 +53,13 @@ export function applyShared(gm, m) {
   if (m.dn) denLoad(gm, m.dn);
   if (Array.isArray(m.rp)) gm.ropes = m.rp;
   if (Array.isArray(m.dy)) gm.diary = m.dy;
+  if (Array.isArray(m.ob) && gm.ob) for (const k of m.ob) gm.ob.add(String(k));          // shared objectives
 }
 // a guest: the whole world from the host, once, when joining
 export function applyWorld(gm, s) {
   gm.T = s.T; gm.Tnet = s.T; gm.TnetAt = performance.now();
   if (ISL.DIFF[s.diff]) G.lobby.opts.diff = s.diff;
-  applyShared(gm, { it: s.items, home: s.home, fe: s.fe, go: s.go, ho: s.ho || [], op: s.op, kn: s.kn, en: s.en, dm: s.dm, wa: s.wa, dn: s.dn, rp: s.rp, dy: s.dy });
+  applyShared(gm, { it: s.items, home: s.home, fe: s.fe, go: s.go, ho: s.ho || [], op: s.op, kn: s.kn, en: s.en, dm: s.dm, wa: s.wa, dn: s.dn, rp: s.rp, dy: s.dy, ob: s.ob });
   gm.home.air = s.air || 0;
   for (const a of s.props || []) {
     const o = gm.world.props[a[0]];

@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { kn } from './keys.js';
 import * as ISL from './island.js';
 import * as SFX from './sfx.js';
+import { glowTex } from './scene.js';
 
 let H = null;                       // helpers from work.js: { act, hint }
 const PRINTS = 260, ROPE_MAX = 60, _v = new THREE.Vector3(), _a = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -23,7 +24,7 @@ export function initFx(gm, helpers) {
   im.count = PRINTS; im.frustumCulled = false; im.renderOrder = 1;
   for (let i = 0; i < PRINTS; i++) { im.setMatrixAt(i, _m.makeScale(0, 0, 0)); gm.fx.prints.push({ t: -1, life: 0 }); }
   gm.scene.add(im);
-  const bm = new THREE.SpriteMaterial({ color: '#e8f0f6', transparent: true, opacity: 0, depthWrite: false });
+  const bm = new THREE.SpriteMaterial({ map: glowTex('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'), color: '#e8f0f6', transparent: true, opacity: 0, depthWrite: false });
   for (let i = 0; i < 18; i++) { const s = new THREE.Sprite(bm.clone()); s.visible = false; gm.scene.add(s); gm.fx.puffs.push({ s, t: 1, v: new THREE.Vector3() }); }
   gm.fx.ropeG = new THREE.Group(); gm.scene.add(gm.fx.ropeG);
 }
@@ -92,22 +93,28 @@ export function fxTick(gm, dt, env) {
   F.frostT -= dt;
   if (F.frostT <= 0 && typeof document !== 'undefined') {
     F.frostT = 2;
+    // (the thing itself turns paler: its materials swapped for frosted copies, put back when it moves)
     if (env.light < 0.3) for (const it of gm.world.stash.list.values()) {
       if (it.frost || it.body || !it.rest || it.type === 'trunk' || gm.world.inShack(it.mesh.position) || gm.world.shelter?.(it.mesh.position)) continue;
-      const bb = new THREE.Box3().setFromObject(it.mesh), sz = bb.getSize(_a);
-      if (sz.x > 3 || sz.z > 3) continue;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.05, sz.x * 0.9), 0.012, Math.max(0.05, sz.z * 0.9)), frostMat());
-      cap.position.set((bb.min.x + bb.max.x) / 2, bb.max.y + 0.004, (bb.min.z + bb.max.z) / 2);
-      gm.scene.add(cap); it.frost = cap;
+      it.mesh.traverse(o => { if (o.isMesh && o.material && !o.userData.thaw) { o.userData.thaw = o.material; o.material = frosted(o.material); } });
+      it.frost = true;
     }
-    for (const it of gm.world.stash.list.values()) if (it.frost && (it.body || !gm.world.stash.list.has(it.id))) { gm.scene.remove(it.frost); it.frost = null; }
+    for (const it of gm.world.stash.list.values()) if (it.frost && it.body) unfrost(gm, it);
   }
   ropesTick(gm);
 }
-let FM = null;
-const frostMat = () => FM || (FM = new THREE.MeshStandardMaterial({ color: '#f4f8fb', roughness: 0.6, transparent: true, opacity: 0.85 }));
-// a thing picked up or gone: its frost goes too (work.js / items.js call this through the stash's remove)
-export function unfrost(gm, it) { if (it?.frost) { gm.scene.remove(it.frost); it.frost = null; } }
+const FROST = new Map();
+function frosted(m) {
+  let f = FROST.get(m);
+  if (!f) { f = m.clone(); if (f.color) f.color.lerp(new THREE.Color('#e9f1f6'), 0.5); f.roughness = 1; FROST.set(m, f); }
+  return f;
+}
+// it moved or was picked up: its own look back
+export function unfrost(gm, it) {
+  if (!it?.frost) return;
+  it.mesh.traverse(o => { if (o.userData.thaw) { o.material = o.userData.thaw; delete o.userData.thaw; } });
+  it.frost = false;
+}
 
 // ---------- guide ropes ----------
 function ropesTick(gm) {

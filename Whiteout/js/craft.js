@@ -36,7 +36,7 @@ const SPREADS = [
       <p>Find the page. Lay what it asks for on the bench and work it with your hands. That's all there is to it.</p>
       <p>Wood: wet wood smokes and gives nothing. Stack it by the stove a few <s>hours</s> minutes first.</p>
       <p>Gaps: boards from inside hold. Snow packed from outside holds until the next storm.</p>
-      <p class="keys">${kn('left')} / ${kn('right')} or the arrows turn the pages · ${kn('use')} or Esc closes</p>` },
+      <p class="keys">${kn('left')} / ${kn('right')} or the arrows turn the pages · Esc closes</p>` },
   { left: () => page('boards', SKETCH.boards, 'Split along the grain, a log gives two rough boards. Any axe will do it.'),
     right: () => recipeSide('boards', ['Burn them or build with them? A board in the stove is an hour of heat. Nailed over a gap it saves heat every night after.', '<s>Burn them, it\'s cold</s> — no. Patch the walls first.']) },
   { left: () => page('sharpen', SKETCH.whet, 'A dull axe takes twice the blows. Sit at the bench with a good flat stone and work the edge until it bites again.'),
@@ -142,7 +142,7 @@ export function closeBook(gm) {
 export function bookKey(gm, e) {
   if (!gm.bookOpen) return false;
   const c = e.code;
-  if (c === 'Escape' || c === 'Tab' || c === 'KeyE' || c === kn2('use') || c === kn2('inventory')) { e.preventDefault(); closeBook(gm); return true; }
+  if (c === 'Escape') { e.preventDefault(); if (!e.repeat) closeBook(gm); return true; }
   if (c === 'ArrowLeft' || c === 'KeyA' || c === kn2('left')) { e.preventDefault(); if (!e.repeat) flip(gm, -1); return true; }
   if (c === 'ArrowRight' || c === 'KeyD' || c === kn2('right')) { e.preventDefault(); if (!e.repeat) flip(gm, 1); return true; }
   return true;                 // nothing else does anything while you read

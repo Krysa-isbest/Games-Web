@@ -483,6 +483,7 @@ function hud(gm, dt) {
   d.hu.classList.toggle('low', p.hunger < 25); d.th.classList.toggle('low', p.thirst < 25);
   // the smoke, what you carry, what you can do here
   d.smokeBox.classList.toggle('show', gm.smoke > 0.02);
+  { const st = gm.home.stove; setText(gm, 'smokeL', d.smokeBox.querySelector('small'), gm.inShack && st.pipe && st.wet > 0 ? 'Smoke · wet wood burning' : 'Smoke'); }
   d.smokeBar.style.width = (gm.smoke * 100).toFixed(1) + '%';
   d.smokeBox.classList.toggle('bad', gm.smoke > 0.7);
   d.smokefx.style.opacity = (gm.smokeView * 0.8).toFixed(3);

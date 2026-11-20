@@ -312,7 +312,7 @@ export class Stash {
     if (v) body.setLinvel({ x: v[0], y: v[1], z: v[2] }, true);
     if (w) body.setAngvel({ x: w[0], y: w[1], z: w[2] }, true);
     it.body = body; it.rest = false; it.sleepT = 0; it.buried = 0;
-    if (it.frost) { this.scene.remove(it.frost); it.frost = null; }
+    if (it.frost) { m.traverse(o => { if (o.userData.thaw) { o.material = o.userData.thaw; delete o.userData.thaw; } }); it.frost = false; }      // (step 7e: frost, fx.js)
   }
   // it lies still: no more physics
   settle(it) {
@@ -326,7 +326,6 @@ export class Stash {
     if (!it) return null;
     if (it.body) { for (let i = 0; i < it.body.numColliders(); i++) this.byCol.delete(it.body.collider(i).handle); this.phys.removeRigidBody(it.body); it.body = null; }
     this.scene.remove(it.mesh);
-    if (it.frost) { this.scene.remove(it.frost); it.frost = null; }          // (step 7e: the frost on it, fx.js)
     this.list.delete(id); this.rev++;
     return it;
   }

@@ -1,11 +1,13 @@
 // Whiteout: objectives and the diary (step 7e).
 // Objectives: a short chain that tells a new player what to do next, one line at the top of the screen (and the whole
-// list in the journal, J). Each one is done once (kept in your record, `ob`).
+// list in the journal, J). Each one is done once (kept in your record, `ob`). In co-op they are shared: whoever does
+// one does it for the crew (a guest tells the host, the host sends the list round with the world).
 // The diary: every morning the host writes a few lines about the day before (the weather, trees felled, who went
 // through the ice, who was carried in from the cold, flares, what was found), for the whole crew to read in the
 // journal. It goes out with the shared world and into the save.
 import { G, S } from './state.js';
 import * as ISL from './island.js';
+import { on, send } from './net.js';
 
 let H = null;                      // helpers from game.js: { announce }
 export const GOALS = [
@@ -26,7 +28,7 @@ export function initObj(gm, helpers) {
   gm.ob ??= new Set();
   gm.diary ??= [];
   gm.dayLog = { day: 0, ev: [] };
-  gm.objT = 0;
+  gm.objT = 0; GO = gm;
   gm.dom.root.insertAdjacentHTML('beforeend', '<div class="gm-goal hidden"></div>');
   gm.dom.goal = gm.dom.root.querySelector('.gm-goal');
 }
@@ -37,7 +39,8 @@ export function objTick(gm, dt, env) {
   gm.objTk = 0.5;
   // done ones stay done; when one is done, say what's next
   let changed = false;
-  for (const g of GOALS) if (!gm.ob.has(g.id) && g.done(gm)) { gm.ob.add(g.id); changed = true; }
+  for (const g of GOALS) if (!gm.ob.has(g.id) && g.done(gm)) { gm.ob.add(g.id); changed = true; if (gm.role === 'guest') send('p0', { t: 'g-ob', id: g.id }); }
+  if (gm.obSeen !== gm.ob.size) { if (gm.obSeen != null && gm.obSeen < gm.ob.size) changed = true; gm.obSeen = gm.ob.size; }        // (also when the crew did one)
   const next = goalNow(gm);
   const t = next && gm.escaped && gm.life?.st !== 'dead' && !gm.life?.ended ? `▸ ${next.title}` : '';
   if (gm.txt.goal !== t) { gm.txt.goal = t; gm.dom.goal.textContent = t; gm.dom.goal.classList.toggle('hidden', !t); }
@@ -77,5 +80,9 @@ function diaryTick(gm, env) {
   if (gm.diary.length > 60) gm.diary.shift();
   H.announce(gm, 'The diary', `Day ${day} is written down (the journal, J).`, 'Morning');
 }
+// the host: a guest did one (the list goes round with the world: work.js sharedSnap, sync.js applyShared)
+let GO = null;
+export function obGame(gm) { GO = gm; }
+on('g-ob', m => { if (GO && GO.role === 'host' && GOALS.some(g => g.id === m.id)) GO.ob.add(m.id); });
 export const objRecord = gm => [...(gm.ob || [])];
 export function objRestore(gm, list) { if (Array.isArray(list)) for (const k of list) gm.ob.add(String(k)); }

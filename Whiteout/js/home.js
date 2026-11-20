@@ -51,7 +51,7 @@ export class Home {
     if (st.fuel >= STOVE_MAX - 30) return false;
     const v = Home.value(type, dry);
     st.fuel = Math.min(STOVE_MAX, st.fuel + v);
-    if (TYPES[type].wood && dry < 0.6) st.wet = Math.min(st.fuel, st.wet + v * (1 - dry));      // wet or damp wood smokes while it burns
+    if (TYPES[type].wood && dry < 0.6) st.wet = Math.min(st.fuel, st.wet + v * (1 - dry) * 0.5);      // wet or damp wood smokes while it burns
     return true;
   }
   light() { const st = this.stove; if (st.lit || st.fuel <= 0) return false; st.lit = true; st.temp = Math.max(st.temp, 0.08); return true; }

@@ -426,7 +426,7 @@ function sharedSnap(gm, full) {
   const w = gm.world, m = { t: 'g-s', home: gm.home.snap(), ho: [...w.holes.values()].map(h => [h.id, h.x, h.z, h.at]), fe: [...w.felled].map(i => [i, Math.round(w.trees[i].at)]), go: w.props.map((p, i) => (p.gone ? i : -1)).filter(i => i >= 0),
     op: w.props.map((p, i) => (p.open ? i : -1)).filter(i => i >= 0), kn: [...(gm.known || [])], en: endsSnap(gm), dm: dailySnap(gm),
     wa: watchSnap(gm), dn: denSnap(gm), rp: gm.ropes || [] };
-  if (full) { m.it = w.stash.snap(); m.dy = gm.diary || []; }
+  if (full) { m.it = w.stash.snap(); m.dy = gm.diary || []; m.ob = [...(gm.ob || [])]; }
   return m;
 }
 // a sound the whole crew should hear from where it happens: you hear it here, the others get told
