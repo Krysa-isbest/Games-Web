@@ -53,6 +53,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .flags{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .flag.big{color:#fff;background:rgba(184,80,47,.94)}
 .flag.vr{color:#fff;background:rgba(32,120,160,.94)}
+.flag.play{color:#fff;background:rgba(46,140,80,.94)}
 .flag{
   font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
@@ -162,8 +163,8 @@ const GAMES = [
     ]
   },
   {
-    file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout',
-    desc: 'A private jet goes down over a frozen island. Survive in a ruined hunters\' shack: fix it up, keep the fire going, fish and hunt, and find a way to be rescued. Right now: the opening, getting out of the burning plane, the island with the cold, day and night and storms, the ruined shack you keep warm with the axe, firewood and the stove, the workbench with its crafting book, food and ice fishing, and co-op with saved games, voice chat, rescues, night shifts and thin ice, places out on the island (the plane\'s tail section, a dead survivors\' camp, the watchtower, two caves), an island that changes every day, and three ways to be rescued.',
+    file: 'Whiteout/index.html', title: 'Whiteout', subtitle: 'Crash. Freeze. Escape.', art: 'whiteout', big: true, playtest: true,
+    desc: 'A private jet goes down over a frozen island. Keep a ruined shack warm, fish through the ice, explore wrecks, camps and caves, and survive alone or with friends until you find a way to be rescued.',
     mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op survival',
     updating: true, changelog: [
       { version: '0.13', date: '2026-11-20', notes: [
@@ -781,7 +782,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${g.big || g.updating || g.vrtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
+        ${g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag play">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
