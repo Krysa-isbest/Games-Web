@@ -44,15 +44,18 @@ export const Sound = {
 
 // filtered white noise: scratches, hisses, thumps
 let noiseBuf = null;
-Sound.noise = (dur, { freq = 2000, q = 1, vol = 0.1, filter = 'bandpass', to = 0, channel = 'ui', delay = 0 } = {}) => {
-  if (!ctx || ctx.state !== 'running') return;
+function noise() {
   if (!noiseBuf) {
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
+  return noiseBuf;
+}
+Sound.noise = (dur, { freq = 2000, q = 1, vol = 0.1, filter = 'bandpass', to = 0, channel = 'ui', delay = 0 } = {}) => {
+  if (!ctx || ctx.state !== 'running') return;
   const t = ctx.currentTime + delay, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-  src.buffer = noiseBuf; src.loop = true;
+  src.buffer = noise(); src.loop = true;
   f.type = filter; f.Q.value = q;
   f.frequency.setValueAtTime(freq, t);
   if (to) f.frequency.exponentialRampToValueAtTime(to, t + dur);
@@ -61,6 +64,31 @@ Sound.noise = (dur, { freq = 2000, q = 1, vol = 0.1, filter = 'bandpass', to = 0
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   src.connect(f); f.connect(g); g.connect(gains[channel] || gains.ui);
   src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
+};
+// A noise that keeps playing (a slide's scrape, the hiss of gas). handle.set(volume, frequency), handle.stop().
+const SILENT = { set() {}, stop() {} };
+Sound.loop = ({ freq = 1000, q = 1, filter = 'bandpass', channel = 'sfx' } = {}) => {
+  if (!ctx) return SILENT;
+  const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = noise(); src.loop = true;
+  f.type = filter; f.frequency.value = freq; f.Q.value = q;
+  g.gain.value = 0;
+  src.connect(f); f.connect(g); g.connect(gains[channel] || gains.sfx);
+  src.start();
+  let stopped = false;
+  return {
+    set(vol, fr) {
+      if (stopped) return;
+      const t = ctx.currentTime;
+      g.gain.setTargetAtTime(Math.max(0, vol), t, 0.06);
+      if (fr) f.frequency.setTargetAtTime(fr, t, 0.06);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      try { g.gain.setTargetAtTime(0, ctx.currentTime, 0.05); src.stop(ctx.currentTime + 0.4); } catch { /* already stopped */ }
+    },
+  };
 };
 
 // Short, dry interface sounds: a soft tick on hover, a click with a little body, a whoosh when the menu opens.

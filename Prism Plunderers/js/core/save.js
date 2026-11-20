@@ -81,13 +81,14 @@ if (typeof addEventListener === 'function') {
 
 // ---------- settings ----------
 export const SETTINGS_DEFAULTS = {
-  v: 1,
+  v: 2,
   // controls
   sens: 1, aimSens: 0.7, invertY: false, rawMouse: true,
   sprintMode: 'hold', crouchMode: 'hold', aimMode: 'hold',
   fullscreenPlay: true,
   // graphics (the full menu comes with the settings part; the engine already reads these)
-  preset: 'high', scale: 1, dynRes: false, fpsCap: 0, fov: 75, aa: 'msaa', shadows: 'high', showFps: false,
+  // fov: horizontal field of view in degrees, measured on a 16:9 screen
+  preset: 'high', scale: 1, dynRes: false, fpsCap: 0, fov: 90, aa: 'msaa', shadows: 'high', showFps: false,
   // audio
   vol: 0.8, music: 0.6, sfx: 1, ui: 0.7, ambient: 0.8,
 };
@@ -111,8 +112,11 @@ export const PROFILE_DEFAULTS = {
   flags: { introSeen: false },
 };
 
+// v1 had a vertical 75° default; v2 measures FOV horizontally (default 90°). An untouched old default moves over.
+const migrateSettings = old => { if ((old.v || 1) < 2 && old.fov === 75) old.fov = 90; return old; };
+
 export const Stores = {
-  settings: makeStore('settings', SETTINGS_DEFAULTS),
+  settings: makeStore('settings', SETTINGS_DEFAULTS, migrateSettings),
   profile: makeStore('profile', PROFILE_DEFAULTS),
 };
 export const S = Stores.settings.data;

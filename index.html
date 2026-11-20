@@ -149,9 +149,18 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 const GAMES = [
   {
     file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
-    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: the foundation build, with a test range to try the controls. Online co-op for up to 4 comes in a later update.',
+    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: your raider and a test range to run, slide, roll and get shot at. The Prism robots come next; online co-op for up to 4 comes later.',
     mp: null, lang: 'English', genre: 'Extraction shooter · PvE',
     updating: true, changelog: [
+      { version: '0.2', date: '2026-11-20', notes: [
+        'Your raider: a third-person character with a hood, helmet and backpack, animated from how you move. You also see them standing in the lobby.',
+        'Movement: run, sprint, jump, crouch, slide (crouch while sprinting, faster downhill) and a dodge roll on Alt that lets bolts pass through you in the middle of the roll. Sprinting, jumping, rolling and sliding cost stamina.',
+        'Health and shields: 500 health, and light, medium and heavy shields that take 30, 40 or 50% off your health damage until they break. Repair the light one, recharge the others; getting hit interrupts it.',
+        'Falls over about 4 m hurt (a 7 m drop costs about 190 health), and steep slopes cannot be walked up.',
+        'A new test range: stairs, ramps, jump boxes, a crouch tunnel, a gap to sprint-jump, a drop tower, a slide hill, a gas pit, training sentries that lock on and fire, and stations to swap shields, repair them and heal.',
+        'A HUD with health and shield bars, stamina, hit direction markers, a death screen and respawn.',
+        'The field of view setting is now horizontal (default 90°).'
+      ] },
       { version: '0.1', date: '2026-11-11', notes: [
         'The foundation build: the main menu, with a Fink (a Prism scout robot) hovering in the dark.',
         'A test range: fly a free camera over a block city and try every key. Each of the 21 actions lights up on screen while you hold its key.',

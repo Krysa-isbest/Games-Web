@@ -12,8 +12,13 @@ let on = false, next = 0;
 const k = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
 
 export const Debug = {
+  extra: null,                       // a scene can add its own lines: Debug.extra = () => 'text'
   init() {
-    bus.on('input:debug', () => { on = !on; $('debug').classList.toggle('hidden', !on); next = 0; });
+    bus.on('input:debug', () => {
+      on = !on; next = 0;
+      $('debug').classList.toggle('hidden', !on);
+      document.body.classList.toggle('debug', on);    // also shows the key tester in the test range
+    });
   },
   frame() {
     const now = performance.now();
@@ -32,6 +37,7 @@ export const Debug = {
       `input ${Input.context}   mouse ${Input.locked ? 'captured' : 'free'}   fullscreen ${Input.isFullscreen ? 'yes' : 'no'}   key lock ${Input.keysSafe ? 'yes' : 'no'}`,
       `held  ${Input.heldActions().join(' ') || '-'}`,
       `save  ${persistent ? 'browser storage' : 'MEMORY ONLY'}   settings ${Stores.settings.size()} B   profile ${Stores.profile.size()} B`,
+      ...(Debug.extra ? [Debug.extra()] : []),
     ].join('\n');
   },
 };

@@ -11,14 +11,15 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
 } }
 </script>
 </head>
 <body data-mode="menu" data-ui="">
 <canvas id="view"></canvas>
 <div id="vignette"></div>
-<div id="fade" class="on"></div>
+<div id="fade" class="on"><span id="fade-msg"></span></div>
 
 <!-- icons, drawn once and reused with <use> -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -34,6 +35,8 @@
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="1.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V3M5 4h12l-2.5 4L17 12H5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 20 5v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z" fill="currentColor"/></symbol>
+  <symbol id="i-health" viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="currentColor"/></symbol>
 </svg>
 
 <!-- splash: two typed lines, then the title -->
@@ -199,11 +202,35 @@
   </div>
 </section>
 
-<!-- test range HUD -->
+<!-- in-game HUD -->
 <div id="hud" class="hidden">
-  <div class="cross"></div>
-  <div class="hud-top"><span class="tag-label">TEST RANGE</span><span id="hud-hint"></span></div>
+  <div class="hud-hurt" id="hud-hurt"></div>
+  <div class="hud-low" id="hud-low"></div>
+  <div class="hud-dirs" id="hud-dirs"><i></i><i></i><i></i><i></i></div>
+  <div class="xhair" id="xhair"><i></i></div>
+  <div class="stam" id="stam"><i id="stam-fill"></i></div>
+  <div class="hud-pop" id="hud-pop"></div>
+  <div class="prompt hidden" id="prompt">
+    <span class="pr-key"><svg viewBox="0 0 36 36"><circle class="pr-bg" cx="18" cy="18" r="16"/><circle class="pr-ring" id="pr-ring" cx="18" cy="18" r="16"/></svg><b id="pr-key">E</b></span>
+    <span class="pr-text" id="pr-text"></span>
+  </div>
+  <div class="vitals">
+    <div class="v-row v-shield none" id="v-shield">
+      <svg class="v-ico"><use href="#i-shield"/></svg>
+      <div class="v-bar"><i class="v-ghost" id="vs-ghost"></i><i class="v-fill" id="vs-fill"></i></div>
+      <span class="v-txt" id="vs-txt">No shield</span>
+    </div>
+    <div class="v-row v-health" id="v-health">
+      <svg class="v-ico"><use href="#i-health"/></svg>
+      <div class="v-bar"><i class="v-ghost" id="vh-ghost"></i><i class="v-fill" id="vh-fill"></i></div>
+      <b class="v-num" id="vh-num">500</b>
+    </div>
+  </div>
+  <div class="hud-top"><span class="tag-label">Test range</span><span id="hud-hint"></span></div>
   <div class="chips" id="hud-chips"></div>
+</div>
+<div id="death" class="hidden">
+  <div class="d-in"><small>Raider down</small><h2>You died</h2><p id="death-cause"></p><p class="d-timer" id="death-timer"></p></div>
 </div>
 <div id="pause" class="hidden">
   <div class="pz">

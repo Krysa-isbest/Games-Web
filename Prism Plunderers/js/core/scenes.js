@@ -29,6 +29,7 @@ export const Scenes = {
   async go(name, params = {}) {
     if (busy) { queued = [name, params]; return; }
     busy = true;
+    let next = null;
     try {
       fade()?.classList.add('on');
       if (cur) {
@@ -38,7 +39,7 @@ export const Scenes = {
       }
       const make = registry.get(name);
       if (!make) throw new Error('Unknown scene: ' + name);
-      const next = await make();
+      next = await make();
       next.name = name;
       await next.enter?.(params);
       next.resize?.(Engine.w, Engine.h);
@@ -46,7 +47,9 @@ export const Scenes = {
       bus.emit('scene', name);
     } catch (e) {
       console.error(e);
+      try { next?.exit?.(); } catch { /* it never fully opened */ }
       bus.emit('scene:error', e);
+      if (name !== 'menu' && !queued) queued = ['menu', {}];   // back to the lobby rather than an empty screen
     } finally {
       fade()?.classList.remove('on');
       busy = false;

@@ -1,232 +1,230 @@
-// The test range: a free-flying camera over a block city. It exists to prove the foundation works (loop,
-// input, rebinding, mouse capture, pooling, instancing, scene switching) and stays as the developer sandbox.
+// The test range: walk the course as your raider, in third person. Running, sprinting and stamina, jumping,
+// crouching, sliding, the dodge roll, falling, health and the three shields can all be tried here, against
+// training sentries and a gas pit, with stations to swap shields, repair them and heal.
 import * as THREE from 'three';
-import { Engine, disposeTree, fitCamera, refreshMaterials, SHADOW_SIZE } from '../core/engine.js';
+import { Engine, disposeTree, fitCamera, refreshMaterials } from '../core/engine.js';
 import { Input, ACTIONS, kn } from '../core/input.js';
 import { Scenes } from '../core/scenes.js';
-import { Sound } from '../core/sound.js';
-import { S } from '../core/save.js';
+import { S, P } from '../core/save.js';
 import { bus } from '../core/events.js';
-import { Pool, rng, clamp, damp, $, esc } from '../core/util.js';
+import { TICK } from '../core/config.js';
+import { loadPhysics, Physics, G } from '../core/physics.js';
+import { $, esc } from '../core/util.js';
 import { UI } from '../ui/screens.js';
+import { Debug } from '../ui/debug.js';
+import { createPlayer, attachBody, detachBody, stepPlayer, respawnPlayer } from '../game/player.js';
+import { readCommand, idleCommand } from '../game/controls.js';
+import { angDiff, fwdX, fwdZ } from '../game/move-math.js';
+import { ROLL, BODY } from '../game/stats.js';
+import { Raider } from '../game/raider.js';
+import { OrbitCam } from '../game/camera.js';
+import { Hud } from '../game/hud.js';
+import { Sfx } from '../game/sfx.js';
+import { Sound } from '../core/sound.js';
+import { addSky, glowTexture } from '../world/sky.js';
+import { buildRange } from '../world/range.js';
+
+const RESPAWN = 4;
 
 export default function createTestRange() {
   const scene = new THREE.Scene();
-  const SKY = 0x4b3f5c;
-  scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.Fog(SKY, 50, 330);
-  const camera = new THREE.PerspectiveCamera(S.fov, Engine.w / Engine.h, 0.1, 500);
-  scene.add(camera);                                    // so the flashlight, a child of the camera, is drawn
+  const camera = new THREE.PerspectiveCamera(60, Engine.w / Engine.h, 0.05, 900);
+  let phys = null, sky = null, range = null, player = null, raider = null, cam = null, hud = null, glow = null;
+  let paused = true, deadT = 0, beatT = 0, slideLoop = null, gasLoop = null;
+  const offs = [];
 
-  // ---------- light ----------
-  scene.add(new THREE.HemisphereLight(0x9a90d0, 0x3d3229, 1.0));
-  const sun = new THREE.DirectionalLight(0xffb98a, 2.3);
-  const SUN = new THREE.Vector3(70, 60, 30);
-  scene.add(sun, sun.target);
-  function setupShadows() {
-    const size = SHADOW_SIZE[S.shadows] || 0;
-    sun.castShadow = size > 0;
-    if (!size) return;
-    if (sun.shadow.mapSize.x !== size) { sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(size, size); }
-    const c = sun.shadow.camera;
-    c.left = c.bottom = -90; c.right = c.top = 90; c.near = 1; c.far = 260;
-    c.updateProjectionMatrix();
-    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
-  }
-  setupShadows();
-  const lamp = new THREE.SpotLight(0xfff4e0, 0, 80, 0.5, 0.5, 1.3);
-  lamp.position.set(0.3, -0.25, 0);
-  lamp.target.position.set(0, 0, -1);
-  camera.add(lamp, lamp.target);
-
-  // ---------- world ----------
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 420), new THREE.MeshStandardMaterial({ color: 0x75695c, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const grid = new THREE.GridHelper(420, 105, 0x2b2436, 0x4d4359);
-  grid.position.y = 0.02;
-  grid.material.transparent = true; grid.material.opacity = 0.35;
-  scene.add(grid);
-
-  // 240 ruin blocks in ONE draw call (instancing). The seed makes the same city on every computer.
-  const COUNT = 240;
-  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), COUNT);
-  {
-    const R = rng(2999), m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
-    for (let i = 0; i < COUNT; i++) {
-      const a = R() * Math.PI * 2, d = 14 + Math.pow(R(), 0.7) * 165;
-      s.set(R.range(2, 9), R.chance(0.2) ? R.range(10, 26) : R.range(1, 8), R.range(2, 9));
-      p.set(Math.cos(a) * d, s.y / 2 - 0.05, Math.sin(a) * d);
-      const tilt = R.chance(0.15);
-      e.set(tilt ? R.range(-0.25, 0.25) : 0, R() * Math.PI, tilt ? R.range(-0.25, 0.25) : 0);
-      blocks.setMatrixAt(i, m.compose(p, q.setFromEuler(e), s));
-      blocks.setColorAt(i, col.setHSL(0.08 + R() * 0.03, 0.08 + R() * 0.08, 0.34 + R() * 0.2));
-    }
-    blocks.instanceMatrix.needsUpdate = true;
-    blocks.instanceColor.needsUpdate = true;
-    blocks.computeBoundingSphere();
-  }
-  blocks.castShadow = blocks.receiveShadow = true;
-  scene.add(blocks);
-
-  // ---------- pooled things ----------
-  const boltGeo = new THREE.BoxGeometry(0.09, 0.09, 1.4), boltMat = new THREE.MeshBasicMaterial({ color: 0xcdb0ff });
-  const bolts = new Pool(() => {
-    const o = new THREE.Mesh(boltGeo, boltMat);
-    o.visible = false;
-    o.userData = { vel: new THREE.Vector3(), prev: new THREE.Vector3(), pos: new THREE.Vector3(), life: 0 };
-    scene.add(o);
-    return o;
-  }, { reset: o => { o.visible = false; }, size: 24 });
-  const ringGeo = new THREE.RingGeometry(0.8, 1, 40);
-  const pings = new Pool(() => {
-    const o = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xa36bff, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-    o.rotation.x = -Math.PI / 2;
-    o.visible = false;
-    o.userData = { life: 0 };
-    scene.add(o);
-    return o;
-  }, { reset: o => { o.visible = false; }, size: 4 });
-
-  // ---------- the flying camera ----------
-  const pos = new THREE.Vector3(0, 7, 34), prev = pos.clone(), vel = new THREE.Vector3();
-  const wish = new THREE.Vector3(), fwd = new THREE.Vector3(), rgt = new THREE.Vector3(), dir = new THREE.Vector3();
-  let yaw = 0, pitch = -0.12, fireCd = 0, lampOn = false, fov = S.fov;
-
-  function fixed(dt) {
-    prev.copy(pos);
-    const mv = Input.move();
-    fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-    rgt.set(Math.cos(yaw), 0, -Math.sin(yaw));
-    wish.set(0, 0, 0).addScaledVector(fwd, mv.y).addScaledVector(rgt, mv.x);
-    wish.y = (Input.held('jump') ? 1 : 0) - (Input.active('crouch') ? 1 : 0);
-    wish.multiplyScalar(Input.active('sprint') ? 28 : 10);
-    vel.lerp(wish, 1 - Math.exp(-9 * dt));
-    if (Input.pressed('roll')) vel.addScaledVector(fwd, 45);              // a dash, to show a one-shot press
-    pos.addScaledVector(vel, dt);
-    pos.x = clamp(pos.x, -200, 200); pos.z = clamp(pos.z, -200, 200); pos.y = clamp(pos.y, 1.2, 120);
-
-    dir.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
-    fireCd -= dt;
-    if (Input.held('fire') && fireCd <= 0) {
-      fireCd = 0.11;
-      const b = bolts.get(), u = b.userData;
-      u.pos.copy(pos).addScaledVector(dir, 1.2); u.pos.y -= 0.25;
-      u.prev.copy(u.pos); u.vel.copy(dir).multiplyScalar(110); u.life = 1.6;
-      b.position.copy(u.pos); b.lookAt(u.pos.x + dir.x, u.pos.y + dir.y, u.pos.z + dir.z);
-      b.visible = true;
-      Sound.tone(880, 0.06, { type: 'square', vol: 0.05, to: 240, channel: 'sfx' });
-    }
-    bolts.each(b => {
-      const u = b.userData;
-      u.prev.copy(u.pos); u.pos.addScaledVector(u.vel, dt);
-      u.life -= dt;
-      if (u.life <= 0 || u.pos.y < 0) bolts.put(b);
-    });
-
-    if (Input.pressed('ping') && dir.y < -0.02) {
-      const d = Math.min(-pos.y / dir.y, 320), p = pings.get();
-      p.position.set(pos.x + dir.x * d, 0.06, pos.z + dir.z * d);
-      p.userData.life = 4; p.visible = true;
-      Sound.tone(1320, 0.18, { vol: 0.12, to: 1760, channel: 'sfx' });
-    }
-    pings.each(p => {
-      const u = p.userData;
-      u.life -= dt;
-      if (u.life <= 0) { pings.put(p); return; }
-      const k = 1 - u.life / 4;
-      p.scale.setScalar(1 + k * 3 + Math.sin(k * 40) * 0.08);
-      p.material.opacity = 0.9 * (1 - k);
-    });
-
-    if (Input.pressed('flashlight')) { lampOn = !lampOn; lamp.intensity = lampOn ? 420 : 0; Sound.tone(lampOn ? 1500 : 900, 0.03, { vol: 0.08, channel: 'sfx' }); }
-  }
-
-  // ---------- HUD ----------
-  const chips = {};
-  function buildHud() {
-    $('hud-hint').innerHTML =
-      `<b>${esc(['forward', 'left', 'back', 'right'].map(kn).join(' '))}</b> fly  <b>${esc(kn('sprint'))}</b> fast  <b>${esc(kn('jump'))}</b> up  <b>${esc(kn('crouch'))}</b> down  ` +
-      `<b>${esc(kn('roll'))}</b> dash  <b>${esc(kn('fire'))}</b> bolts  <b>${esc(kn('aim'))}</b> zoom  <b>${esc(kn('ping'))}</b> ping the ground  <b>${esc(kn('flashlight'))}</b> light  <b>Esc</b> pause  <b>F3</b> debug`;
+  // ---------- HUD helpers ----------
+  function hints() {
+    const move = ['forward', 'left', 'back', 'right'].map(kn).join(' ');
+    const k = (a, t) => `<b>${esc(kn(a))}</b> ${t}`;
+    $('hud-hint').innerHTML = [`<b>${esc(move)}</b> move`, k('sprint', 'sprint'), k('jump', 'jump'), k('crouch', 'crouch, slide while sprinting'),
+      k('roll', 'dodge roll'), k('aim', 'aim'), k('interact', 'use'), '<b>Esc</b> pause', '<b>F3</b> debug'].join('<i></i>');
     const box = $('hud-chips');
     box.innerHTML = '';
     for (const [a, d] of Object.entries(ACTIONS)) {
       const c = document.createElement('span');
       c.innerHTML = `<b>${esc(kn(a))}</b>${esc(d.name)}`;
+      c.dataset.a = a;
       box.append(c);
-      chips[a] = { el: c, on: false };
     }
   }
-  function updateChips() {
-    for (const a in chips) {
-      const c = chips[a], on = Input.held(a, true);
-      if (on !== c.on) { c.on = on; c.el.classList.toggle('on', on); }
+  function chips() {
+    if (!document.body.classList.contains('debug')) return;
+    for (const c of $('hud-chips').children) {
+      const on = Input.held(c.dataset.a, true);
+      if (on !== c.classList.contains('on')) c.classList.toggle('on', on);
     }
   }
 
-  // ---------- pause / mouse capture ----------
+  // ---------- pause and mouse capture ----------
   const showPause = on => $('pause').classList.toggle('hidden', !on);
-  // The mouse is asked for first: going fullscreen uses up the click, and the browser wants a fresh click
-  // for the mouse capture.
   async function grab(quiet) {
     const got = Input.lock();
     if (S.fullscreenPlay) Input.fullscreen(true);
     if (!await got && !quiet) UI.toast('Click Resume again to capture the mouse.');
   }
-  const resume = () => grab(false);
   function onLock(locked) {
+    paused = !locked;
     Input.setContext(locked ? 'game' : 'ui');
-    showPause(!locked);
+    showPause(!locked && !UI.current);
+    Input.guard(locked);
     $('pz-keys').textContent = Input.isFullscreen
       ? (Input.keysSafe ? 'Fullscreen: browser shortcuts such as Ctrl+W are blocked.' : 'Fullscreen.')
       : 'Windowed: Ctrl+W closes the browser tab. Fullscreen blocks it.';
   }
-  const offs = [];
+
+  // ---------- sounds and screen reactions to what the player does ----------
+  function listen() {
+    const me = t => t === player;
+    offs.push(
+      bus.on('player:jump', t => { if (me(t)) Sfx.jump(); }),
+      bus.on('player:land', (t, v) => { if (me(t) && v > 2) { Sfx.land(t.landPower); if (v > 9) cam.kick(Math.min(1, (v - 9) / 10)); } }),
+      bus.on('player:roll', t => { if (me(t)) Sfx.roll(); }),
+      bus.on('player:slide', t => { if (me(t)) Sfx.slide(); }),
+      bus.on('player:nostamina', t => { if (me(t)) Sfx.deny(); }),
+      bus.on('player:use', t => { if (me(t)) Sfx.use(); }),
+      bus.on('player:dead', t => { if (me(t)) { Sfx.death(); deadT = 0; showDeath(true); } }),
+      bus.on('player:respawn', t => { if (me(t)) showDeath(false); }),
+      bus.on('damage', (t, hit, r) => {
+        if (!me(t)) return;
+        if (r.dodged) { Sfx.dodge(); return; }
+        if (r.broke) Sfx.shieldBreak(); else if (r.shield > 0) Sfx.shieldHit();
+        if (r.health > 0 && hit.type !== 'gas') Sfx.hurt(r.health);
+        if (hit.type !== 'gas') cam.kick(Math.min(0.6, 0.15 + (r.health + r.shield) / 200));
+      }),
+      bus.on('shield', (t, what) => { if (me(t)) Sfx.shieldUp(); }),
+      bus.on('heal', t => { if (me(t)) Sfx.heal(); }),
+    );
+  }
+  function showDeath(on) {
+    $('death').classList.toggle('hidden', !on);
+    if (on) $('death-cause').textContent = player.deathCause ? `Killed by: ${player.deathCause}` : '';
+  }
+
+  const ctx = { phys: null, items: null };
 
   return {
-    scene, camera, fixed,
+    scene, camera,
     async enter() {
       document.body.dataset.mode = 'game';
       UI.home = null; UI.hide();
-      buildHud();
-      $('hud').classList.remove('hidden');
+      $('fade-msg').textContent = 'Loading the test range';
+      const R = await loadPhysics();
+      $('fade-msg').textContent = '';
+      phys = new Physics(R, TICK);
+      glow = glowTexture();
+      sky = addSky(scene);
+      range = buildRange(scene, phys, glow);
+      phys.step();                                         // the world is in place before the first ray cast
+      ctx.phys = phys; ctx.items = range.items;
+
+      player = createPlayer({ name: P.name, spawn: range.spawn });
+      attachBody(player, phys);
+      raider = new Raider({ shadows: true });
+      scene.add(raider.root);
+      const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1),
+        new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: glowTexture(64, true), transparent: true, opacity: 0.55, depthWrite: false }));
+      shadow.rotation.x = -Math.PI / 2; shadow.renderOrder = 1;
+      raider.contact = shadow;
+      scene.add(shadow);
+      cam = new OrbitCam(camera, phys);
+      cam.yaw = range.spawn.yaw; cam.pitch = -0.15;
+      hud = new Hud(player);
+      hud.show(true);
+      hints();
+      slideLoop = Sound.loop({ freq: 900, q: 0.6 });
+      gasLoop = Sound.loop({ freq: 3200, q: 0.5, filter: 'highpass' });
+
+      Debug.extra = () => {
+        const p = player, sp = Math.hypot(p.vel.x, p.vel.z);
+        return `player ${p.mode}${p.crouch ? ' crouched' : ''}${p.sprinting ? ' sprinting' : ''}${p.aiming ? ' aiming' : ''}   ${p.grounded ? 'on ground' : 'in air'}   ` +
+          `pos ${p.pos.x.toFixed(1)} ${p.pos.y.toFixed(2)} ${p.pos.z.toFixed(1)}   speed ${sp.toFixed(2)}   vy ${p.vel.y.toFixed(2)}\n` +
+          `health ${p.health.toFixed(1)}   shield ${p.shield ? p.shield.type + ' ' + p.shield.hp.toFixed(0) + (p.shield.broken ? ' broken' : '') : 'none'}   ` +
+          `stamina ${p.stamina.toFixed(0)}${p.winded ? ' winded' : ''}   dodge ${p.iframes > 0 ? 'OPEN' : '-'}`;
+      };
       offs.push(
         bus.on('input:lock', onLock),
         bus.on('input:escape', () => { if (!UI.current && Input.locked) Input.unlock(); }),
-        bus.on('input:binds', buildHud),
-        bus.on('gfx', () => { setupShadows(); refreshMaterials(scene); }),
+        bus.on('input:binds', hints),
+        bus.on('ui', id => { if (!id && !Input.locked) showPause(true); }),
+        bus.on('gfx', () => { sky.shadows(); refreshMaterials(scene); }),
       );
-      $('pz-resume').onclick = resume;
-      $('pz-controls').onclick = () => UI.go('controls');
+      listen();
+      $('pz-resume').onclick = () => grab(false);
+      $('pz-controls').onclick = () => { showPause(false); UI.go('controls'); };
       $('pz-quit').onclick = () => Scenes.go('menu');
       onLock(false);
       grab(true);                   // works while the click that opened the range is still fresh; otherwise Resume does it
     },
+
     exit() {
       for (const off of offs) off();
+      offs.length = 0;
+      Debug.extra = null;
+      slideLoop?.stop(); gasLoop?.stop();
+      Input.guard(false);
       Input.unlock();
       Input.setContext('ui');
-      $('hud').classList.add('hidden');
+      hud?.dispose(); hud?.show(false);
       showPause(false);
+      $('death').classList.add('hidden');
       UI.hide();
+      if (player) detachBody(player);
+      range?.dispose();
       disposeTree(scene);
+      glow?.dispose();
+      phys?.dispose();
+      player = null;
     },
+
+    fixed(dt) {
+      if (!player || paused) return;
+      const cmd = player.dead ? idleCommand(cam) : readCommand(cam);
+      stepPlayer(player, cmd, dt, ctx);
+      range.step(dt, player);
+      phys.step();
+      if (player.dead) {
+        deadT += dt;
+        if (deadT >= RESPAWN) { respawnPlayer(player, range.spawn); cam.yaw = range.spawn.yaw; cam.pitch = -0.15; }
+      }
+    },
+
     frame(dt, alpha) {
-      const aiming = Input.active('aim');
-      const l = Input.consumeLook(aiming ? S.aimSens : 1);
-      yaw -= l.x;
-      pitch = clamp(pitch - l.y, -1.5, 1.5);
-      camera.position.lerpVectors(prev, pos, alpha);
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
-      const want = aiming ? S.fov * 0.55 : S.fov;
-      if (Math.abs(want - fov) > 0.01) { fov = damp(fov, want, 14, dt); camera.fov = fov; camera.updateProjectionMatrix(); }
-      bolts.each(b => b.position.lerpVectors(b.userData.prev, b.userData.pos, alpha));
-      // the shadow area follows the camera
-      sun.target.position.set(camera.position.x, 0, camera.position.z);
-      sun.position.copy(sun.target.position).add(SUN);
-      updateChips();
+      if (!player) return;
+      const look = Input.consumeLook(player.aiming ? S.aimSens : 1);
+      if (!paused) cam.look(look.x, look.y);
+      const p = player, a = paused ? 1 : alpha;
+      const x = p.prev.x + (p.pos.x - p.prev.x) * a, z = p.prev.z + (p.pos.z - p.prev.z) * a;
+      const y = p.prev.y + (p.pos.y - p.prev.y) * a - BODY.offset;
+      const facing = p.prevFacing + angDiff(p.prevFacing, p.facing) * a;
+      raider.root.position.set(x, y, z);
+      raider.root.rotation.y = facing + Math.PI;
+      const fx = fwdX(facing), fz = fwdZ(facing), speed = Math.hypot(p.vel.x, p.vel.z);
+      const step = raider.update(paused ? 0 : dt, {
+        mode: p.mode, speed, fwd: p.vel.x * fx + p.vel.z * fz, side: -(p.vel.x * -fz + p.vel.z * fx),
+        grounded: p.grounded, vy: p.vel.y, crouch: p.crouch, sprint: p.sprinting, aim: p.aiming,
+        rollT: p.rollT / ROLL.time, deathT: p.deathT, landT: p.landT, landPower: p.landPower, hurtT: p.hurtT,
+        turn: p.turn, using: !!p.use, lookYaw: angDiff(facing, cam.yaw), lookPitch: cam.pitch,
+      });
+      if (step && !paused) Sfx.step(speed, p.crouch);
+      raider.contact.position.set(x, y + 0.02, z);
+      raider.contact.visible = p.grounded || p.mode === 'dead';
+
+      cam.update(dt, { x, y, z }, { eye: p.height * 0.86 + (p.mode === 'dead' ? 0.3 : 0), aim: p.aiming, sprint: p.sprinting && speed > 5, dead: p.dead });
+      hud.update(dt, cam.yaw);
+      range.frame(paused ? 0 : dt, a, p);
+      sky.follow(x, z);
+      chips();
+
+      // the slide's scrape, the gas hiss, the heartbeat at low health
+      slideLoop.set(p.mode === 'slide' && p.grounded && !paused ? Math.min(0.1, speed * 0.012) : 0, 500 + speed * 90);
+      const gd = Math.hypot(x - range.gas.x, z - range.gas.z);
+      gasLoop.set(paused ? 0 : 0.05 * Math.max(0, 1 - gd / 14), 0);
+      beatT -= dt;
+      if (!paused && !p.dead && p.health / p.maxHealth < 0.3 && beatT <= 0) { Sfx.heartbeat(); beatT = 0.85 + p.health / p.maxHealth * 1.5; }
+      if (p.dead) $('death-timer').textContent = `Back on your feet in ${Math.max(0, Math.ceil(RESPAWN - deadT))}`;
     },
+
     resize(w, h) { fitCamera(camera, w, h); },
   };
 }
