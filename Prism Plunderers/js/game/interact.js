@@ -9,6 +9,7 @@ import { fwdX, fwdZ } from './move-math.js';
 export class Interactions {
   constructor() { this.items = []; }
   add(it) { this.items.push(it); return it; }
+  remove(it) { const i = this.items.indexOf(it); if (i >= 0) this.items.splice(i, 1); }
   holdOf(it, p) { return typeof it.hold === 'function' ? it.hold(p) : (it.hold || 0); }
 
   // The best thing in reach: the closest one, preferring what the camera looks at.

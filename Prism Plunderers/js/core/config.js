@@ -1,6 +1,6 @@
 // Constants every part of the game shares.
-export const VERSION = 'Prototype v0.2';
-export const BUILD = 'The raider';
+export const VERSION = 'Prototype v0.3';
+export const BUILD = 'The Prism';
 
 // The simulation runs in fixed steps, so movement, AI and damage behave the same at 30 FPS and at 240 FPS.
 export const TICK_HZ = 60;

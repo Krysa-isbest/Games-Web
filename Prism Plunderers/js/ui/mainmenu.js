@@ -9,7 +9,7 @@ import { UI } from './screens.js';
 const TABS = ['play', 'workshop', 'raider', 'skills', 'trader'];
 // the build order (NEXT-CHAT.md). DONE = how many parts are finished.
 const PARTS = ['Foundation', 'Player', 'Prism enemies', 'Weapons and items', 'The Ruins', 'Raid rules', 'Performance', 'Lobby and workshop', 'Skill tree', 'Menus and settings', 'Difficulty', 'Multiplayer'];
-const DONE = 2;
+const DONE = 3;
 const LINES = ['2999. They landed. We shot first.', '3000. They came back. All of them.'];
 const SOON = 'Co-op comes with the multiplayer update.';
 

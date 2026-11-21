@@ -25,6 +25,11 @@ export function buildRange(scene, phys, glowTex) {
     shieldM: M(0x5cb8ff, 0.4, { emissive: 0x1d5a99, emissiveIntensity: 0.4 }),
     shieldH: M(0x2f7fff, 0.4, { emissive: 0x123f99, emissiveIntensity: 0.4 }),
     green: M(0x3ccf7a, 0.5, { emissive: 0x1d7a45, emissiveIntensity: 0.5 }),
+    arena: new THREE.MeshBasicMaterial({ color: 0xa36bff, transparent: true, opacity: 0.06, depthWrite: false }),
+    arenaLine: new THREE.MeshBasicMaterial({ color: 0xb98aff, transparent: true, opacity: 0.4, depthWrite: false }),
+    nest: new THREE.MeshBasicMaterial({ color: 0x0c0a10, transparent: true, opacity: 0.6, depthWrite: false }),
+    button: M(0xb98aff, 0.4, { emissive: 0x7a3cff, emissiveIntensity: 0.7 }),
+    buttonRed: M(0xff6a5a, 0.4, { emissive: 0xc0281a, emissiveIntensity: 0.6 }),
   };
   const q = new THREE.Quaternion(), eu = new THREE.Euler();
 
@@ -198,6 +203,44 @@ export function buildRange(scene, phys, glowTex) {
   const gas = new GasZone(group, { x: -18, z: 20, r: 4.5, h: 2.6 }, mat.gas, glowTex);
   sign('Gas pit', '20 damage a second.\nShields still help.', -12.6, 20, Math.PI / 2);
 
+  // ---------- the Prism arena (north): cover, a Scatter nest, and the robot console ----------
+  const bounds = { x0: -30, x1: 30, z0: -72, z1: -38 };
+  paint(0, (bounds.z0 + bounds.z1) / 2, bounds.x1 - bounds.x0, bounds.z1 - bounds.z0, mat.arena);
+  for (const [x, z, w, d] of [[0, bounds.z0, 60, 0.2], [0, bounds.z1, 60, 0.2], [bounds.x0, -55, 0.2, 34], [bounds.x1, -55, 0.2, 34]]) paint(x, z, w, d, mat.arenaLine, 0.014);
+  solid(-14, 1.25, -48, 7, 2.5, 0.6);                                     // cover
+  solid(12, 1.5, -50, 3, 3, 3, mat.concD);
+  solid(2, 1.25, -57, 0.6, 2.5, 6);
+  solid(-6, 0.5, -62, 5, 1, 0.5, mat.concD);
+  solid(18, 2, -62, 1.2, 4, 1.2, mat.concL); solid(-3, 2, -67, 1.2, 4, 1.2, mat.concL);
+  solid(22, 1, -44, 4, 2, 2, mat.concD, 0, 0.35);
+  solid(-26, 0.75, -45, 2.5, 1.5, 2.5, mat.wood);
+  // the Scatter nest: a dark shed with a doorway on its east side
+  const nest = { x: -20, z: -62, w: 8, d: 8, h: 3 };
+  solid(nest.x, nest.h / 2, nest.z - nest.d / 2, nest.w, nest.h, 0.3);
+  solid(nest.x, nest.h / 2, nest.z + nest.d / 2, nest.w, nest.h, 0.3);
+  solid(nest.x - nest.w / 2, nest.h / 2, nest.z, 0.3, nest.h, nest.d);
+  solid(nest.x + nest.w / 2, nest.h / 2, nest.z - 2.5, 0.3, nest.h, 3);
+  solid(nest.x + nest.w / 2, nest.h / 2, nest.z + 2.5, 0.3, nest.h, 3);
+  solid(nest.x + nest.w / 2, nest.h - 0.4, nest.z, 0.3, 0.8, 2);
+  solid(nest.x, nest.h + 0.15, nest.z, nest.w + 0.3, 0.3, nest.d + 0.3, mat.concD);
+  paint(nest.x, nest.z, nest.w - 0.4, nest.d - 0.4, mat.nest, 0.016);
+  sign('Scatter nest', 'They sleep until they see you.\nDo not stand still inside', nest.x + nest.w / 2 + 1.6, nest.z + 4.6, Math.PI / 2);
+  // the robot console
+  const posts = [];
+  for (let i = 0; i < 8; i++) {
+    const x = -7 + i * 2;
+    solid(x, 0.5, -34, 0.6, 1.0, 0.6, mat.metal);
+    deco(x, 1.04, -34, 0.44, 0.08, 0.44, i >= 6 ? mat.buttonRed : mat.button);
+    posts.push({ x, y: 1.0, z: -34 });
+  }
+  paint(0, -32.6, 17, 0.12, mat.arenaLine);
+  sign('Robot console', 'Walk up to a button, press E.\nThe Prism appear in the arena', 9.6, -33.2, 0);
+  sign('Prism arena', 'Fight the robots here', -9.6, -36.5, 0, 2.2);
+  const spots = {
+    fink: { x: 8, y: 4.5, z: -55 }, fly: { x: -4, y: 3.5, z: -63 }, swatter: { x: 10, y: 5.5, z: -67 }, roach: { x: 3, y: 0.1, z: -69 },
+    scatter: [{ x: nest.x - 2, y: 0.1, z: nest.z - 2 }, { x: nest.x + 1, y: 0.1, z: nest.z + 1.6 }, { x: nest.x - 1.6, y: 0.1, z: nest.z + 2.4 }],
+  };
+
   // ---------- ruins all around ----------
   {
     const R = rng(2999), COUNT = 240;
@@ -222,6 +265,7 @@ export function buildRange(scene, phys, glowTex) {
 
   return {
     group, spawn, items, sentries, gas, zone,
+    arena: { bounds, nest, posts, spots },
     step(dt, p) { gas.step(dt, p); sentries.step(dt, p); },
     frame(dt, alpha, p) { sentries.frame(dt, alpha, p); gas.frame(dt); },
     dispose() { sentries.dispose(); scene.remove(group); },

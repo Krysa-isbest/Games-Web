@@ -16,11 +16,15 @@ export function readCommand(cam) {
     aim: Input.active('aim'),
     interact: Input.held('interact'),
     interactPressed: Input.pressed('interact'),
+    fire: Input.held('fire'),
+    // the aim ray: from the camera through the crosshair (where shots go)
+    aimO: { x: cam.camera.position.x, y: cam.camera.position.y, z: cam.camera.position.z },
+    aimD: { x: -Math.sin(cam.yaw) * Math.cos(cam.pitch), y: Math.sin(cam.pitch), z: -Math.cos(cam.yaw) * Math.cos(cam.pitch) },
   };
 }
 
 // standing still, doing nothing (dead, paused, or a cutscene)
 export function idleCommand(cam) {
   return { mx: 0, my: 0, yaw: cam ? cam.yaw : 0, pitch: cam ? cam.pitch : 0, sprint: false, crouch: false, crouchPressed: false,
-    jump: false, roll: false, aim: false, interact: false, interactPressed: false };
+    jump: false, roll: false, aim: false, interact: false, interactPressed: false, fire: false, aimO: null, aimD: null };
 }

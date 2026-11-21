@@ -24,7 +24,8 @@ export function applyDamage(t, hit) {
   }
   let amount = hit.amount;
   const sh = t.shield;
-  if (sh && !sh.broken && !BYPASS.has(type)) {
+  // an EMP (Roach) knocks the shield offline: it neither protects nor drains until it comes back
+  if (sh && !sh.broken && !(t.emp > 0) && !BYPASS.has(type)) {
     const def = SHIELDS[sh.type].def;
     const covered = Math.min(amount, sh.hp);
     sh.hp -= covered;
@@ -32,7 +33,7 @@ export function applyDamage(t, hit) {
     amount = covered * (1 - def) + (amount - covered);
     if (sh.hp <= 1e-6) { sh.hp = 0; sh.broken = true; r.broke = true; }
   }
-  r.health = Math.min(t.health, amount);
+  r.health = t.god ? 0 : Math.min(t.health, amount);             // god: the test range's invincible switch
   t.health -= r.health;
   t.hurtT = 0;
   t.lastHit = { type, source: hit.source || '', amount: hit.amount, from: hit.from ? { x: hit.from.x, y: hit.from.y, z: hit.from.z } : null };

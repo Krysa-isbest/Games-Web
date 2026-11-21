@@ -11,7 +11,7 @@ import { bus } from '../core/events.js';
 import { fwdX, fwdZ, yawOf, angDiff, approach } from './move-math.js';
 
 export { fwdX, fwdZ, yawOf, angDiff };
-const MOVE_GROUPS = groups(G.PLAYER, G.WORLD);
+const MOVE_GROUPS = groups(G.PLAYER, G.WORLD | G.ENEMY);     // walls and the Prism's bodies block you
 const DOWN = { x: 0, y: -1, z: 0 };
 const COS_CLIMB = Math.cos(MOVE.slope * Math.PI / 180);
 
@@ -38,6 +38,10 @@ export function createPlayer({ id = 'p0', name = 'Plunderer', spawn = { x: 0, y:
     landT: 9, landPower: 0, stagger: 0,
     hurtT: 9, lastHit: null,
     focus: null, focusText: '', focusHold: 0, use: null, useLatch: false,
+    firing: false, gunCd: 0,                               // the test gun (testgun.js)
+    emp: 0,                                                // > 0 while a Roach's EMP keeps the shield offline
+    god: false,                                            // the test range's "invincible" switch
+    bag: [],                                               // what you picked up this raid: [{ id, n }]
   };
 }
 
@@ -94,6 +98,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
   p.rollCd = Math.max(0, p.rollCd - dt); p.slideCd = Math.max(0, p.slideCd - dt);
   p.staminaDelay = Math.max(0, p.staminaDelay - dt); p.noStamina = Math.max(0, p.noStamina - dt);
   p.stagger = Math.max(0, p.stagger - dt);
+  p.emp = Math.max(0, (p.emp || 0) - dt);
   p.landT += dt; p.hurtT += dt;
   if (p.dead && p.mode !== 'dead') die(p);
   const alive = p.mode !== 'dead';
@@ -113,6 +118,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
 
   if (alive) {
     p.aiming = !!cmd.aim && p.mode === 'move';
+    p.firing = !!cmd.fire && p.mode === 'move';
     // dodge roll: on the ground, in the direction you push (or straight ahead)
     if (cmd.roll && p.mode !== 'roll' && p.grounded && p.rollCd <= 0) {
       if (spend(p, STAMINA.roll)) startRoll(p, input ? wx / wl : fwdX(p.facing), input ? wz / wl : fwdZ(p.facing));
@@ -122,7 +128,8 @@ export function stepPlayer(p, cmd, dt, ctx) {
     if (cmd.crouchPressed && p.mode === 'move' && p.grounded && p.sprinting && hs >= SLIDE.minSpeed && p.slideCd <= 0) {
       if (spend(p, STAMINA.slide)) startSlide(p, hs); else deny(p);
     }
-  } else p.aiming = false;
+  } else { p.aiming = false; p.firing = false; }
+  if (p.mode !== 'move') p.firing = false;
 
   // crouching: the capsule shrinks; it only grows back where there is room
   const wantCrouch = alive && !!cmd.crouch && p.mode === 'move';
@@ -133,7 +140,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
 
   // sprinting
   if (p.mode === 'move') {
-    const want = alive && !!cmd.sprint && input && !p.aiming && !p.crouch && !p.winded && p.stamina > 0 && p.stagger <= 0;
+    const want = alive && !!cmd.sprint && input && !p.aiming && !p.firing && !p.crouch && !p.winded && p.stamina > 0 && p.stagger <= 0;
     if (p.grounded || !want) p.sprinting = want;         // a sprint carries on through a jump
   } else p.sprinting = false;
 
@@ -149,7 +156,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
     const k = p.grounded ? (tx * tx + tz * tz > hs * hs ? MOVE.accel : MOVE.decel) : MOVE.air;
     p.vel.x = approach(p.vel.x, tx, k, dt);
     p.vel.z = approach(p.vel.z, tz, k, dt);
-    if (p.aiming) turnTo(p, cmd.yaw, 22, dt);
+    if (p.aiming || p.firing) turnTo(p, cmd.yaw, 22, dt);         // shooting turns you to where you aim
     else if (input) turnTo(p, yawOf(wx, wz), p.sprinting ? MOVE.turnSprint : MOVE.turn, dt);
   } else if (p.mode === 'roll') stepRoll(p, dt);
   else if (p.mode === 'slide') stepSlide(p, dt, wx, wz, input, ctx);
@@ -302,6 +309,7 @@ export function respawnPlayer(p, spawn) {
   p.dead = false; p.mode = 'move'; p.deathT = 0; p.deathCause = '';
   p.health = p.maxHealth; p.stamina = p.maxStamina; p.winded = false; p.staminaDelay = 0;
   p.rollT = 0; p.slideT = 0; p.iframes = 0; p.stagger = 0; p.landT = 9; p.hurtT = 9; p.use = null;
+  p.emp = 0; p.firing = false; p.bag = [];                      // dying loses what you carried
   if (p.shield) { p.shield.hp = SHIELDS[p.shield.type].hp; p.shield.broken = false; }
   if (p.phys) setHeight(p, BODY.stand);
   teleport(p, spawn.x, spawn.y, spawn.z, spawn.yaw || 0);
