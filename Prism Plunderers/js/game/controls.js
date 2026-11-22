@@ -8,6 +8,7 @@ const SLOTS = ['weapon1', 'weapon2', 'melee', 'unarmed'];
 export function readCommand(cam, extra = {}) {
   const mv = Input.move();
   if (!mv.x && !mv.y) Input.cancel('sprint');          // in toggle mode, stopping ends the sprint
+  if (Input.pressed('sprint')) Input.cancel('crouch');  // ...and sprinting stands you up from a toggled crouch
   const fireOk = !extra.noFire;
   return {
     mx: mv.x, my: mv.y,                                 // movement, x = right, y = forward (camera relative)

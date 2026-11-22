@@ -5,7 +5,7 @@
 // When it lands it sends an EMP pulse that knocks shields offline for 4 s. 1500 health, heavy armour; the visor
 // and (while it flies) the open hatch are weak points. It carries the Roach Reactor.
 import { PRISM } from './defs.js';
-import { perceive, walkToward, stopWalking, moveRobot, turnToward, flyToward, toWorld, eyeOf, groundBelow } from './robot.js';
+import { perceive, walkToward, stopWalking, moveRobot, turnToward, flyToward, toWorld, eyeOf, groundBelow, routeStart, routeNext } from './robot.js';
 import { setFlash } from './models.js';
 import { segDist2 } from '../sentry.js';
 import { applyDamage } from '../damage.js';
@@ -155,12 +155,26 @@ function startStomp(r, ctx, front) {
   ctx.director.warn(r.stompAt, D.stompRadius, D.stompWind);
   ctx.director.sound('stomp_warn', r.pos);
 }
-// not yet hostile: plods between points around its home, stopping to look around. When something catches its
-// eye it stops and stares that way until it is sure (or forgets).
+// not yet hostile: walks its patrol route (stopping at each point to look around), or plods between points
+// around its home. When something catches its eye it stops and stares that way until it is sure (or forgets).
 function wander(r, ctx, dt, p) {
   if (r.aware > 0.12 && r.lastSeen) {
     stopWalking(r, dt);
     turnToward(r, yawOf(r.lastSeen.x - r.pos.x, r.lastSeen.z - r.pos.z), D.turn * 0.8, dt);
+    return;
+  }
+  if (r.route && r.route.length) {
+    if (r.routeI === null || r.routeI === undefined || r.routeI >= r.route.length) r.routeI = routeStart(r);
+    const wp = r.route[r.routeI];
+    if (Math.hypot(wp.x - r.pos.x, wp.z - r.pos.z) > 2.5) { walkToward(r, wp.x, wp.z, 1.5, dt, D.turn); r.arrived = false; }
+    else {
+      if (!r.arrived) { r.arrived = true; r.wait = 3 + ctx.rnd() * 4; }
+      stopWalking(r, dt);
+      r.wait -= dt;
+      if (r.aware > 0 && r.sees && p) turnToward(r, yawOf(p.pos.x - r.pos.x, p.pos.z - r.pos.z), D.turn * 0.6, dt);
+      if (r.wait <= 0) { r.routeI = routeNext(r); r.arrived = false; }
+    }
+    r.home.x = r.pos.x; r.home.z = r.pos.z;
     return;
   }
   r.wpT -= dt;

@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { bus } from '../core/events.js';
 import { kn } from '../core/input.js';
 import { SHIELDS } from './stats.js';
-import { fwdX, fwdZ, yawOf } from './move-math.js';
+import { fwdX, fwdZ, yawOf, angDiff } from './move-math.js';
 import { ITEMS, RARITY } from './items.js';
 import { count, weight, MAX_WEIGHT } from './inventory.js';
 import { inHand, slotItem, spreadOf } from './weapons.js';
@@ -33,7 +33,9 @@ export class Hud {
     this.dirs = [...$('hud-dirs').children].map(e => ({ e, life: 0, from: null }));
     this.nextDir = 0;
     this.detect = [...$('hud-detect').children].map(e => ({ e, on: false }));
-    for (const id of ['hud-bars', 'wpn-slots', 'wpn-quick']) $(id).innerHTML = '';     // a second visit starts clean
+    for (const id of ['hud-bars', 'wpn-slots', 'wpn-quick', 'cmp-strip']) $(id).innerHTML = '';     // a second visit starts clean
+    $('hud-compass').classList.add('hidden');
+    this.cmp = [];
     this.bars = [];
     for (let i = 0; i < 12; i++) {
       const e = document.createElement('div'), f = document.createElement('b');
@@ -69,6 +71,56 @@ export class Hud {
     ];
   }
   lootPop(id, n) { this.pop(`+${n} ${ITEMS[id].name}`, 'loot', RARITY[ITEMS[id].rarity].color); }
+
+  // where you are (top left): "Test range", "The Ruins · Downtown · red zone"
+  setPlace(text) {
+    if (this.last.place === text) return;
+    const first = this.last.place === undefined;
+    this.set('place', $('hud-place'), 'text', text);
+    const red = / red zone/.test(text), yellow = / yellow zone/.test(text);
+    this.set('placec', $('hud-place'), 'class', 'tag-label' + (red ? ' red' : yellow ? ' yellow' : ''));
+    if (!first && (red || yellow)) this.pop(red ? 'Red zone · the best loot, the most Prism' : 'Yellow zone · better loot, more Prism', red ? 'bad' : 'weak');
+  }
+  // the compass along the top: north, east..., and markers [{ name, short, x, z, kind: 'extract' | 'landmark' }]
+  setMarkers(list) {
+    const box = $('cmp-strip');
+    box.innerHTML = '';
+    this.cmp = [];
+    const D = [['N', 0], ['NE', -Math.PI / 4], ['E', -Math.PI / 2], ['SE', -Math.PI * 0.75], ['S', Math.PI], ['SW', Math.PI * 0.75], ['W', Math.PI / 2], ['NW', Math.PI / 4]];
+    for (const [t, yaw] of D) {
+      const e = document.createElement('b');
+      e.className = t.length === 1 ? 'cd main' : 'cd'; e.textContent = t;
+      box.append(e);
+      this.cmp.push({ e, yaw, x: '' });
+    }
+    for (const m of list) {
+      const e = document.createElement('i'), s = document.createElement('span');
+      e.className = 'cm ' + m.kind;
+      s.textContent = m.short || m.name;
+      e.append(s);
+      box.append(e);
+      this.cmp.push({ e, m, s, x: '' });
+    }
+    $('hud-compass').classList.remove('hidden');
+  }
+  updateCompass(camYaw, p) {
+    const W = 230, SPAN = 1.25;                         // half width in pixels, half the angle shown
+    for (const c of this.cmp) {
+      const dx = c.m ? c.m.x - p.pos.x : 0, dz = c.m ? c.m.z - p.pos.z : 0;
+      const d = angDiff(camYaw, c.m ? yawOf(dx, dz) : c.yaw);
+      const on = Math.abs(d) < SPAN;
+      const x = on ? (-d / SPAN * W).toFixed(0) : 'off';
+      if (x !== c.x) {
+        c.x = x;
+        c.e.style.opacity = on ? String((1 - Math.abs(d) / SPAN * 0.7).toFixed(2)) : '0';
+        if (on) c.e.style.transform = `translateX(${x}px)`;
+      }
+      if (c.m && on) {
+        const dist = `${c.m.short || c.m.name} · ${Math.round(Math.hypot(dx, dz))} m`;
+        if (c.s.textContent !== dist) c.s.textContent = dist;
+      }
+    }
+  }
   // the crosshair's hit marker: 'hit', 'weak' (a weak point or a thruster) or 'kill'
   hitmarker(kind) {
     const e = $('xhit');

@@ -24,7 +24,7 @@ export const ACTIONS = {
   right:      { def: 'KeyD',    name: 'Move right',             group: 'Movement' },
   sprint:     { def: 'Shift',   name: 'Sprint',                 group: 'Movement' },
   jump:       { def: 'Space',   name: 'Jump',                   group: 'Movement' },
-  crouch:     { def: 'Control', name: 'Crouch / slide',         group: 'Movement' },
+  crouch:     { def: 'KeyC',    name: 'Crouch / slide',         group: 'Movement' },
   roll:       { def: 'Alt',     name: 'Dodge roll',             group: 'Movement' },
   fire:       { def: 'Mouse0',  name: 'Shoot / throw / deploy', group: 'Combat' },
   aim:        { def: 'Mouse2',  name: 'Aim',                    group: 'Combat' },
@@ -42,9 +42,19 @@ export const ACTIONS = {
 };
 export const GROUPS = ['Movement', 'Combat', 'Gear', 'Team'];
 
-const DEFAULT_BINDS = { v: 1 };
+const DEFAULT_BINDS = { v: 2 };
 for (const [a, d] of Object.entries(ACTIONS)) DEFAULT_BINDS[a] = d.def;
-const keys = makeStore('keys', DEFAULT_BINDS);
+// v1 had crouch on Ctrl. In a browser Ctrl fights with shortcuts (Ctrl+W closes the tab while you crouch-walk
+// forward; on Windows Ctrl+Shift, sprint + crouch, can switch the keyboard language), so v2 moves it to C.
+// A save that still has the old default moves over; whatever sat on C gets Ctrl instead.
+function migrateKeys(old) {
+  if ((old.v || 1) < 2 && old.crouch === 'Control') {
+    for (const a of Object.keys(old)) if (a !== 'crouch' && a !== 'v' && old[a] === 'KeyC') old[a] = 'Control';
+    old.crouch = 'KeyC';
+  }
+  return old;
+}
+const keys = makeStore('keys', DEFAULT_BINDS, migrateKeys);
 export const BINDS = keys.data;
 
 // keys the game never takes: Esc is pause / back, F3 is the debug overlay, the rest belong to the browser

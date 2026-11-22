@@ -58,6 +58,14 @@
   <symbol id="it-core" viewBox="0 0 48 48"><circle cx="24" cy="24" r="11" fill="#ffb224"/><circle cx="24" cy="24" r="5" fill="#fff4d6"/><path d="M24 5v7M24 36v7M5 24h7M36 24h7M10.5 10.5l5 5M32.5 32.5l5 5M37.5 10.5l-5 5M10.5 37.5l5-5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></symbol>
   <symbol id="it-plate" viewBox="0 0 48 48"><path d="M8 11l16-6 16 6v15c0 8-7 14-16 17C15 40 8 34 8 26z" fill="currentColor"/><path d="M14 16l10-4 10 4M14 23l10-4 10 4M14 30l10-4 10 4" stroke="#0b0c0f" stroke-width="2" fill="none" opacity=".6"/></symbol>
   <symbol id="it-reactor" viewBox="0 0 48 48"><circle cx="24" cy="24" r="10" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="2.5"><ellipse cx="24" cy="24" rx="20" ry="7"/><ellipse cx="24" cy="24" rx="20" ry="7" transform="rotate(60 24 24)"/><ellipse cx="24" cy="24" rx="20" ry="7" transform="rotate(120 24 24)"/></g><circle cx="24" cy="24" r="4" fill="#fff"/></symbol>
+  <symbol id="it-scrap" viewBox="0 0 48 48"><path d="M5 31l10-13 8 6 9-11 10 9-4 14-12 5-11-3z" fill="currentColor"/><path d="M14 27l6 4M27 19l3 8M33 30l5-3" stroke="#0b0c0f" stroke-width="2" opacity=".45"/></symbol>
+  <symbol id="it-wires" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7 35c6-14 14-14 18-4s12 10 16-6"/><path d="M7 25c6-14 14-14 18-4s12 10 16-6" opacity=".55"/></g><circle cx="7" cy="35" r="3" fill="currentColor"/><circle cx="41" cy="25" r="3" fill="currentColor"/></symbol>
+  <symbol id="it-battery" viewBox="0 0 48 48"><rect x="10" y="12" width="28" height="27" rx="3" fill="currentColor"/><path d="M15 7h6v5h-6zM27 7h6v5h-6z" fill="currentColor"/><path d="M14 23h7M17.5 19.5v7M27 23h7" stroke="#0b0c0f" stroke-width="2.4"/></symbol>
+  <symbol id="it-board" viewBox="0 0 48 48"><rect x="6" y="10" width="36" height="28" rx="2" fill="currentColor"/><path d="M11 16h10v6h8M11 31h7l4-4h13M28 16h9" fill="none" stroke="#0b0c0f" stroke-width="2" opacity=".55"/><rect x="30" y="23" width="8" height="8" fill="#0b0c0f" opacity=".6"/></symbol>
+  <symbol id="it-phone" viewBox="0 0 48 48"><rect x="15" y="5" width="18" height="38" rx="3" fill="currentColor"/><rect x="18" y="10" width="12" height="25" fill="#0b0c0f"/><path d="M18 13l6 8-4 5 9 7" stroke="currentColor" stroke-width="1.4" fill="none" opacity=".7"/></symbol>
+  <symbol id="it-watch" viewBox="0 0 48 48"><path d="M18 4h12l2 9H16zM16 35h16l-2 9H18z" fill="currentColor"/><circle cx="24" cy="24" r="12" fill="currentColor"/><circle cx="24" cy="24" r="8.5" fill="#0b0c0f"/><path d="M24 24v-6M24 24l4 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="it-drive" viewBox="0 0 48 48"><path d="M7 14h29l5 5v16H7z" fill="currentColor"/><rect x="11" y="19" width="17" height="11" fill="#0b0c0f" opacity=".55"/><circle cx="35" cy="28" r="2.2" fill="#5dff9b"/></symbol>
+  <symbol id="it-shard" viewBox="0 0 48 48"><path d="M24 3l9 17-9 25-9-25z" fill="currentColor"/><path d="M24 3l9 17-9 6z" fill="#fff" opacity=".35"/><path d="M11 30l5 4-4 8-4-6zM37 30l-5 4 4 8 4-6z" fill="currentColor" opacity=".7"/></symbol>
   <symbol id="it-hand" viewBox="0 0 48 48"><path d="M15 25V11a3 3 0 0 1 6 0v10V8a3 3 0 0 1 6 0v13V10a3 3 0 0 1 6 0v12-7a3 3 0 0 1 6 0v14c0 9-6 15-14 15-6 0-10-4-13-10l-4-8a3 3 0 0 1 5-3z" fill="currentColor"/></symbol>
 </svg>
 
@@ -131,7 +139,7 @@
 
   <aside class="col-r page" data-page="play">
     <article class="map">
-      <header><h3>The Ruins</h3><span class="tag-lock"><svg><use href="#i-lock"/></svg>Not open yet</span></header>
+      <header><h3>The Ruins</h3><span class="tag-open">Open · free roam</span></header>
       <svg class="map-art" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <linearGradient id="mps" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1430"/><stop offset=".55" stop-color="#6b3c4f"/><stop offset=".8" stop-color="#d0805a"/><stop offset="1" stop-color="#e9a36a"/></linearGradient>
@@ -154,7 +162,7 @@
     </article>
 
     <div class="launch">
-      <button class="dest" id="dest"><span><small>Destination</small><b>Test range</b></span><svg><use href="#i-chev"/></svg></button>
+      <button class="dest" id="dest" title="Switch between The Ruins and the test range"><span><small>Destination</small><b id="dest-name">The Ruins</b></span><svg><use href="#i-chev"/></svg></button>
       <div class="squad">
         <div class="slots" id="slots"></div>
         <button class="sq-row" id="sq-invite"><span>Invite friends</span><b>Soon</b></button>
@@ -264,8 +272,10 @@
     </div>
     <div class="wpn-slots" id="wpn-slots"></div>
   </div>
-  <div class="hud-top"><span class="tag-label">Test range</span><span id="hud-hint"></span></div>
+  <div class="hud-top"><span class="tag-label" id="hud-place">Test range</span><span id="hud-hint"></span></div>
+  <div class="compass hidden" id="hud-compass"><div class="cmp-strip" id="cmp-strip"></div></div>
   <div class="chips" id="hud-chips"></div>
+  <div id="map" class="hidden"></div>
 </div>
 <!-- the inventory (Tab): filled in by js/ui/inventory.js -->
 <div id="inv" class="hidden"></div>

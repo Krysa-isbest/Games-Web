@@ -28,8 +28,10 @@ const BOOM = { fink: 0.7, fly: 0.7, swatter: 1.3, scatter: 0.5, roach: 2.4 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 export class PrismDirector {
-  constructor({ scene, phys, items = null, glow = null, seed = 1234, reinforcements = REINFORCEMENTS }) {
+  // drawRange: robots and wrecks further from the player than this are not drawn (a big map)
+  constructor({ scene, phys, items = null, glow = null, seed = 1234, reinforcements = REINFORCEMENTS, drawRange = Infinity }) {
     this.scene = scene; this.phys = phys; this.items = items; this.glow = glow;
+    this.drawRange = drawRange;
     this.rnd = rng(seed);
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -60,9 +62,16 @@ export class PrismDirector {
   }
 
   // ---------- robots ----------
-  spawn(type, pos, { yaw = 0, hostile = false, group = null, target = null } = {}) {
+  // route: patrol waypoints [{ x, z, y? }] (a loop, or back and forth with routeBack); routeOff spreads a group
+  spawn(type, pos, { yaw = 0, hostile = false, group = null, target = null, route = null, routeBack = false, routeOff = null, routeAlt = null } = {}) {
     const r = makeRobot(this.nextId++, type, pos, yaw, this.rnd);
     r.group = group;
+    if (route && route.length) {
+      r.route = route.map(w => w.y === undefined ? { x: w.x, z: w.z } : { x: w.x, y: w.y, z: w.z });
+      r.routeBack = !!routeBack;
+      if (routeOff) r.routeOff = { x: routeOff.x, z: routeOff.z };
+      if (routeAlt !== null) r.routeAlt = routeAlt;
+    }
     BRAINS[type].init(r, this.ctx);
     attachRobotBody(r, this.phys);
     this.robots.push(r);
@@ -567,10 +576,15 @@ export class PrismDirector {
   // ---------- drawing ----------
   frame(dt, alpha) {
     this.fx.update(dt);
-    const p = this.player;
+    const p = this.player, far = this.drawRange;
+    const away = pos => p && far < Infinity && Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > far;
+    for (const w of this.wrecks) { const hide = away(w.pos); if (w.view.root.visible === hide) w.view.root.visible = !hide; }
     for (const r of this.robots) {
       const v = this.views.get(r.id);
       if (!v) continue;
+      const hide = away(r.pos);
+      if (v.root.visible === hide) v.root.visible = !hide;
+      if (hide) { v.hum?.set(0, 0); continue; }
       BRAINS[r.type].animate(v, r, dt, alpha, this);
       if (v.hum) {
         const d = p ? Math.hypot(r.pos.x - p.pos.x, r.pos.y - p.pos.y, r.pos.z - p.pos.z) : 99;

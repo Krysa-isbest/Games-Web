@@ -110,6 +110,7 @@ export const PROFILE_DEFAULTS = {
   workshop: { level: 1, known: [] },            // known: recipe ids
   stats: { raids: 0, extracted: 0, deaths: 0, kills: 0, earned: 0 },
   flags: { introSeen: false },
+  dest: 'ruins',                                // where Play goes: 'ruins' | 'test'
 };
 
 // v1 had a vertical 75° default; v2 measures FOV horizontally (default 90°). An untouched old default moves over.

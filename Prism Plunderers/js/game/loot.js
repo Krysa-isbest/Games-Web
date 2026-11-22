@@ -97,10 +97,15 @@ export class GroundLoot {
     g.add(beam);
     return g;
   }
-  frame(dt) {
+  // p: the player. On a big map, things far away are not drawn.
+  frame(dt, p = null) {
     this.t += dt;
     const k = 0.8 + 0.2 * Math.sin(this.t * 3);
     for (const r of Object.values(this.mats)) r.beam.opacity = 0.3 * k;
+    if (p) for (const d of this.drops) {
+      const on = Math.abs(d.pos.x - p.pos.x) < 140 && Math.abs(d.pos.z - p.pos.z) < 140;
+      if (d.view.visible !== on) d.view.visible = on;
+    }
   }
   clear() { for (const d of [...this.drops]) this.remove(d); }
   dispose() {

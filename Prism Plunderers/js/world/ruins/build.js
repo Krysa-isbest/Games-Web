@@ -1,0 +1,287 @@
+// Builds The Ruins from its layout (layout.js): the boxes merged into one mesh per surface kind per 150 m chunk
+// (a few draw calls for a whole district, culled by chunk), the physics colliders, the sand ground with the hole
+// over the Underground Base ramp, Prism crystals, the crashed pod, dunes, signs, and the loot containers you
+// search with E (their contents rolled from the map's seed the first time anyone opens them).
+import * as THREE from 'three';
+import { makeRuins, zoneAt, HALF } from './layout.js';
+import { K, CONTAINER_H } from './kit.js';
+import { Interactions } from '../../game/interact.js';
+import { CONTAINERS, rollContainer } from '../../game/items.js';
+import { makeBox } from '../../game/inventory.js';
+import { disposeTree } from '../../core/engine.js';
+import { rng } from '../../core/util.js';
+import { bus } from '../../core/events.js';
+
+const CHUNK = 150;
+const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
+const FACES = [
+  { n: [1, 0, 0], c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], shade: 0.9 },
+  { n: [-1, 0, 0], c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]], shade: 0.86 },
+  { n: [0, 1, 0], c: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1 },
+  { n: [0, -1, 0], c: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], shade: 0.62 },
+  { n: [0, 0, 1], c: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], shade: 0.94 },
+  { n: [0, 0, -1], c: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], shade: 0.9 },
+];
+const PANE_N = { n: [0, 0, -1], s: [0, 0, 1], w: [-1, 0, 0], e: [1, 0, 0] };
+
+// a growing set of quads for one merged mesh
+class Batch {
+  constructor() { this.p = new Float32Array(3 * 4096); this.nm = new Float32Array(3 * 4096); this.c = new Float32Array(3 * 4096); this.ix = new Uint32Array(6 * 1024); this.v = 0; this.i = 0; }
+  room(nv, ni) {
+    if ((this.v + nv) * 3 > this.p.length) {
+      const grow = a => { const b = new Float32Array(a.length * 2); b.set(a); return b; };
+      this.p = grow(this.p); this.nm = grow(this.nm); this.c = grow(this.c);
+    }
+    if (this.i + ni > this.ix.length) { const b = new Uint32Array(this.ix.length * 2); b.set(this.ix); this.ix = b; }
+  }
+  // four corners in order round the face, its normal, its colour
+  quad(pts, n, col) {
+    this.room(4, 6);
+    const v = this.v;
+    for (let k = 0; k < 4; k++) {
+      const o = (v + k) * 3, q = pts[k];
+      this.p[o] = q.x; this.p[o + 1] = q.y; this.p[o + 2] = q.z;
+      this.nm[o] = n.x; this.nm[o + 1] = n.y; this.nm[o + 2] = n.z;
+      this.c[o] = col.r; this.c[o + 1] = col.g; this.c[o + 2] = col.b;
+    }
+    // wind the two triangles so they face along the normal
+    const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y, az = pts[1].z - pts[0].z;
+    const bx = pts[2].x - pts[0].x, by = pts[2].y - pts[0].y, bz = pts[2].z - pts[0].z;
+    const front = (ay * bz - az * by) * n.x + (az * bx - ax * bz) * n.y + (ax * by - ay * bx) * n.z > 0;
+    const I = this.ix, i = this.i;
+    if (front) { I[i] = v; I[i + 1] = v + 1; I[i + 2] = v + 2; I[i + 3] = v; I[i + 4] = v + 2; I[i + 5] = v + 3; }
+    else { I[i] = v; I[i + 1] = v + 2; I[i + 2] = v + 1; I[i + 3] = v; I[i + 4] = v + 3; I[i + 5] = v + 2; }
+    this.v += 4; this.i += 6;
+  }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.p.slice(0, this.v * 3), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.nm.slice(0, this.v * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.c.slice(0, this.v * 3), 3));
+    g.setIndex(new THREE.BufferAttribute(this.ix.slice(0, this.i), 1));
+    g.computeBoundingSphere(); g.computeBoundingBox();
+    return g;
+  }
+}
+const corners = Array.from({ length: 4 }, () => new THREE.Vector3());
+
+// one box's faces into a batch (only the top for paint on the ground; no bottom for things standing on it)
+function emitBox(batch, b, rnd) {
+  const turned = b.rx || b.ry || b.rz;
+  if (turned) { _e.set(b.rx, b.ry, b.rz, 'YXZ'); _m.makeRotationFromEuler(_e); }
+  const vary = 0.94 + rnd() * 0.1;
+  for (const f of FACES) {
+    if (b.k === K.FLAT && f.n[1] !== 1) continue;
+    if (f.n[1] === -1 && !turned && b.y - b.h / 2 < 0.05 && b.y - b.h / 2 > -0.5) continue;
+    for (let k = 0; k < 4; k++) {
+      const q = f.c[k];
+      corners[k].set((q[0] - 0.5) * b.w, (q[1] - 0.5) * b.h, (q[2] - 0.5) * b.d);
+      if (turned) corners[k].applyMatrix4(_m);
+      corners[k].x += b.x; corners[k].y += b.y; corners[k].z += b.z;
+    }
+    _n.set(f.n[0], f.n[1], f.n[2]);
+    if (turned) _n.applyMatrix4(_m).normalize();
+    _c.setHex(b.c).multiplyScalar(b.k === K.GLOW ? 1 : f.shade * vary);
+    batch.quad(corners, _n, _c);
+  }
+}
+function emitPane(batch, p) {
+  const n = PANE_N[p.n], o = 0.035;
+  _n.set(n[0], n[1], n[2]);
+  const hw = p.w / 2, hh = p.h / 2;
+  if (p.n === 'n' || p.n === 's') {
+    const z = p.z + n[2] * o;
+    corners[0].set(p.x - hw, p.y - hh, z); corners[1].set(p.x + hw, p.y - hh, z); corners[2].set(p.x + hw, p.y + hh, z); corners[3].set(p.x - hw, p.y + hh, z);
+  } else {
+    const x = p.x + n[0] * o;
+    corners[0].set(x, p.y - hh, p.z - hw); corners[1].set(x, p.y - hh, p.z + hw); corners[2].set(x, p.y + hh, p.z + hw); corners[3].set(x, p.y + hh, p.z - hw);
+  }
+  _c.setHex(0x1c1a19);
+  batch.quad(corners, _n, _c);
+}
+
+export function buildRuins(scene, phys, glow, seed = 3000) {
+  const L = makeRuins(seed);
+  const group = new THREE.Group();
+  scene.add(group);
+  const items = new Interactions();
+  const mats = {
+    solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.03 }),
+    pane: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.55 }),
+    glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
+    flat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    ground: new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
+    crystal: new THREE.MeshStandardMaterial({ color: 0xb98aff, emissive: 0x8a4dff, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.1, flatShading: true }),
+    pod: new THREE.MeshStandardMaterial({ color: 0x150c22, roughness: 0.3, metalness: 0.6, flatShading: true }),
+    podEdge: new THREE.LineBasicMaterial({ color: 0xc49bff }),
+  };
+
+  // ---------- the ground: sand, with a hole where the ramp goes down, and its colliders ----------
+  const E = 1100;
+  const shape = new THREE.Shape([new THREE.Vector2(-E, -E), new THREE.Vector2(E, -E), new THREE.Vector2(E, E), new THREE.Vector2(-E, E)]);
+  for (const h of L.holes) shape.holes.push(new THREE.Path([new THREE.Vector2(h.x0, -h.z1), new THREE.Vector2(h.x1, -h.z1), new THREE.Vector2(h.x1, -h.z0), new THREE.Vector2(h.x0, -h.z0)]));
+  const gg = new THREE.ShapeGeometry(shape);
+  gg.rotateX(-Math.PI / 2);
+  const ground = new THREE.Mesh(gg, mats.ground);
+  ground.receiveShadow = true;
+  group.add(ground);
+  const h = L.holes[0];
+  if (h) {
+    phys.box({ x: 0, y: -0.5, z: (-E + h.z0) / 2 }, { x: 2 * E, y: 1, z: h.z0 + E });
+    phys.box({ x: 0, y: -0.5, z: (h.z1 + E) / 2 }, { x: 2 * E, y: 1, z: E - h.z1 });
+    phys.box({ x: (-E + h.x0) / 2, y: -0.5, z: (h.z0 + h.z1) / 2 }, { x: h.x0 + E, y: 1, z: h.z1 - h.z0 });
+    phys.box({ x: (h.x1 + E) / 2, y: -0.5, z: (h.z0 + h.z1) / 2 }, { x: E - h.x1, y: 1, z: h.z1 - h.z0 });
+  } else phys.box({ x: 0, y: -0.5, z: 0 }, { x: 2 * E, y: 1, z: 2 * E });
+  const B = HALF + 3;
+  for (const [x, z, w, d] of [[0, -B, 2 * B, 4], [0, B, 2 * B, 4], [-B, 0, 4, 2 * B], [B, 0, 4, 2 * B]]) phys.box({ x, y: 20, z }, { x: w, y: 40, z: d });
+
+  // ---------- every box: its collider, and its faces into its chunk's mesh ----------
+  const batches = new Map();
+  const batchFor = (x, z, kind) => {
+    const key = `${Math.floor((x + 2000) / CHUNK)},${Math.floor((z + 2000) / CHUNK)},${kind}`;
+    let b = batches.get(key);
+    if (!b) { b = new Batch(); batches.set(key, b); }
+    return b;
+  };
+  const vr = rng(seed ^ 0x9e37);
+  let colliders = 0;
+  for (const b of L.boxes) {
+    if (b.col) {
+      const q = b.rx || b.ry || b.rz ? _q.setFromEuler(_e.set(b.rx, b.ry, b.rz, 'YXZ')) : null;
+      phys.box({ x: b.x, y: b.y, z: b.z }, { x: b.w, y: b.h, z: b.d }, q);
+      colliders++;
+    }
+    if (b.hide) continue;
+    emitBox(batchFor(b.x, b.z, b.k === K.FLAT ? 'flat' : b.k === K.GLOW ? 'glow' : 'solid'), b, vr);
+  }
+  for (const p of L.panes) emitPane(batchFor(p.x, p.z, 'pane'), p);
+  let calls = 0;
+  for (const [key, batch] of batches) {
+    const kind = key.split(',')[2];
+    const mesh = new THREE.Mesh(batch.geometry(), mats[kind]);
+    mesh.castShadow = kind === 'solid';
+    mesh.receiveShadow = kind === 'solid' || kind === 'flat';
+    mesh.matrixAutoUpdate = false;
+    group.add(mesh);
+    calls++;
+  }
+
+  // ---------- Prism crystals, the crashed pod, scorch marks, dunes ----------
+  if (L.crystals.length) {
+    const geo = new THREE.OctahedronGeometry(1, 0);
+    geo.scale(0.32, 1, 0.32);
+    const im = new THREE.InstancedMesh(geo, mats.crystal, L.crystals.length);
+    L.crystals.forEach((c, i) => {
+      _e.set(c.rx, c.ry, c.rz, 'YXZ'); _q.setFromEuler(_e);
+      _m.compose(_v.set(c.x, c.y + c.s * 0.8, c.z), _q, new THREE.Vector3(c.s, c.s, c.s));
+      im.setMatrixAt(i, _m);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    group.add(im);
+  }
+  for (const d of L.decals) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(d.r, 48), new THREE.MeshStandardMaterial({ color: d.c, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(d.x, 0.17 + L.decals.indexOf(d) * 0.03, d.z);
+    m.receiveShadow = true;
+    group.add(m);
+  }
+  for (const p of L.pods) {
+    const g = new THREE.Group();
+    const geo = new THREE.ConeGeometry(p.s, p.h, 4);
+    const body = new THREE.Mesh(geo, mats.pod);
+    body.position.y = p.h * 0.32; body.castShadow = true; body.receiveShadow = true;
+    body.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), mats.podEdge));
+    g.add(body);
+    if (glow) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xa36bff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })); s.position.y = p.h * 0.8; s.scale.setScalar(9); g.add(s); }
+    g.position.set(p.x, 0, p.z);
+    g.rotation.set(p.tilt, p.ry, p.tilt * 0.4);
+    group.add(g);
+  }
+  if (L.dunes.length) {
+    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 7), mats.ground, L.dunes.length);
+    L.dunes.forEach((d, i) => {
+      _q.setFromEuler(_e.set(0, d.ry, 0));
+      _m.compose(_v.set(d.x, -d.sy * 0.35, d.z), _q, new THREE.Vector3(d.sx, d.sy, d.sz));
+      im.setMatrixAt(i, _m);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    im.receiveShadow = true;
+    group.add(im);
+  }
+  for (const s of L.signs) sign(group, s);
+
+  // ---------- loot containers ----------
+  const opened = new Map();
+  L.containers.forEach((c, i) => {
+    const def = CONTAINERS[c.type], title = def.name[0].toUpperCase() + def.name.slice(1);
+    items.add({
+      id: 'c' + i, pos: { x: c.x, y: c.y + 0.9, z: c.z }, radius: c.type === 'car' ? 2.2 : 1.8,
+      hold: () => opened.has(i) ? 0 : def.hold,
+      label: () => { const b = opened.get(i); return b ? (b.slots.some(Boolean) ? `Open the ${def.name}` : null) : `Search the ${def.name}`; },
+      use: p => {
+        let b = opened.get(i);
+        if (!b) {
+          b = makeBox('c' + i, title, rollContainer(c.type, c.zone, rng(((seed * 73856093) ^ (i * 19349663)) >>> 0)), def.size);
+          b.pos = { x: c.x, y: c.y, z: c.z }; b.reach = 3.2;
+          opened.set(i, b);
+        }
+        bus.emit('loot:open', p, b, null);
+      },
+    });
+  });
+
+  const dark = pos => {
+    for (const d of L.dark) if (pos.x > d.x0 && pos.x < d.x1 && pos.z > d.z0 && pos.z < d.z1) return Math.max(0, Math.min(1, (-pos.y - 0.6) / 3));
+    return 0;
+  };
+  return {
+    layout: L, group, items, spawns: L.spawns, spawn: L.spawns[0], groundItems: L.groundItems,
+    markers: [...L.extracts, ...L.landmarks],
+    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, meshes: calls, containers: L.containers.length },
+    wind: 0.03,
+    // a drop zone: at random, but after a death not the one closest to where you fell
+    spawnPoint(rnd, p) {
+      const list = p ? L.spawns.filter(s => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) > 300) : L.spawns;
+      return (list.length ? list : L.spawns)[Math.floor(rnd() * (list.length || L.spawns.length))];
+    },
+    zoneAt: (x, z) => zoneAt(x, z),
+    darkness: dark,
+    place(p) {
+      if (dark(p.pos) > 0.3) return 'The Ruins · Underground Base · yellow zone';
+      const z = zoneAt(p.pos.x, p.pos.z);
+      return z ? `The Ruins · ${z.name} · ${z.kind} zone` : 'The Ruins · Outskirts';
+    },
+    step() {},
+    frame() {},
+    dispose() {
+      scene.remove(group);
+      disposeTree(group);
+      for (const m of Object.values(mats)) m.dispose();
+    },
+  };
+}
+
+// a sign on a post, drawn on a canvas (skipped where there is no canvas, like the offline tests)
+function sign(group, s) {
+  const c = typeof document !== 'undefined' && document.createElement ? document.createElement('canvas') : null;
+  if (!c || !c.getContext) return;
+  c.width = 512; c.height = 200;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(14,16,21,0.92)'; g.fillRect(0, 0, 512, 200);
+  g.fillStyle = '#ffb224'; g.fillRect(0, 0, 12, 200);
+  g.fillStyle = '#ffffff'; g.font = '700 60px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textBaseline = 'top';
+  g.fillText(s.title.toUpperCase(), 34, 22);
+  g.fillStyle = '#b9bfc8'; g.font = '500 32px Barlow, Arial, sans-serif';
+  s.sub.split('\n').forEach((t, i) => g.fillText(t, 34, 104 + i * 40));
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.94), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+  board.position.set(s.x, s.y, s.z); board.rotation.y = s.ry || 0;
+  group.add(board);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, s.y - 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x50555d, roughness: 0.6 }));
+  post.position.set(s.x, (s.y - 0.4) / 2, s.z);
+  group.add(post);
+}
+export { CONTAINER_H };

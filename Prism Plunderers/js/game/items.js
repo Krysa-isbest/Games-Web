@@ -56,6 +56,15 @@ export const ITEMS = {
   scatter_core:   { name: 'Scatter charge core',  cat: 'valuable', rarity: 'rare',      value: 190,  weight: 0.6, stack: 3,  icon: 'core',    desc: 'The charge a Scatter did not get to use. Handle gently.' },
   roach_plate:    { name: 'Roach carapace plate', cat: 'material', rarity: 'epic',      value: 320,  weight: 3,   stack: 3,  icon: 'plate',   desc: 'Armour plating off a Roach. Top-tier crafting material.' },
   roach_reactor:  { name: 'Roach Reactor',        cat: 'valuable', rarity: 'legendary', value: 2500, weight: 6,   stack: 1,  icon: 'reactor', desc: 'The heart of a Roach. The most valuable thing you can carry out of the ruins.' },
+  // ---------- found in the city ----------
+  scrap_metal:    { name: 'Scrap metal',          cat: 'material', rarity: 'common',    value: 12,   weight: 0.8, stack: 20, icon: 'scrap',   desc: 'Bent steel from the old city. The workshop melts it down.' },
+  wires:          { name: 'Wires',                cat: 'material', rarity: 'common',    value: 18,   weight: 0.3, stack: 15, icon: 'wires',   desc: 'Copper, stripped from the walls.' },
+  battery:        { name: 'Battery',              cat: 'material', rarity: 'uncommon',  value: 45,   weight: 0.5, stack: 5,  icon: 'battery', desc: 'Still holds a little charge.' },
+  electronics:    { name: 'Electronics',          cat: 'material', rarity: 'uncommon',  value: 60,   weight: 0.4, stack: 10, icon: 'board',   desc: 'Circuit boards from before the Prism came.' },
+  old_phone:      { name: 'Old phone',            cat: 'valuable', rarity: 'uncommon',  value: 90,   weight: 0.2, stack: 5,  icon: 'phone',   desc: 'The screen is cracked. The last message was never sent.' },
+  gold_watch:     { name: 'Gold watch',           cat: 'valuable', rarity: 'rare',      value: 300,  weight: 0.1, stack: 3,  icon: 'watch',   desc: 'It stopped at 4:12.' },
+  data_drive:     { name: 'Data drive',           cat: 'valuable', rarity: 'rare',      value: 380,  weight: 0.1, stack: 3,  icon: 'drive',   desc: 'Records from the year 2999. Someone will pay to read them.' },
+  prism_shard:    { name: 'Prism shard',          cat: 'valuable', rarity: 'epic',      value: 650,  weight: 0.4, stack: 3,  icon: 'shard',   desc: 'A crystal from a Prism nest. It hums in your hand.' },
 };
 export const stackOf = id => ITEMS[id].stack || 1;
 
@@ -74,5 +83,28 @@ export function rollLoot(type, rnd) {
   for (const [id, min, max, chance] of LOOT[type] || []) {
     if (rnd() < chance) out.push({ id, n: min + Math.floor(rnd() * (max - min + 1)) });
   }
+  return out;
+}
+
+// Containers in The Ruins: what each kind can hold, as [item, min, max, chance outside / in a yellow zone / in
+// the red zone]. hold = seconds to search it. Better zones roll better odds.
+export const CONTAINERS = {
+  crate:   { name: 'supply crate', hold: 1.4, size: 8, loot: [['light_ammo', 15, 40, .6, .6, .5], ['pulse_cell', 20, 45, .3, .45, .5], ['medkit', 1, 1, .2, .35, .45], ['stim', 1, 2, .4, .4, .35],
+    ['frag_grenade', 1, 2, .1, .25, .35], ['shield_cell', 1, 1, .05, .25, .35], ['repair_kit', 1, 1, .2, .25, .25], ['shield_light', 1, 1, .06, .04, 0], ['shield_medium', 1, 1, 0, .07, .1], ['shield_heavy', 1, 1, 0, 0, .05]] },
+  locker:  { name: 'locker', hold: 1.0, size: 6, loot: [['scrap_metal', 1, 4, .6, .5, .4], ['wires', 1, 3, .4, .4, .35], ['battery', 1, 2, .2, .3, .3], ['old_phone', 1, 1, .15, .2, .25],
+    ['gold_watch', 1, 1, .03, .07, .12], ['light_ammo', 10, 25, .3, .25, .2], ['stim', 1, 1, .15, .15, .15]] },
+  medcab:  { name: 'medical cabinet', hold: 1.0, size: 4, loot: [['stim', 1, 2, .6, .6, .6], ['medkit', 1, 1, .25, .4, .55], ['medkit', 1, 1, 0, .1, .25]] },
+  toolbox: { name: 'workbench', hold: 1.2, size: 4, loot: [['scrap_metal', 2, 5, .7, .6, .5], ['wires', 1, 3, .5, .5, .4], ['electronics', 1, 2, .15, .3, .4], ['battery', 1, 1, .2, .25, .3], ['repair_kit', 1, 1, .2, .3, .3]] },
+  case:    { name: 'weapon case', hold: 2.0, size: 4, loot: [['scrap_pistol', 1, 1, .5, .3, .15], ['pulse_carbine', 1, 1, .1, .35, .55], ['light_ammo', 20, 48, .6, .5, .4], ['pulse_cell', 30, 60, .2, .45, .6],
+    ['frag_grenade', 1, 2, .15, .3, .4], ['data_drive', 1, 1, .02, .06, .15]] },
+  cache:   { name: 'Prism cache', hold: 2.5, size: 6, loot: [['prism_alloy', 2, 4, 1, 1, 1], ['prism_circuit', 1, 2, .5, .6, .7], ['prism_optic', 1, 1, .2, .3, .4], ['prism_shard', 1, 1, .05, .15, .3], ['thruster_coil', 1, 2, .3, .35, .4]] },
+  car:     { name: 'car wreck', hold: 1.2, size: 4, loot: [['scrap_metal', 1, 3, .6, .5, .5], ['wires', 1, 2, .3, .3, .3], ['battery', 1, 1, .3, .3, .3], ['light_ammo', 8, 20, .2, .2, .2], ['old_phone', 1, 1, .08, .1, .12], ['stim', 1, 1, .08, .08, .08]] },
+};
+const ZONE_COLUMN = { outer: 3, yellow: 4, red: 5 };
+// what a container holds, rolled with a seeded random function the first time it is searched
+export function rollContainer(type, zone, rnd) {
+  const def = CONTAINERS[type], k = ZONE_COLUMN[zone] || 3, out = [];
+  for (const e of def.loot) if (rnd() < e[k]) out.push({ id: e[0], n: e[1] + Math.floor(rnd() * (e[2] - e[1] + 1)) });
+  if (!out.length && type !== 'car' && rnd() < 0.6) { const e = def.loot[0]; out.push({ id: e[0], n: e[1] }); }   // rarely quite empty
   return out;
 }

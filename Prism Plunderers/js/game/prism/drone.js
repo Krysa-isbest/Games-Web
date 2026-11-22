@@ -3,7 +3,7 @@
 // and their animation (tilting into the flight, thruster flames, smoke from a broken thruster).
 import * as THREE from 'three';
 import { PRISM } from './defs.js';
-import { moveRobot, flyToward, groundBelow, separate, turnToward, eyeOf, GRAVITY } from './robot.js';
+import { moveRobot, flyToward, groundBelow, separate, turnToward, eyeOf, routeStart, routeNext, GRAVITY } from './robot.js';
 import { setFlash } from './models.js';
 import { yawOf, angDiff } from '../move-math.js';
 
@@ -16,13 +16,29 @@ export function groundY(r, ctx) {
   return r.gy;
 }
 
-// hover around home in a slow circle (not yet hostile)
+// not yet hostile: fly its patrol route if it has one, otherwise hover around home in a slow circle
 export function patrol(r, ctx, dt, radius, alt, speed) {
+  if (r.route && r.route.length) { followRoute(r, ctx, dt, alt, speed); return; }
   r.patrolA = (r.patrolA ?? r.phase) + dt * speed / Math.max(radius, 1);
   const gy = groundBelow(ctx.phys, r.home.x, r.home.y + 1, r.home.z);
   const tx = r.home.x + Math.cos(r.patrolA) * radius, tz = r.home.z + Math.sin(r.patrolA) * radius;
   flyToward(r, tx, gy + alt + Math.sin(ctx.time * 0.7 + r.phase) * 0.25, tz, speed, 3, dt);
   if (Math.hypot(r.vel.x, r.vel.z) > 0.3) turnToward(r, yawOf(r.vel.x, r.vel.z), 1.5, dt);
+}
+
+// A patrol route: waypoints { x, z } (and y when it should fly over something, like a roof), flown in a loop
+// (or back and forth). It keeps `alt` above the ground under it; r.routeOff spreads a group into a loose
+// formation. Its home moves with it, so dodging and searching start from where it is.
+export function followRoute(r, ctx, dt, alt, speed) {
+  const R = r.route;
+  if (r.routeI === undefined || r.routeI === null || r.routeI >= R.length) r.routeI = routeStart(r);
+  const wp = R[r.routeI], ox = r.routeOff ? r.routeOff.x : 0, oz = r.routeOff ? r.routeOff.z : 0;
+  const gy = groundY(r, ctx);
+  const ty = Math.max(gy, wp.y ?? gy) + (r.routeAlt ?? alt);
+  flyToward(r, wp.x + ox, ty, wp.z + oz, speed, 3, dt);
+  if (Math.hypot(wp.x + ox - r.pos.x, wp.z + oz - r.pos.z) < 3.5) r.routeI = routeNext(r);
+  if (Math.hypot(r.vel.x, r.vel.z) > 0.3) turnToward(r, yawOf(r.vel.x, r.vel.z), 1.5, dt);
+  r.home.x = r.pos.x; r.home.y = r.pos.y; r.home.z = r.pos.z;
 }
 
 // both thrusters gone (or the only one): it drops out of the sky and breaks on the ground

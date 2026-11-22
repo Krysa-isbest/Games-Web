@@ -29,7 +29,7 @@ function render() {
     row('Crouch', seg('crouchMode', MODES)),
     row('Aim', seg('aimMode', MODES)),
     heading('Browser'),
-    row('Fullscreen when playing', toggle('fullscreenPlay'), 'Recommended. In a normal browser window Ctrl+W closes the tab, and crouch is on Ctrl. Fullscreen stops that.'),
+    row('Fullscreen when playing', toggle('fullscreenPlay'), 'Recommended. In a normal browser window Ctrl+W closes the tab. Fullscreen stops that (in Chrome and Edge).'),
   );
   keysBox = el('div', 'keys');
   body.append(keysBox);

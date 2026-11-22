@@ -29,7 +29,25 @@ export function makeRobot(id, type, pos, yaw, rnd) {
     hurtT: 9, flash: 0,
     seed: rnd(), phase: rnd() * Math.PI * 2,
     group: null,
+    route: null, routeI: null, routeDir: 1, routeBack: false, routeOff: null, routeAlt: null, wait: 0,   // a patrol route (see below)
   };
+}
+
+// ---------- patrol routes ----------
+// route = [{ x, z, y? }]: flown or walked while the robot is not after you (drone.js followRoute, roach.js wander)
+export function routeStart(r) {
+  let best = 0, bd = Infinity;
+  r.route.forEach((w, i) => { const d = Math.hypot(w.x - r.pos.x, w.z - r.pos.z); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+// the next waypoint: round the loop, or back and forth when r.routeBack is set
+export function routeNext(r) {
+  const n = r.route.length;
+  if (n < 2) return 0;
+  if (!r.routeBack) return (r.routeI + 1) % n;
+  let i = r.routeI + r.routeDir;
+  if (i >= n || i < 0) { r.routeDir = -r.routeDir; i = r.routeI + r.routeDir; }
+  return i;
 }
 
 // ---------- physics ----------
@@ -165,7 +183,7 @@ export function perceive(r, ctx, dt) {
   else r.unseen += dt;
   if (r.alertIn >= 0) { r.alertIn -= dt; if (r.alertIn < 0) { if (!r.hostile) becomeHostile(r, ctx, p, false); } }
   if (r.hostile) {
-    if (r.unseen > 14) { r.hostile = false; r.aware = 0.4; r.state = 'idle'; r.st = 0; }     // lost you: back to patrolling
+    if (r.unseen > 14) { r.hostile = false; r.aware = 0.4; r.state = 'idle'; r.st = 0; r.routeI = null; }     // lost you: back to patrolling, from the nearest waypoint
     return;
   }
   if (r.sees && d.recog > 0) {

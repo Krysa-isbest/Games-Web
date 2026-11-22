@@ -1,6 +1,6 @@
 // The lobby (main menu): the splash, the tab bar, the top bar values, the progress card, the squad slots and
 // the keyboard shortcuts (Q / E switch tabs, Tab opens Raider, Esc goes back to Play).
-import { P, Stash } from '../core/save.js';
+import { P, Stash, saveProfile } from '../core/save.js';
 import { bus } from '../core/events.js';
 import { Sound, uiSfx } from '../core/sound.js';
 import { $, esc } from '../core/util.js';
@@ -9,7 +9,7 @@ import { UI } from './screens.js';
 const TABS = ['play', 'workshop', 'raider', 'skills', 'trader'];
 // the build order (NEXT-CHAT.md). DONE = how many parts are finished.
 const PARTS = ['Foundation', 'Player', 'Prism enemies', 'Weapons and items', 'The Ruins', 'Raid rules', 'Performance', 'Lobby and workshop', 'Skill tree', 'Menus and settings', 'Difficulty', 'Multiplayer'];
-const DONE = 4;
+const DONE = 5;
 const LINES = ['2999. They landed. We shot first.', '3000. They came back. All of them.'];
 const SOON = 'Co-op comes with the multiplayer update.';
 
@@ -27,7 +27,15 @@ export function initMainMenu({ play }) {
   $('btn-play').onclick = () => onPlay();
   $('bb-settings').onclick = () => UI.go('controls');
   $('tb-me').onclick = () => UI.go('save');
-  $('dest').onclick = () => UI.toast('The Ruins opens when raids are built. Until then, Play takes you to the test range.');
+  // where Play takes you: The Ruins (free roam until the raid rules exist) or the test range
+  const renderDest = () => { $('dest-name').textContent = P.dest === 'test' ? 'Test range' : 'The Ruins'; };
+  renderDest();
+  $('dest').onclick = () => {
+    P.dest = P.dest === 'test' ? 'ruins' : 'test';
+    saveProfile();
+    renderDest();
+    UI.toast(P.dest === 'test' ? 'Play now opens the test range.' : 'Play now drops you into The Ruins (free roam: the raid rules come next).');
+  };
   $('sq-invite').onclick = () => UI.toast(SOON);
   $('bb-chat').onclick = () => UI.toast('Chat comes with the multiplayer update.');
   $('bb-friends').onclick = () => UI.toast(SOON);

@@ -7,7 +7,7 @@ import { rng } from '../core/util.js';
 
 export const HORIZON = 0x6e4660;
 
-export function addSky(scene, { fog = 0.0065, shadowSpan = 45 } = {}) {
+export function addSky(scene, { fog = 0.0065, shadowSpan = 45, far = 240 } = {}) {
   scene.fog = new THREE.FogExp2(HORIZON, fog);
   scene.background = new THREE.Color(HORIZON);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(700, 32, 16), new THREE.ShaderMaterial({
@@ -36,7 +36,8 @@ export function addSky(scene, { fog = 0.0065, shadowSpan = 45 } = {}) {
   const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xd8ccff, size: 1.3, sizeAttenuation: false, transparent: true, opacity: 0.6, fog: false }));
   scene.add(stars);
 
-  scene.add(new THREE.HemisphereLight(0x9a8ad0, 0x3a2a22, 1.05));
+  const hemi = new THREE.HemisphereLight(0x9a8ad0, 0x3a2a22, 1.05);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffb48a, 2.4);
   const SUN = new THREE.Vector3(-55, 42, -70);              // low in the south-west, behind the drop pod
   scene.add(sun, sun.target);
@@ -50,13 +51,13 @@ export function addSky(scene, { fog = 0.0065, shadowSpan = 45 } = {}) {
     if (!size) return;
     if (sun.shadow.mapSize.x !== size) { sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(size, size); }
     const c = sun.shadow.camera;
-    c.left = c.bottom = -shadowSpan; c.right = c.top = shadowSpan; c.near = 1; c.far = 240;
+    c.left = c.bottom = -shadowSpan; c.right = c.top = shadowSpan; c.near = 1; c.far = far;
     c.updateProjectionMatrix();
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.5;
   }
   shadows();
   return {
-    sky, sun, stars,
+    sky, sun, stars, hemi, fill,
     shadows,
     // the sky and the shadowed area move with the player
     follow(x, z) {

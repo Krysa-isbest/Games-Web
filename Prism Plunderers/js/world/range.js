@@ -8,6 +8,7 @@ import { Interactions } from '../game/interact.js';
 import { equipShield, restoreShield, heal, shieldFull, applyDamage } from '../game/damage.js';
 import { Sentries } from '../game/sentry.js';
 import { makeBox, restock } from '../game/inventory.js';
+import { disposeTree } from '../core/engine.js';
 import { bus } from '../core/events.js';
 import { rng } from '../core/util.js';
 
@@ -261,6 +262,13 @@ export function buildRange(scene, phys, glowTex) {
     fink: { x: 8, y: 4.5, z: -55 }, fly: { x: -4, y: 3.5, z: -63 }, swatter: { x: 10, y: 5.5, z: -67 }, roach: { x: 3, y: 0.1, z: -69 },
     scatter: [{ x: nest.x - 2, y: 0.1, z: nest.z - 2 }, { x: nest.x + 1, y: 0.1, z: nest.z + 1.6 }, { x: nest.x - 1.6, y: 0.1, z: nest.z + 2.4 }],
   };
+  // patrol routes for the robots the console spawns (they fly or walk these until they notice you)
+  const routes = {
+    fink: [{ x: -20, z: -45 }, { x: 20, z: -45 }, { x: 24, z: -66 }, { x: -2, z: -70 }, { x: -26, z: -56 }],
+    fly: [{ x: -12, z: -52 }, { x: 8, z: -46 }, { x: 14, z: -64 }, { x: -10, z: -66 }],
+    swatter: [{ x: -16, z: -54 }, { x: 16, z: -54 }, { x: 16, z: -68 }, { x: -16, z: -68 }],
+    roach: [{ x: 3, z: -69 }, { x: 16, z: -56 }, { x: -6, z: -54 }],
+  };
 
   // ---------- ruins all around ----------
   {
@@ -286,10 +294,12 @@ export function buildRange(scene, phys, glowTex) {
 
   return {
     group, spawn, items, sentries, gas, zone, crate,
-    arena: { bounds, nest, posts, spots },
+    arena: { bounds, nest, posts, spots, routes },
+    // the gas pit's hiss, louder as you get close
+    hiss: p => 0.05 * Math.max(0, 1 - Math.hypot(p.pos.x - gas.x, p.pos.z - gas.z) / 14),
     step(dt, p) { gas.step(dt, p); sentries.step(dt, p); },
     frame(dt, alpha, p) { sentries.frame(dt, alpha, p); gas.frame(dt); },
-    dispose() { sentries.dispose(); scene.remove(group); },
+    dispose() { sentries.dispose(); scene.remove(group); disposeTree(group); },
   };
 }
 
