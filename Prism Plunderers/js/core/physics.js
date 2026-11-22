@@ -36,6 +36,14 @@ export class Physics {
     return this.world.createCollider(d);
   }
 
+  // A fixed triangle mesh: many boxes' worth of world in one collider. This Rapier rebuilds its scene-query tree
+  // on every step, so a city of tens of thousands of separate boxes would cost tens of milliseconds a step;
+  // a few hundred meshes cost almost nothing (each keeps its own tree, built once).
+  mesh(vertices, indices) {
+    const d = this.R.ColliderDesc.trimesh(vertices, indices).setCollisionGroups(groups(G.WORLD, 0xffff));
+    return this.world.createCollider(d);
+  }
+
   // The first world surface along a ray. dir must have length 1.
   // Returns { t } (distance), or { t, nx, ny, nz } with withNormal, or null when nothing is hit.
   ray(o, dir, max, filter = G.WORLD, withNormal = false) {

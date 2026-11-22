@@ -63,15 +63,14 @@ function draw(g, L) {
     g.beginPath(); g.arc(X(z.x), Y(z.z), z.r * k, 0, Math.PI * 2); g.fill(); g.stroke();
   }
   g.setLineDash([]);
-  // streets
-  g.strokeStyle = '#4c463e'; g.lineWidth = L.street * k;
-  for (let i = 0; i <= 14; i++) {
-    const a = -560 + L.grid * i;
-    g.beginPath(); g.moveTo(X(a), Y(-566)); g.lineTo(X(a), Y(566)); g.stroke();
-    g.beginPath(); g.moveTo(X(-566), Y(a)); g.lineTo(X(566), Y(a)); g.stroke();
-  }
-  // the plaza and the crater
-  g.fillStyle = '#5a5248'; g.fillRect(X(-74), Y(-74), 148 * k, 148 * k);
+  // blocks (their sidewalks), streets, the plaza, rubble, the crater
+  const box = (r, fill) => { g.fillStyle = fill; g.fillRect(X(r.x0), Y(r.z0), (r.x1 - r.x0) * k, (r.z1 - r.z0) * k); };
+  for (const b of L.blocks || []) box(b, '#3a342d');
+  for (const s of L.streets || []) box(s, '#4c463e');
+  for (const a of L.alleys || []) box(a, '#433d36');
+  for (const s of L.squares || []) box(s, '#544c43');
+  if (L.plaza) box(L.plaza, '#5a5248');
+  for (const r of L.ruins || []) box(r, '#4a4239');
   g.fillStyle = '#1b1715'; g.beginPath(); g.arc(X(L.crater.x), Y(L.crater.z), L.crater.r * 0.8 * k, 0, Math.PI * 2); g.fill();
   g.strokeStyle = 'rgba(185,138,255,0.8)'; g.lineWidth = 2; g.stroke();
   // buildings
@@ -80,10 +79,13 @@ function draw(g, L) {
     g.fillRect(X(f.x0), Y(f.z0), (f.x1 - f.x0) * k, (f.z1 - f.z0) * k);
     if (f.open) { g.strokeStyle = 'rgba(255,178,36,0.45)'; g.lineWidth = 1; g.strokeRect(X(f.x0) + 0.5, Y(f.z0) + 0.5, (f.x1 - f.x0) * k - 1, (f.z1 - f.z0) * k - 1); }
   }
-  // the highway, with its broken middle
+  // the highway, with its broken middle and the ramps at both ends
+  const H = L.hwy;
   g.fillStyle = '#6a645a';
-  for (const [a, b] of [[-560, 20], [76, 560]]) g.fillRect(X(a), Y(L.hwy.z - L.hwy.w / 2), (b - a) * k, L.hwy.w * k);
-  g.fillStyle = '#8a8172'; g.fillRect(X(40), Y(L.hwy.z - 6), 36 * k, 12 * k);
+  for (const [a, b] of [[-H.end, H.gap[0]], [H.gap[1], H.end]]) g.fillRect(X(a), Y(H.z - H.w / 2), (b - a) * k, H.w * k);
+  g.fillStyle = '#5f594f';
+  for (const [a, b] of [[-H.foot, -H.end], [H.end, H.foot]]) g.fillRect(X(a), Y(H.z - H.w / 2 + 1), (b - a) * k, (H.w - 2) * k);
+  g.fillStyle = '#8a8172'; g.fillRect(X(H.gap[0] + 8), Y(H.z - 6), (H.gap[1] - H.gap[0] - 8) * k, 12 * k);
   // the Underground Base
   const B = L.bunker;
   g.strokeStyle = 'rgba(185,138,255,0.75)'; g.setLineDash([4, 4]); g.lineWidth = 1.5;

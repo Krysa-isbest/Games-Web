@@ -149,9 +149,18 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 const GAMES = [
   {
     file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
-    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: The Ruins, a whole ruined desert city to explore and loot, with the five Prism robots patrolling it, real weapons and a drag-and-drop inventory. The raid rules (timer, extraction) come next; online co-op for up to 4 comes later.',
+    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: The Ruins, a dense ruined desert city to explore and loot (being rebuilt step by step), with the five Prism robots patrolling it, real weapons and a drag-and-drop inventory. Street detail and the landmarks come next, then the raid rules (timer, extraction); online co-op for up to 4 comes later.',
     mp: null, lang: 'English', genre: 'Extraction shooter · PvE',
     updating: true, changelog: [
+      { version: '0.5.1', date: '2026-11-22', notes: [
+        'The Ruins rebuilt, part 1 of 3: a smaller, fuller city, 800 by 800 m. Eleven streets each way and close to a hundred city blocks, built up all round with buildings shoulder to shoulder, courtyards inside, narrow alleys and small squares.',
+        'Every building is damaged now: collapsed corners, sheared-off tops, buildings split down the middle, holes blown in the walls, roofs and floors fallen in, rubble on the floors and spilling into the streets. Downtown is hit hardest.',
+        'Districts: tall downtown blocks with shops round the plaza, offices and flats with balconies, houses behind front-yard walls, the old market packed with small houses and bazaars, the industrial yard, and the streets the crater tore through.',
+        'About 430 buildings you can go into, with real stairs, rooms, furniture and loot, and often a way up to the roof.',
+        'Your legs no longer sink into the ground: the streets, sidewalks and floors are painted on the ground itself (asphalt, cracks, lane marks, crosswalks, sand drifting over everything), so you stand exactly on what you see.',
+        'The Collapsed Tower, the Underground Base, the Pod Crater and the broken highway moved into the new city. They get reworked in part 3 of the rebuild; part 2 brings life to the streets: wrecks, lamps, signs, barricades and more.',
+        'Big physics speed-up: the whole city now collides as a few hundred meshes instead of tens of thousands of boxes, which should help the frame rate a lot.'
+      ] },
       { version: '0.5', date: '2026-11-22', notes: [
         'The Ruins: a ruined desert city of 1.2 by 1.2 km. Play now drops you in at one of six drop zones on its edge (the lobby\'s destination button switches to the test range).',
         'Downtown, the red zone: tall ruins round a plaza with the Collapsed Tower. Climb its fallen top to a room full of loot 20 m up, if the Roach walking the plaza lets you.',

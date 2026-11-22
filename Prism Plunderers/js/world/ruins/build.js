@@ -1,10 +1,12 @@
-// Builds The Ruins from its layout (layout.js): the boxes merged into one mesh per surface kind per 150 m chunk
-// (a few draw calls for a whole district, culled by chunk), the physics colliders, the sand ground with the hole
-// over the Underground Base ramp, Prism crystals, the crashed pod, dunes, signs, and the loot containers you
-// search with E (their contents rolled from the map's seed the first time anyone opens them).
+// Builds The Ruins from its layout (layout.js): the boxes merged into one mesh per surface kind per 100 m chunk
+// (a few draw calls for a whole district; chunks far from you are hidden), the physics colliders, the painted
+// ground (groundmap.js) with the hole over the Underground Base ramp, Prism crystals, the crashed pod, dunes, signs,
+// and the loot containers you search with E (their contents rolled from the map's seed the first time anyone
+// opens them).
 import * as THREE from 'three';
 import { makeRuins, zoneAt, HALF } from './layout.js';
-import { K, CONTAINER_H } from './kit.js';
+import { K, FLOOR, CONTAINER_H } from './kit.js';
+import { paintGround, groundMaterial, G } from './groundmap.js';
 import { Interactions } from '../../game/interact.js';
 import { CONTAINERS, rollContainer } from '../../game/items.js';
 import { makeBox } from '../../game/inventory.js';
@@ -12,7 +14,7 @@ import { disposeTree } from '../../core/engine.js';
 import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
 
-const CHUNK = 150;
+const CHUNK = 100, FAR = 340;                            // chunks whose nearest edge is further than FAR are hidden
 const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
 const FACES = [
   { n: [1, 0, 0], c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], shade: 0.9 },
@@ -65,14 +67,15 @@ class Batch {
 }
 const corners = Array.from({ length: 4 }, () => new THREE.Vector3());
 
-// one box's faces into a batch (only the top for paint on the ground; no bottom for things standing on it)
+// one box's faces into a batch (no bottom face for things standing on the ground or on a floor, where nobody can
+// see it; the top in its own colour if it has one)
 function emitBox(batch, b, rnd) {
-  const turned = b.rx || b.ry || b.rz;
+  const turned = b.rx || b.ry || b.rz, y0 = b.y - b.h / 2;
   if (turned) { _e.set(b.rx, b.ry, b.rz, 'YXZ'); _m.makeRotationFromEuler(_e); }
   const vary = 0.94 + rnd() * 0.1;
+  const standing = !turned && ((y0 < 0.05 && y0 > -0.5) || (y0 > 3 && Math.abs(y0 / FLOOR - Math.round(y0 / FLOOR)) < 0.003));
   for (const f of FACES) {
-    if (b.k === K.FLAT && f.n[1] !== 1) continue;
-    if (f.n[1] === -1 && !turned && b.y - b.h / 2 < 0.05 && b.y - b.h / 2 > -0.5) continue;
+    if (f.n[1] === -1 && standing) continue;
     for (let k = 0; k < 4; k++) {
       const q = f.c[k];
       corners[k].set((q[0] - 0.5) * b.w, (q[1] - 0.5) * b.h, (q[2] - 0.5) * b.d);
@@ -81,9 +84,33 @@ function emitBox(batch, b, rnd) {
     }
     _n.set(f.n[0], f.n[1], f.n[2]);
     if (turned) _n.applyMatrix4(_m).normalize();
-    _c.setHex(b.c).multiplyScalar(b.k === K.GLOW ? 1 : f.shade * vary);
+    _c.setHex(f.n[1] === 1 && b.t !== undefined ? b.t : b.c).multiplyScalar(b.k === K.GLOW ? 1 : f.shade * vary);
     batch.quad(corners, _n, _c);
   }
+}
+// one box's 8 corners and 12 triangles (facing out) into a chunk's collision mesh
+const BOX_TRIS = [0, 4, 6, 0, 6, 2, 1, 3, 7, 1, 7, 5, 0, 1, 5, 0, 5, 4, 2, 6, 7, 2, 7, 3, 0, 2, 3, 0, 3, 1, 4, 5, 7, 4, 7, 6];
+function boxTriangles(m, b) {
+  const turned = b.rx || b.ry || b.rz, base = m.v.length / 3;
+  if (turned) { _e.set(b.rx, b.ry, b.rz, 'YXZ'); _m.makeRotationFromEuler(_e); }
+  for (let c = 0; c < 8; c++) {
+    _v.set((c & 1 ? 0.5 : -0.5) * b.w, (c & 2 ? 0.5 : -0.5) * b.h, (c & 4 ? 0.5 : -0.5) * b.d);
+    if (turned) _v.applyMatrix4(_m);
+    m.v.push(_v.x + b.x, _v.y + b.y, _v.z + b.z);
+  }
+  for (const t of BOX_TRIS) m.i.push(base + t);
+}
+// a flight's wedge: its side profile runs from one tread before the first riser, up through every step's front
+// edge to the top step, flat across it, straight down at the back; pushed out to the stair's width
+const WEDGE_TRIS = [0, 2, 4, 0, 4, 6, 1, 3, 5, 1, 5, 7, 0, 2, 3, 0, 3, 1, 2, 4, 5, 2, 5, 3, 4, 6, 7, 4, 7, 5, 6, 0, 1, 6, 1, 7];
+function wedgeTriangles(m, w) {
+  const run = w.n * w.tread, h = w.n * w.rise, base = m.v.length / 3;
+  const profile = [[-w.tread, 0], [run - w.tread, h], [run, h], [run, 0]];
+  for (const [a, y] of profile) for (const c of [-w.w / 2, w.w / 2]) {
+    if (w.axis === 'x') m.v.push(w.x + w.dir * a, w.y0 + y, w.z + c);
+    else m.v.push(w.x + c, w.y0 + y, w.z + w.dir * a);
+  }
+  for (const t of WEDGE_TRIS) m.i.push(base + t);
 }
 function emitPane(batch, p) {
   const n = PANE_N[p.n], o = 0.035;
@@ -96,7 +123,7 @@ function emitPane(batch, p) {
     const x = p.x + n[0] * o;
     corners[0].set(x, p.y - hh, p.z - hw); corners[1].set(x, p.y - hh, p.z + hw); corners[2].set(x, p.y + hh, p.z + hw); corners[3].set(x, p.y + hh, p.z - hw);
   }
-  _c.setHex(0x1c1a19);
+  _c.setHex(p.c ?? 0x1c1a19);
   batch.quad(corners, _n, _c);
 }
 
@@ -105,23 +132,27 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
   const group = new THREE.Group();
   scene.add(group);
   const items = new Interactions();
+  const paint = paintGround(L, seed);
   const mats = {
     solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.03 }),
     pane: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.55 }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
-    flat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-    ground: new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
+    ground: paint ? groundMaterial(paint, seed) : new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
+    dune: new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
     crystal: new THREE.MeshStandardMaterial({ color: 0xb98aff, emissive: 0x8a4dff, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.1, flatShading: true }),
     pod: new THREE.MeshStandardMaterial({ color: 0x150c22, roughness: 0.3, metalness: 0.6, flatShading: true }),
     podEdge: new THREE.LineBasicMaterial({ color: 0xc49bff }),
   };
 
-  // ---------- the ground: sand, with a hole where the ramp goes down, and its colliders ----------
+  // ---------- the ground: painted sand, with a hole where the ramp goes down, and its colliders ----------
   const E = 1100;
   const shape = new THREE.Shape([new THREE.Vector2(-E, -E), new THREE.Vector2(E, -E), new THREE.Vector2(E, E), new THREE.Vector2(-E, E)]);
   for (const h of L.holes) shape.holes.push(new THREE.Path([new THREE.Vector2(h.x0, -h.z1), new THREE.Vector2(h.x1, -h.z1), new THREE.Vector2(h.x1, -h.z0), new THREE.Vector2(h.x0, -h.z0)]));
   const gg = new THREE.ShapeGeometry(shape);
   gg.rotateX(-Math.PI / 2);
+  const pos = gg.attributes.position, uv = gg.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + G) / (2 * G), (G - pos.getZ(i)) / (2 * G));   // the painted map over -G..G
+  uv.needsUpdate = true;
   const ground = new THREE.Mesh(gg, mats.ground);
   ground.receiveShadow = true;
   group.add(ground);
@@ -137,36 +168,51 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
 
   // ---------- every box: its collider, and its faces into its chunk's mesh ----------
   const batches = new Map();
+  const chunkOf = (x, z) => [Math.floor((x + 2000) / CHUNK), Math.floor((z + 2000) / CHUNK)];
   const batchFor = (x, z, kind) => {
-    const key = `${Math.floor((x + 2000) / CHUNK)},${Math.floor((z + 2000) / CHUNK)},${kind}`;
+    const [i, j] = chunkOf(x, z), key = `${i},${j},${kind}`;
     let b = batches.get(key);
-    if (!b) { b = new Batch(); batches.set(key, b); }
+    if (!b) { b = new Batch(); b.ci = i; b.cj = j; batches.set(key, b); }
     return b;
   };
   const vr = rng(seed ^ 0x9e37);
+  const solids = new Map();                              // per chunk: the solid boxes as one triangle mesh
   let colliders = 0;
   for (const b of L.boxes) {
     if (b.col) {
-      const q = b.rx || b.ry || b.rz ? _q.setFromEuler(_e.set(b.rx, b.ry, b.rz, 'YXZ')) : null;
-      phys.box({ x: b.x, y: b.y, z: b.z }, { x: b.w, y: b.h, z: b.d }, q);
+      const [i, j] = chunkOf(b.x, b.z), key = i + ',' + j;
+      let m = solids.get(key);
+      if (!m) solids.set(key, m = { v: [], i: [] });
+      boxTriangles(m, b);
       colliders++;
     }
     if (b.hide) continue;
-    emitBox(batchFor(b.x, b.z, b.k === K.FLAT ? 'flat' : b.k === K.GLOW ? 'glow' : 'solid'), b, vr);
+    emitBox(batchFor(b.x, b.z, b.k === K.GLOW ? 'glow' : 'solid'), b, vr);
   }
+  for (const w of L.wedges) {                            // the stairs you walk on (the steps you see are only drawn)
+    const run = w.n * w.tread, cx = w.axis === 'x' ? w.x + w.dir * run / 2 : w.x, cz = w.axis === 'z' ? w.z + w.dir * run / 2 : w.z;
+    const [i, j] = chunkOf(cx, cz), key = i + ',' + j;
+    let m = solids.get(key);
+    if (!m) solids.set(key, m = { v: [], i: [] });
+    wedgeTriangles(m, w);
+  }
+  for (const m of solids.values()) phys.mesh(new Float32Array(m.v), new Uint32Array(m.i));
   for (const p of L.panes) emitPane(batchFor(p.x, p.z, 'pane'), p);
-  let calls = 0;
+  const chunks = [];
+  let verts = 0;
   for (const [key, batch] of batches) {
     const kind = key.split(',')[2];
     const mesh = new THREE.Mesh(batch.geometry(), mats[kind]);
     mesh.castShadow = kind === 'solid';
-    mesh.receiveShadow = kind === 'solid' || kind === 'flat';
+    mesh.receiveShadow = kind === 'solid';
     mesh.matrixAutoUpdate = false;
     group.add(mesh);
-    calls++;
+    verts += batch.v;
+    const x0 = batch.ci * CHUNK - 2000, z0 = batch.cj * CHUNK - 2000;
+    chunks.push({ mesh, x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK });
   }
 
-  // ---------- Prism crystals, the crashed pod, scorch marks, dunes ----------
+  // ---------- Prism crystals, the crashed pod, dunes ----------
   if (L.crystals.length) {
     const geo = new THREE.OctahedronGeometry(1, 0);
     geo.scale(0.32, 1, 0.32);
@@ -179,12 +225,6 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     im.instanceMatrix.needsUpdate = true;
     im.computeBoundingSphere();
     group.add(im);
-  }
-  for (const d of L.decals) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(d.r, 48), new THREE.MeshStandardMaterial({ color: d.c, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-    m.rotation.x = -Math.PI / 2; m.position.set(d.x, 0.17 + L.decals.indexOf(d) * 0.03, d.z);
-    m.receiveShadow = true;
-    group.add(m);
   }
   for (const p of L.pods) {
     const g = new THREE.Group();
@@ -199,7 +239,7 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     group.add(g);
   }
   if (L.dunes.length) {
-    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 7), mats.ground, L.dunes.length);
+    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 7), mats.dune, L.dunes.length);
     L.dunes.forEach((d, i) => {
       _q.setFromEuler(_e.set(0, d.ry, 0));
       _m.compose(_v.set(d.x, -d.sy * 0.35, d.z), _q, new THREE.Vector3(d.sx, d.sy, d.sz));
@@ -236,10 +276,11 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     for (const d of L.dark) if (pos.x > d.x0 && pos.x < d.x1 && pos.z > d.z0 && pos.z < d.z1) return Math.max(0, Math.min(1, (-pos.y - 0.6) / 3));
     return 0;
   };
+  let cullAt = null;
   return {
     layout: L, group, items, spawns: L.spawns, spawn: L.spawns[0], groundItems: L.groundItems,
     markers: [...L.extracts, ...L.landmarks],
-    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, meshes: calls, containers: L.containers.length },
+    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, colliderMeshes: solids.size, meshes: chunks.length, vertices: verts, containers: L.containers.length },
     wind: 0.03,
     // a drop zone: at random, but after a death not the one closest to where you fell
     spawnPoint(rnd, p) {
@@ -254,11 +295,19 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       return z ? `The Ruins · ${z.name} · ${z.kind} zone` : 'The Ruins · Outskirts';
     },
     step() {},
-    frame() {},
+    // hide the chunks far from you (checked again whenever you have moved 10 m)
+    frame(dt, a, p) {
+      if (!p || (cullAt && Math.hypot(p.pos.x - cullAt.x, p.pos.z - cullAt.z) < 10)) return;
+      cullAt = { x: p.pos.x, z: p.pos.z };
+      for (const c of chunks) {
+        const dx = Math.max(c.x0 - p.pos.x, 0, p.pos.x - c.x1), dz = Math.max(c.z0 - p.pos.z, 0, p.pos.z - c.z1);
+        c.mesh.visible = dx * dx + dz * dz < FAR * FAR;
+      }
+    },
     dispose() {
       scene.remove(group);
       disposeTree(group);
-      for (const m of Object.values(mats)) m.dispose();
+      for (const m of Object.values(mats)) { m.map?.dispose(); m.userData?.detail?.dispose(); m.dispose(); }
     },
   };
 }
@@ -269,6 +318,7 @@ function sign(group, s) {
   if (!c || !c.getContext) return;
   c.width = 512; c.height = 200;
   const g = c.getContext('2d');
+  if (!g) return;
   g.fillStyle = 'rgba(14,16,21,0.92)'; g.fillRect(0, 0, 512, 200);
   g.fillStyle = '#ffb224'; g.fillRect(0, 0, 12, 200);
   g.fillStyle = '#ffffff'; g.font = '700 60px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textBaseline = 'top';
