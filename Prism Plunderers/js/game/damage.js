@@ -37,7 +37,8 @@ export function applyDamage(t, hit) {
   t.health -= r.health;
   t.hurtT = 0;
   t.lastHit = { type, source: hit.source || '', amount: hit.amount, from: hit.from ? { x: hit.from.x, y: hit.from.y, z: hit.from.z } : null };
-  t.use = null;                          // taking damage stops whatever you were using
+  t.use = null;                          // taking damage stops whatever you were using (a station, a medkit...)
+  if (t.using) { bus.emit('use:stopped', t, t.using); t.using = null; }
   if (t.health <= 1e-6) { t.health = 0; t.dead = true; t.deathCause = hit.source || type; r.killed = true; }
   bus.emit('damage', t, hit, r);
   return r;
@@ -50,9 +51,12 @@ export function heal(t, amount) {
   return h;
 }
 
-// type: 'light' | 'medium' | 'heavy' | null (take it off). A new shield comes fully charged.
+// type: 'light' | 'medium' | 'heavy' | null (take it off). A new shield comes fully charged. With an inventory,
+// the shield is the item in the equipment slot and the player's live shield is that item's own state.
 export function equipShield(t, type) {
-  t.shield = type ? { type, hp: SHIELDS[type].hp, broken: false } : null;
+  const sh = type ? { type, hp: SHIELDS[type].hp, broken: false } : null;
+  if (t.inv) t.inv.equip.shield = sh ? { id: 'shield_' + type, n: 1, d: sh } : null;
+  t.shield = sh;
   bus.emit('shield', t, 'equip');
 }
 

@@ -44,8 +44,25 @@ export const Sfx = {
   sentryFire(d) { const v = near(d, 60); if (v > 0) { N(0.16, { freq: 2400, q: 1, vol: 0.12 * v }); T(900, 0.18, { type: 'square', vol: 0.04 * v, to: 280 }); } },
   boltHit(d) { const v = near(d); if (v > 0) N(0.12, { freq: 1700, q: 1.2, vol: 0.1 * v }); },
 
-  // the test gun and hit confirmation
-  gun() { N(0.07, { freq: 1800, q: 0.7, vol: 0.12 }); T(140, 0.06, { type: 'square', vol: 0.06, to: 70 }); N(0.12, { freq: 500, filter: 'lowpass', vol: 0.08 }); },
+  // weapons and hit confirmation
+  shot(model) {
+    if (model === 'carbine') {                         // the Prism coil: a crack with a zap in it
+      N(0.06, { freq: 2400, q: 0.9, vol: 0.1 }); T(560, 0.09, { type: 'sawtooth', vol: 0.045, to: 140 }); N(0.12, { freq: 600, filter: 'lowpass', vol: 0.07 });
+    } else {
+      N(0.09, { freq: 1500, q: 0.6, vol: 0.15 }); T(160, 0.08, { type: 'square', vol: 0.07, to: 60 }); N(0.2, { freq: 420, filter: 'lowpass', vol: 0.1 });
+    }
+  },
+  dry() { T(1800, 0.02, { type: 'square', vol: 0.05 }); T(1200, 0.02, { type: 'square', vol: 0.03, delay: 0.03 }); },
+  magOut() { T(320, 0.05, { type: 'square', vol: 0.05, to: 200 }); N(0.05, { freq: 2200, q: 2, vol: 0.05 }); },
+  magIn() { T(240, 0.04, { type: 'square', vol: 0.07 }); N(0.04, { freq: 3000, q: 2, vol: 0.06, delay: 0.03 }); },
+  rack() { N(0.06, { freq: 2600, q: 1.5, vol: 0.06 }); T(900, 0.04, { type: 'square', vol: 0.04, delay: 0.06 }); },
+  draw() { N(0.07, { freq: 1600, q: 1.2, vol: 0.035 }); T(500, 0.04, { type: 'triangle', vol: 0.03, delay: 0.04 }); },
+  swing() { N(0.22, { freq: 900, q: 0.8, vol: 0.07, to: 300 }); },
+  thunk() { T(130, 0.1, { type: 'square', vol: 0.12, to: 60 }); N(0.08, { freq: 1800, q: 1, vol: 0.1 }); },
+  pin() { T(2800, 0.04, { type: 'triangle', vol: 0.05 }); T(2200, 0.06, { type: 'triangle', vol: 0.04, delay: 0.05 }); },
+  toss() { N(0.18, { freq: 1100, q: 0.8, vol: 0.06, to: 500 }); },
+  pickup() { T(700, 0.05, { type: 'triangle', vol: 0.06 }); T(1050, 0.08, { type: 'triangle', vol: 0.05, delay: 0.05 }); },
+  rustle() { N(0.25, { freq: 1500, q: 0.7, vol: 0.035 }); },
   hit(kind) {
     if (kind === 'kill') { T(900, 0.08, { type: 'triangle', vol: 0.12 }); T(1350, 0.14, { type: 'triangle', vol: 0.1, delay: 0.06 }); }
     else T(kind === 'weak' ? 1500 : 1100, 0.04, { type: 'triangle', vol: kind === 'weak' ? 0.09 : 0.05 });
@@ -91,4 +108,5 @@ const ROBOT = {
   emp: v => { T(1800, 0.6, { type: 'sawtooth', vol: 0.08 * v, to: 60 }); N(0.5, { freq: 3500, filter: 'highpass', vol: 0.08 * v }); },
   loot: v => { T(880, 0.08, { type: 'triangle', vol: 0.07 * v }); T(1320, 0.12, { type: 'triangle', vol: 0.07 * v, delay: 0.07 }); },
   break: v => { N(0.25, { freq: 1600, q: 0.6, vol: 0.14 * v }); T(500, 0.3, { type: 'square', vol: 0.05 * v, to: 90 }); },
+  clink: v => { T(2600, 0.05, { type: 'triangle', vol: 0.06 * v, to: 2100 }); N(0.03, { freq: 4200, q: 2, vol: 0.04 * v }); },
 };

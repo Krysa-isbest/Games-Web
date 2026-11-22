@@ -1,15 +1,25 @@
 // The in-game HUD: health and shield bars (a pale "ghost" shows the damage just taken, then catches up), the
 // stamina bar under the crosshair (only while it is not full), red markers that point to where a hit came
 // from, the use prompt with a hold ring, short pop-ups (Dodged, Shield broken), and the low-health pulse.
+// Bottom right: the weapon in your hands with its ammo, your four slots and the quick-use items. The crosshair
+// opens up with the weapon's spread.
 import * as THREE from 'three';
 import { bus } from '../core/events.js';
 import { kn } from '../core/input.js';
 import { SHIELDS } from './stats.js';
 import { fwdX, fwdZ, yawOf } from './move-math.js';
-import { ITEMS, RARITY, bagCount, bagValue } from './items.js';
+import { ITEMS, RARITY } from './items.js';
+import { count, weight, MAX_WEIGHT } from './inventory.js';
+import { inHand, slotItem, spreadOf } from './weapons.js';
 import { PRISM } from './prism/defs.js';
-import { $ } from '../core/util.js';
+import { $, esc } from '../core/util.js';
 const _p = new THREE.Vector3();
+// the trade value of the Prism parts (materials and valuables) in the backpack and the safe pocket
+const partsValue = inv => [...inv.bag, ...inv.safe].reduce((s, it) => {
+  const d = it && ITEMS[it.id];
+  return d && (d.cat === 'material' || d.cat === 'valuable') ? s + d.value * it.n : s;
+}, 0);
+const SLOT_KEYS = [['weapon1', 'weapon1'], ['weapon2', 'weapon2'], ['melee', 'melee'], ['unarmed', 'unarmed']];
 
 const RING = 2 * Math.PI * 16;                       // the prompt ring's circumference (r = 16)
 
@@ -23,6 +33,7 @@ export class Hud {
     this.dirs = [...$('hud-dirs').children].map(e => ({ e, life: 0, from: null }));
     this.nextDir = 0;
     this.detect = [...$('hud-detect').children].map(e => ({ e, on: false }));
+    for (const id of ['hud-bars', 'wpn-slots', 'wpn-quick']) $(id).innerHTML = '';     // a second visit starts clean
     this.bars = [];
     for (let i = 0; i < 12; i++) {
       const e = document.createElement('div'), f = document.createElement('b');
@@ -33,6 +44,9 @@ export class Hud {
     }
     this.alertT = new Map();                          // robot id -> time left showing "!"
     this.hitT = 0;
+    // the weapon panel: four slot chips (1, 2, 3, H) and four quick-use chips
+    this.slotEls = SLOT_KEYS.map(([slot]) => { const e = document.createElement('i'); e.dataset.s = slot; $('wpn-slots').append(e); return e; });
+    this.quickEls = [0, 1, 2, 3].map(() => { const e = document.createElement('i'); $('wpn-quick').append(e); return e; });
     this.offs = [
       bus.on('damage', (t, hit, r) => { if (t === this.p) this.onHit(hit, r); }),
       bus.on('player:nostamina', t => { if (t === this.p) this.flash('stam', 'deny'); }),
@@ -44,11 +58,17 @@ export class Hud {
       bus.on('prism:emp', t => { if (t === this.p) this.pop('EMP · shield offline', 'bad'); }),
       bus.on('prism:loot', (t, items) => {
         if (t !== this.p) return;
-        if (!items.length) this.pop('Nothing useful left', '');
-        for (const it of items) this.pop(`+${it.n} ${ITEMS[it.id].name}`, 'loot', RARITY[ITEMS[it.id].rarity].color);
+        if (!items.length) this.pop('Nothing you can carry', '');
+        for (const it of items) this.lootPop(it.id, it.n);
       }),
+      bus.on('loot:pickup', (t, id, n) => { if (t === this.p) this.lootPop(id, n); }),
+      bus.on('loot:full', t => { if (t === this.p) this.pop('Backpack full', 'bad'); }),
+      bus.on('use:denied', (t, why) => { if (t === this.p) this.pop(why, 'bad'); }),
+      bus.on('use:stopped', t => { if (t === this.p && !t.dead) this.pop('Interrupted', 'bad'); }),
+      bus.on('wpn:noammo', t => { if (t === this.p) this.pop('No ammo', 'bad'); }),
     ];
   }
+  lootPop(id, n) { this.pop(`+${n} ${ITEMS[id].name}`, 'loot', RARITY[ITEMS[id].rarity].color); }
   // the crosshair's hit marker: 'hit', 'weak' (a weak point or a thruster) or 'kill'
   hitmarker(kind) {
     const e = $('xhit');
@@ -115,9 +135,75 @@ export class Hud {
       b.fill.style.width = (r.hp / r.maxHp * 100).toFixed(1) + '%';
     }
     for (let i = n; i < this.bars.length; i++) if (this.bars[i].on) { this.bars[i].on = false; this.bars[i].e.style.opacity = '0'; }
-    // the bag
-    const c = bagCount(p.bag || []);
-    this.set('bag', $('v-bag'), 'text', c ? `Bag: ${c} item${c > 1 ? 's' : ''} · ${bagValue(p.bag).toLocaleString('en-US')} cr` : '');
+    // what the Prism parts you carry are worth, and a warning when you carry too much
+    if (p.inv) {
+      const w = weight(p.inv), v = partsValue(p.inv);
+      const text = w > MAX_WEIGHT ? `Overweight ${w.toFixed(1)} / ${MAX_WEIGHT} kg · slower, no sprint` : v > 0 ? `Prism parts worth ${v.toLocaleString('en-US')} cr` : '';
+      this.set('bag', $('v-bag'), 'text', text);
+      this.set('bagc', $('v-bag'), 'class', 'v-bag' + (w > MAX_WEIGHT ? ' over' : ''));
+    }
+  }
+
+  // the weapon panel, the quick-use strip, the item being used, and the crosshair's spread
+  updateGear(dt, camera) {
+    const p = this.p, w = p.wpn;
+    if (!p.inv || !w) return;
+    const h = inHand(p);
+    let name = '', mode = '', mag = '', res = '', state = '';
+    if (w.active === 'throw') {
+      const it = p.inv.quick[w.throwSlot];
+      name = it ? ITEMS[it.id].name : 'Grenade'; mode = 'Throw'; mag = it ? String(it.n) : '0'; res = 'left';
+    } else if (h && h.def.weapon) {
+      const W = h.def.weapon, reserve = count(p.inv, W.ammo);
+      name = h.def.name; mode = W.mode === 'auto' ? 'Auto' : 'Semi';
+      mag = String(h.it.d.ammo); res = String(reserve);
+      if (h.it.d.ammo === 0) state = reserve > 0 ? ' empty' : ' dry';
+      else if (h.it.d.ammo <= Math.ceil(W.mag * 0.25)) state = ' low';
+    } else if (h && h.def.melee) { name = h.def.name; mode = 'Melee'; }
+    else { name = w.active === 'unarmed' ? 'Unarmed' : 'Empty slot'; }
+    if (w.reloadT > 0) state += ' reloading';
+    this.set('wn', $('wpn-name'), 'text', name);
+    this.set('wm', $('wpn-mode'), 'text', mode);
+    this.set('wa', $('wpn-mag'), 'text', mag);
+    this.set('wr', $('wpn-res'), 'text', res);
+    this.set('wc', $('wpn'), 'class', 'wpn' + state + (mag === '' ? ' noammo' : ''));
+    const rk = w.reloadT > 0 ? 1 - w.reloadT / w.reloadTime : 0;
+    this.set('wrl', $('wpn-rlf'), 'width', (rk * 100).toFixed(1) + '%');
+    // the four slots
+    const now = w.want || w.active;
+    this.slotEls.forEach((e, i) => {
+      const slot = SLOT_KEYS[i][0], it = slotItem(p, slot);
+      const sig = `${slot === now ? 'on' : ''}|${it ? it.id : ''}|${kn(SLOT_KEYS[i][1])}`;
+      if (e.dataset.sig === sig) return;
+      e.dataset.sig = sig;
+      e.className = (slot === now ? 'on' : '') + (it || slot === 'unarmed' ? '' : ' empty');
+      e.innerHTML = `<b>${esc(kn(SLOT_KEYS[i][1]))}</b>` + (it ? `<svg><use href="#it-${ITEMS[it.id].icon}"/></svg>` : slot === 'unarmed' ? '<svg><use href="#it-hand"/></svg>' : '');
+    });
+    // quick use
+    this.quickEls.forEach((e, i) => {
+      const it = p.inv.quick[i];
+      const using = p.using && p.using.ref.a === 'quick' && p.using.ref.i === i, held = w.active === 'throw' && w.throwSlot === i;
+      const sig = `${it ? it.id + ':' + it.n : ''}|${using || held ? 'on' : ''}`;
+      if (e.dataset.sig === sig) return;
+      e.dataset.sig = sig;
+      e.className = (it ? 'r-' + ITEMS[it.id].rarity : 'empty') + (using || held ? ' on' : '');
+      e.innerHTML = it ? `<svg><use href="#it-${ITEMS[it.id].icon}"/></svg><b>${it.n}</b>` : '';
+    });
+    // using an item: a bar under the crosshair
+    if (p.using) {
+      this.set('ut', $('use-text'), 'text', `${ITEMS[p.using.id].name} · ${Math.max(0, p.using.time - p.using.t).toFixed(1)} s`);
+      this.set('uf', $('use-fill'), 'width', (Math.min(1, p.using.t / p.using.time) * 100).toFixed(1) + '%');
+      this.set('uc', $('usebar'), 'class', 'usebar');
+    } else this.set('uc', $('usebar'), 'class', 'usebar hidden');
+    // the crosshair opens with the spread (a gun), a single dot otherwise
+    let gap = 0;
+    if (h && h.def.weapon && camera) {
+      const s = spreadOf(p, h.def.weapon), half = camera.fov * Math.PI / 360;
+      gap = Math.tan(s * Math.PI / 180) / Math.tan(half) * innerHeight / 2;
+    }
+    this.set('xg', $('xhair'), '--gap', Math.max(4, Math.min(80, gap + 3)).toFixed(1) + 'px');
+    this.set('xl', $('xhair'), 'class', 'xhair' + (p.aiming ? ' aim' : '') + (p.dead ? ' off' : '') + (gap > 0 ? ' lines' : '') +
+      (w.reloadT > 0 || p.using || p.sprinting ? ' dim' : '') + (w.dry > 0 ? ' dry' : ''));
   }
   show(on) { $('hud').classList.toggle('hidden', !on); }
   dispose() { for (const off of this.offs) off(); }
@@ -193,9 +279,6 @@ export class Hud {
     this.stamShow = st < 0.995 || p.noStamina > 0 ? 1.2 : Math.max(0, this.stamShow - dt);
     this.set('stw', $('stam-fill'), 'width', (st * 100).toFixed(1) + '%');
     this.set('stc', $('stam'), 'class', 'stam' + (this.stamShow > 0 && !p.dead ? ' on' : '') + (p.winded ? ' winded' : st < 0.25 ? ' low' : ''));
-
-    // crosshair
-    this.set('xh', $('xhair'), 'class', 'xhair' + (p.aiming ? ' aim' : '') + (p.dead ? ' off' : ''));
 
     // use prompt
     if (p.focusText && !p.dead) {

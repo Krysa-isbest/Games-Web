@@ -79,10 +79,7 @@ export const SHIELDS = {
 export const SHIELD_ORDER = ['light', 'medium', 'heavy'];
 
 export const BASE = { health: 500 };
-
-// The temporary test gun (part 4): enough to fight the Prism in the test range until part 3 brings real weapons.
-// Spread in degrees: firing from the hip, and while aiming.
-export const GUN = { name: 'Test carbine', damage: 18, interval: 0.12, range: 150, spreadHip: 1.6, spreadAim: 0.35 };
+// Weapon numbers live with the items (items.js), weapon behaviour in weapons.js.
 
 // The player's numbers. The skill tree (a later part) will raise them from the profile.
 export function playerStats() {

@@ -9,6 +9,8 @@ import { G, groups } from '../core/physics.js';
 import { applyDamage } from './damage.js';
 import { bus } from '../core/events.js';
 import { fwdX, fwdZ, yawOf, angDiff, approach } from './move-math.js';
+import { makeInventory, loseOnDeath, syncShield, weight, MAX_WEIGHT } from './inventory.js';
+import { newWeaponState } from './weapons.js';
 
 export { fwdX, fwdZ, yawOf, angDiff };
 const MOVE_GROUPS = groups(G.PLAYER, G.WORLD | G.ENEMY);     // walls and the Prism's bodies block you
@@ -38,10 +40,13 @@ export function createPlayer({ id = 'p0', name = 'Plunderer', spawn = { x: 0, y:
     landT: 9, landPower: 0, stagger: 0,
     hurtT: 9, lastHit: null,
     focus: null, focusText: '', focusHold: 0, use: null, useLatch: false,
-    firing: false, gunCd: 0,                               // the test gun (testgun.js)
+    firing: false,                                         // the fire button is held with a weapon in hand
     emp: 0,                                                // > 0 while a Roach's EMP keeps the shield offline
     god: false,                                            // the test range's "invincible" switch
-    bag: [],                                               // what you picked up this raid: [{ id, n }]
+    inv: makeInventory(),                                  // everything you carry (inventory.js)
+    wpn: newWeaponState(),                                 // what is in the hands (weapons.js)
+    using: null,                                           // an item being used: { ref, id, t, time }
+    overweight: false,
   };
 }
 
@@ -116,9 +121,10 @@ export function stepPlayer(p, cmd, dt, ctx) {
   p.jumpBuf = cmd.jump && alive ? MOVE.buffer : Math.max(0, p.jumpBuf - dt);
   p.coyote = p.grounded ? MOVE.coyote : Math.max(0, p.coyote - dt);
 
+  p.overweight = !!p.inv && weight(p.inv) > MAX_WEIGHT;
   if (alive) {
-    p.aiming = !!cmd.aim && p.mode === 'move';
-    p.firing = !!cmd.fire && p.mode === 'move';
+    p.aiming = !!cmd.aim && p.mode === 'move' && !p.using;
+    p.firing = !!cmd.fire && p.mode === 'move' && armed(p) && !p.using;
     // dodge roll: on the ground, in the direction you push (or straight ahead)
     if (cmd.roll && p.mode !== 'roll' && p.grounded && p.rollCd <= 0) {
       if (spend(p, STAMINA.roll)) startRoll(p, input ? wx / wl : fwdX(p.facing), input ? wz / wl : fwdZ(p.facing));
@@ -140,7 +146,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
 
   // sprinting
   if (p.mode === 'move') {
-    const want = alive && !!cmd.sprint && input && !p.aiming && !p.firing && !p.crouch && !p.winded && p.stamina > 0 && p.stagger <= 0;
+    const want = alive && !!cmd.sprint && input && !p.aiming && !p.firing && !p.crouch && !p.winded && p.stamina > 0 && p.stagger <= 0 && !p.using && !p.overweight;
     if (p.grounded || !want) p.sprinting = want;         // a sprint carries on through a jump
   } else p.sprinting = false;
 
@@ -152,6 +158,8 @@ export function stepPlayer(p, cmd, dt, ctx) {
     else if (p.sprinting) speed = MOVE.sprint;
     if (p.aiming && input && (wx * fwdX(p.facing) + wz * fwdZ(p.facing)) / wl < -0.3) speed *= MOVE.back;
     if (p.stagger > 0) speed *= 0.45;
+    if (p.using) speed *= 0.5;                                    // patching yourself up: a slow walk
+    if (p.overweight) speed *= 0.8;                               // carrying more than you can
     const tx = input ? wx * speed : 0, tz = input ? wz * speed : 0;
     const k = p.grounded ? (tx * tx + tz * tz > hs * hs ? MOVE.accel : MOVE.decel) : MOVE.air;
     p.vel.x = approach(p.vel.x, tx, k, dt);
@@ -254,8 +262,17 @@ function land(p, impact) {
   bus.emit('player:land', p, impact);
 }
 
+// is there something in the hands to fire or swing?
+function armed(p) {
+  const s = p.wpn && p.wpn.active;
+  return s === 'throw' || (!!s && s !== 'unarmed' && !!p.inv && !!p.inv.equip[s]);
+}
+// a roll or a slide stops a medkit (or any item) halfway
+function stopUsing(p) { if (p.using) { const u = p.using; p.using = null; bus.emit('use:stopped', p, u); } }
+
 // ---------- dodge roll ----------
 function startRoll(p, dx, dz) {
+  stopUsing(p);
   p.mode = 'roll'; p.rollT = 0;
   p.rollDir.x = dx; p.rollDir.z = dz;
   p.facing = yawOf(dx, dz);
@@ -273,6 +290,7 @@ function stepRoll(p, dt) {
 
 // ---------- slide ----------
 function startSlide(p, hs) {
+  stopUsing(p);
   p.mode = 'slide'; p.slideT = 0;
   p.sprinting = false; p.use = null;
   const s = Math.max(hs, SLIDE.boost);
@@ -309,8 +327,9 @@ export function respawnPlayer(p, spawn) {
   p.dead = false; p.mode = 'move'; p.deathT = 0; p.deathCause = '';
   p.health = p.maxHealth; p.stamina = p.maxStamina; p.winded = false; p.staminaDelay = 0;
   p.rollT = 0; p.slideT = 0; p.iframes = 0; p.stagger = 0; p.landT = 9; p.hurtT = 9; p.use = null;
-  p.emp = 0; p.firing = false; p.bag = [];                      // dying loses what you carried
-  if (p.shield) { p.shield.hp = SHIELDS[p.shield.type].hp; p.shield.broken = false; }
+  p.emp = 0; p.firing = false; p.using = null; p.wpn = newWeaponState();
+  if (p.inv) { loseOnDeath(p.inv); syncShield(p); }              // dying loses everything but the safe pocket
+  else if (p.shield) { p.shield.hp = SHIELDS[p.shield.type].hp; p.shield.broken = false; }
   if (p.phys) setHeight(p, BODY.stand);
   teleport(p, spawn.x, spawn.y, spawn.z, spawn.yaw || 0);
   p.grounded = false;

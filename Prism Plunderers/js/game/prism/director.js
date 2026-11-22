@@ -1,10 +1,11 @@
 // The Prism director: runs every robot in a scene, their shots (Fly bolts, Swatter bullets, Roach rockets,
-// Scatter bombs), blasts, gas clouds, EMP pulses, drop pods with reinforcements, and the wrecks you loot.
+// Scatter bombs), blasts, gas clouds, EMP pulses, drop pods with reinforcements, and the wrecks you search.
+// It also runs the player's grenades and answers the player's weapons: what a bullet or a crowbar hits.
 // Simulation in step(dt, player), drawing in frame(dt, alpha). Robot and projectile state is plain data.
 import * as THREE from 'three';
 import { PRISM, REINFORCEMENTS } from './defs.js';
 import { BUILD, toWreck } from './models.js';
-import { makeRobot, attachRobotBody, detachRobotBody, hitSpheres, becomeHostile, hear, moveRobot, fall, groundBelow, center, GRAVITY } from './robot.js';
+import { makeRobot, attachRobotBody, detachRobotBody, hitSpheres, becomeHostile, hear, moveRobot, fall, groundBelow, center, damageRobot, GRAVITY } from './robot.js';
 import { fink } from './fink.js';
 import { fly, swatter } from './fly.js';
 import { scatter } from './scatter.js';
@@ -13,7 +14,9 @@ import { Fx } from '../fx.js';
 import { applyDamage } from '../damage.js';
 import { BODY } from '../stats.js';
 import { segDist2 } from '../sentry.js';
-import { rollLoot, addToBag } from '../items.js';
+import { rollLoot } from '../items.js';
+import { makeBox, takeAll } from '../inventory.js';
+import { makeWeapon } from '../weapon-models.js';
 import { Sfx } from '../sfx.js';
 import { Sound } from '../../core/sound.js';
 import { bus } from '../../core/events.js';
@@ -32,7 +35,7 @@ export class PrismDirector {
     scene.add(this.group);
     this.fx = new Fx(scene, glow);
     this.robots = []; this.views = new Map(); this.wrecks = [];
-    this.bolts = []; this.rockets = []; this.bombs = []; this.gas = []; this.pods = [];
+    this.bolts = []; this.rockets = []; this.bombs = []; this.gas = []; this.pods = []; this.grenades = [];
     this.nextId = 1; this.time = 0; this.player = null;
     this.reinforcements = reinforcements;
     this.ctx = { phys, player: null, robots: this.robots, director: this, rnd: this.rnd, time: 0, dt: 0 };
@@ -53,7 +56,7 @@ export class PrismDirector {
       rocket: (() => { const g = new THREE.CylinderGeometry(0.06, 0.08, 0.45, 8); g.rotateX(Math.PI / 2); return g; })(),
       bomb: new THREE.SphereGeometry(0.06, 8, 6),
     };
-    this.free = { bolt: [], rocket: [], bomb: [], gas: [] };
+    this.free = { bolt: [], rocket: [], bomb: [], gas: [], nade: [] };
   }
 
   // ---------- robots ----------
@@ -133,31 +136,42 @@ export class PrismDirector {
     const y = d.flyer ? gy + d.radius * 0.55 : gy;
     v.root.position.set(r.pos.x, y, r.pos.z);
     v.root.rotation.set((this.rnd() - 0.5) * 0.5, r.yaw + Math.PI, (this.rnd() - 0.5) * 0.6);
-    const w = { id: r.id, type: r.type, view: v, pos: { x: r.pos.x, y, z: r.pos.z }, looted: false, smoke: r.type === 'roach' ? 25 : 8, item: null };
+    const w = { id: r.id, type: r.type, view: v, pos: { x: r.pos.x, y, z: r.pos.z }, looted: false, smoke: r.type === 'roach' ? 25 : 8, item: null, box: null };
     if (this.items) {
+      const reach = r.type === 'roach' ? 3.2 : 2.2;
       w.item = this.items.add({
-        id: 'wreck' + r.id, pos: { x: r.pos.x, y: y + 0.6, z: r.pos.z }, radius: r.type === 'roach' ? 3.2 : 2.2, hold: r.type === 'roach' ? 2.5 : 1.2,
-        label: () => w.looted ? null : `Search the ${d.name} wreck`,
-        use: p => this.loot(p, w),
+        id: 'wreck' + r.id, pos: { x: r.pos.x, y: y + 0.6, z: r.pos.z }, radius: reach,
+        hold: () => w.box ? 0 : r.type === 'roach' ? 2.5 : 1.2,               // searching takes a moment; opening again does not
+        label: () => w.box ? (w.box.slots.some(Boolean) ? `Open the ${d.name} wreck` : null) : `Search the ${d.name} wreck`,
+        use: p => { const box = this.search(w); bus.emit('loot:open', p, box, w); },
       });
     }
     this.wrecks.push(w);
   }
+  // A wreck is a container: its loot is rolled the first time it is searched, then it is opened in the
+  // inventory screen like a crate.
+  search(w) {
+    if (!w.box) {
+      w.box = makeBox('wreck' + w.id, `${PRISM[w.type].name} wreck`, rollLoot(w.type, this.rnd), 6);
+      w.box.pos = { ...w.pos };
+      w.box.reach = w.item ? w.item.radius + 1 : 3.2;
+      w.looted = true;
+      this.sound('loot', w.pos);
+    }
+    return w.box;
+  }
+  // takes everything from a wreck that fits in your inventory. Returns what was taken.
   loot(p, w) {
-    if (w.looted) return [];
-    const got = rollLoot(w.type, this.rnd);
-    if (!p.bag) p.bag = [];
-    addToBag(p.bag, got);
-    w.looted = true;
-    this.items?.remove(w.item);
+    const box = this.search(w);
+    const got = takeAll(p.inv, box);
     bus.emit('prism:loot', p, got, w);
-    this.sound('loot', w.pos);
     return got;
   }
   clear() {
     for (const r of [...this.robots]) this.remove(r);
     for (const w of this.wrecks) { this.items?.remove(w.item); this.dropView(w.view); }
     this.wrecks.length = 0;
+    for (const g of this.grenades) this.recycle('nade', g); this.grenades.length = 0;
     for (const b of this.bolts) this.recycle('bolt', b); this.bolts.length = 0;
     for (const b of this.rockets) this.recycle('rocket', b); this.rockets.length = 0;
     for (const b of this.bombs) this.recycle('bomb', b); this.bombs.length = 0;
@@ -177,7 +191,7 @@ export class PrismDirector {
       if (r.dead) this.dying(r, dt);
       else BRAINS[r.type].step(r, c, dt);
     }
-    this.stepBolts(dt); this.stepRockets(dt); this.stepBombs(dt); this.stepGas(dt); this.stepPods(dt);
+    this.stepBolts(dt); this.stepRockets(dt); this.stepBombs(dt); this.stepGas(dt); this.stepPods(dt); this.stepGrenades(dt);
   }
 
   // ---------- the bullet test for the player's gun: the nearest robot part or wall along a ray ----------
@@ -202,6 +216,89 @@ export class PrismDirector {
     return { t: bestT, robot, part, point: { x: o.x + d.x * bestT, y: o.y + d.y * bestT, z: o.z + d.z * bestT }, wall: !robot && !!wh && bestT >= wh.t - 1e-4 };
   }
   hear(pos, radius, amount) { hear(this.robots, pos, radius, amount); }
+
+  // ---------- the crowbar: the closest robot part within reach, in front of you, with nothing in between ----------
+  // o = the chest, dir = { x, z } where you look (level), cosCone = how far to the side still counts
+  meleeHit(o, dir, reach, cosCone) {
+    let best = null, bestD = Infinity;
+    const spheres = this._sph || (this._sph = []);
+    for (const r of this.robots) {
+      if (r.dead || r.gone) continue;
+      hitSpheres(r, spheres);
+      for (const s of spheres) {
+        const dx = s.x - o.x, dy = s.y - o.y, dz = s.z - o.z, L = Math.hypot(dx, dy, dz), d = L - s.r;
+        if (d > reach || d >= bestD) continue;
+        const h = Math.hypot(dx, dz);
+        if (h > s.r + 0.15 && (dx * dir.x + dz * dir.z) / h < cosCone) continue;
+        if (L > 0.05 && this.phys.ray(o, { x: dx / L, y: dy / L, z: dz / L }, Math.max(0, L - s.r), G.WORLD)) continue;
+        bestD = d;
+        const k = L > 0.05 ? (L - s.r) / L : 0;
+        best = { robot: r, part: s.name, point: { x: o.x + dx * k, y: o.y + dy * k, z: o.z + dz * k } };
+      }
+    }
+    return best;
+  }
+  // an explosion's damage to robots: full within `inner`, less further out, none behind cover
+  blastRobots(pos, radius, damage, inner, src) {
+    const hits = [];
+    for (const r of [...this.robots]) {
+      if (r.dead || r.gone) continue;
+      const c = center(r), R = PRISM[r.type].radius;
+      const dx = c.x - pos.x, dy = c.y - pos.y, dz = c.z - pos.z, L = Math.hypot(dx, dy, dz), d = Math.max(0, L - R);
+      if (d > radius) continue;
+      if (L > R + 0.1 && this.phys.ray(pos, { x: dx / L, y: dy / L, z: dz / L }, L - R, G.WORLD)) continue;
+      const k = d <= inner ? 1 : Math.max(0, 1 - (d - inner) / Math.max(0.01, radius - inner));
+      if (k <= 0) continue;
+      const res = damageRobot(r, null, damage * k, this.ctx, src);
+      if (res) hits.push({ robot: r, res });
+    }
+    return hits;
+  }
+
+  // ---------- the player's grenades: they fly, bounce, roll to a stop and go off when the fuse runs out ----------
+  throwGrenade(o, v, T, src) {
+    const g = this.take('nade', () => ({ mesh: makeWeapon('grenade', true), pos: new THREE.Vector3(), prev: new THREE.Vector3(), vel: new THREE.Vector3() }));
+    g.pos.set(o.x, o.y, o.z); g.prev.copy(g.pos);
+    g.vel.set(v.x, v.y, v.z);
+    g.fuse = T.fuse; g.T = T; g.src = src; g.rest = false; g.spin = 0; g.clink = 0;
+    this.grenades.push(g);
+    return g;
+  }
+  stepGrenades(dt) {
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const g = this.grenades[i];
+      g.prev.copy(g.pos);
+      g.fuse -= dt; g.clink -= dt;
+      if (!g.rest) {
+        g.vel.y -= GRAVITY * dt;
+        let left = dt;
+        for (let k = 0; k < 3 && left > 1e-5; k++) {
+          const len = g.vel.length() * left;
+          if (len < 1e-6) break;
+          _w.copy(g.vel).normalize();
+          const h = this.phys.ray(g.pos, _w, len + 0.06, G.WORLD, true);
+          if (!h) { g.pos.addScaledVector(_w, len); break; }
+          const t = Math.max(0, h.t - 0.06);
+          g.pos.addScaledVector(_w, t);
+          left *= 1 - t / len;
+          // bounce: lose most of the speed into the surface and some along it
+          const vn = g.vel.x * h.nx + g.vel.y * h.ny + g.vel.z * h.nz;
+          if (vn < 0) { g.vel.x -= 1.35 * vn * h.nx; g.vel.y -= 1.35 * vn * h.ny; g.vel.z -= 1.35 * vn * h.nz; }
+          g.vel.multiplyScalar(h.ny > 0.6 ? 0.62 : 0.8);
+          if (-vn > 2.5 && g.clink <= 0) { g.clink = 0.1; this.sound('clink', g.pos); }
+          if (h.ny > 0.6 && g.vel.length() < 1.1) { g.rest = true; g.vel.set(0, 0, 0); break; }
+        }
+      }
+      if (g.fuse <= 0) {
+        const T = g.T, pos = { x: g.pos.x, y: g.pos.y + 0.12, z: g.pos.z };
+        this.blast(pos, T.radius, T.damage, T.inner, 'blast', 'Your own grenade', pos);
+        this.blastRobots(pos, T.radius, T.damage, T.inner, g.src);
+        this.boom(pos, 1.25, 0xffa860);
+        bus.emit('wpn:grenade', pos, T);
+        this.recycle('nade', g); this.grenades[i] = this.grenades[this.grenades.length - 1]; this.grenades.pop();
+      }
+    }
+  }
 
   // ---------- shots ----------
   take(kind, make) {
@@ -488,6 +585,11 @@ export class PrismDirector {
     }
     for (const b of this.bolts) { b.mesh.position.lerpVectors(b.prev, b.pos, alpha); b.mesh.lookAt(_a.copy(b.mesh.position).sub(b.vel)); }
     for (const b of this.bombs) b.mesh.position.lerpVectors(b.prev, b.pos, alpha);
+    for (const g of this.grenades) {
+      g.mesh.position.lerpVectors(g.prev, g.pos, alpha);
+      if (!g.rest) g.spin += dt * 11;
+      g.mesh.rotation.set(g.spin, g.spin * 0.6, 0);
+    }
     for (const r of this.rockets) {
       r.mesh.position.lerpVectors(r.prev, r.pos, alpha);
       r.mesh.lookAt(_a.copy(r.mesh.position).add(r.vel));

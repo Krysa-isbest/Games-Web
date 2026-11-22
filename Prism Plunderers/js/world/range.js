@@ -7,7 +7,15 @@ import { SHIELDS } from '../game/stats.js';
 import { Interactions } from '../game/interact.js';
 import { equipShield, restoreShield, heal, shieldFull, applyDamage } from '../game/damage.js';
 import { Sentries } from '../game/sentry.js';
+import { makeBox, restock } from '../game/inventory.js';
+import { bus } from '../core/events.js';
 import { rng } from '../core/util.js';
+
+// what the test range's supply crate fills itself back up to every time you open it
+export const CRATE_STOCK = [
+  ['shield_medium', 1], ['shield_heavy', 1], ['shield_cell', 5], ['repair_kit', 3], ['medkit', 3], ['stim', 5],
+  ['frag_grenade', 3], ['light_ammo', 120], ['pulse_cell', 180], ['scrap_pistol', 1], ['pulse_carbine', 1],
+];
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 
@@ -198,6 +206,19 @@ export function buildRange(scene, phys, glowTex) {
     use: p => heal(p, p.maxHealth),
   });
   sign('Stations', 'Shields, repairs and healing.\nIn raids these are items.', 9, 15.5, Math.PI);
+  // the supply crate, next to the spawn: guns, ammo, shields, heals and grenades, always restocked
+  const crate = makeBox('crate', 'Supply crate', [], 16);
+  crate.pos = { x: 4.2, y: 0, z: 9.2 }; crate.reach = 3.4;
+  crate.revealed = 99;                                   // a supply crate: no searching, everything is in view
+  solid(4.2, 0.4, 9.2, 1.5, 0.8, 0.9, mat.metal);
+  deco(4.2, 0.82, 9.2, 1.54, 0.05, 0.94, mat.hazard);
+  deco(4.2, 0.5, 8.74, 0.5, 0.18, 0.02, mat.green);
+  items.add({
+    id: 'crate', pos: { x: 4.2, y: 0.9, z: 9.2 }, radius: 2.3, hold: 0,
+    label: () => 'Open the supply crate',
+    use: p => { restock(crate, CRATE_STOCK); bus.emit('loot:open', p, crate, null); },
+  });
+  sign('Supply crate', 'Guns, ammo, shields, heals.\nIt restocks itself.', 6.6, 9.6, -Math.PI / 2);
 
   // ---------- the gas pit (south-west) ----------
   const gas = new GasZone(group, { x: -18, z: 20, r: 4.5, h: 2.6 }, mat.gas, glowTex);
@@ -264,7 +285,7 @@ export function buildRange(scene, phys, glowTex) {
   }
 
   return {
-    group, spawn, items, sentries, gas, zone,
+    group, spawn, items, sentries, gas, zone, crate,
     arena: { bounds, nest, posts, spots },
     step(dt, p) { gas.step(dt, p); sentries.step(dt, p); },
     frame(dt, alpha, p) { sentries.frame(dt, alpha, p); gas.frame(dt); },

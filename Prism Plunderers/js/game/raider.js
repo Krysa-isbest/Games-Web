@@ -8,8 +8,10 @@
 //   r.root.position / r.root.rotation.y = facing + Math.PI   (the model faces +z)
 //   const step = r.update(dt, state);   // 'L' or 'R' on a footstep, else null
 import * as THREE from 'three';
+import { GearRig } from './gear.js';
 
 const LEG = 0.43;            // thigh and shin length
+const UPPER = 0.3, FORE = 0.27;   // upper arm and forearm (shoulder to elbow, elbow to wrist)
 const ANKLE = 0.088;         // ankle joint above the sole
 const HIP_Y = 0.95;          // hips height when standing
 const TAU = Math.PI * 2;
@@ -102,12 +104,12 @@ export class Raider {
       const sh = joint(chest, s * 0.215, 0.18, 0);
       part(sh, new THREE.SphereGeometry(0.083, 10, 8), mat.suit);
       const up = joint(sh, 0, 0, 0);
-      limb(up, 0.056, 0.31, mat.suit);
+      limb(up, 0.056, UPPER + 0.02, mat.suit);
       if (s > 0) part(up, new THREE.BoxGeometry(0.02, 0.2, 0.118), mat.accent, 0.051, -0.15, 0);     // the stripe on the left sleeve
-      const el = joint(up, 0, -0.29, 0);
-      limb(el, 0.049, 0.25, mat.suit);
-      part(el, new THREE.CylinderGeometry(0.056, 0.056, 0.06, 10), mat.dark, 0, -0.19, 0);            // cuff
-      const hand = joint(el, 0, -0.255, 0);
+      const el = joint(up, 0, -UPPER, 0);
+      limb(el, 0.049, FORE - 0.005, mat.suit);
+      part(el, new THREE.CylinderGeometry(0.056, 0.056, 0.06, 10), mat.dark, 0, -FORE + 0.065, 0);    // cuff
+      const hand = joint(el, 0, -FORE, 0);
       part(hand, new THREE.BoxGeometry(0.075, 0.1, 0.085), mat.dark, 0, -0.035, 0.005);               // glove
       this.arm[s > 0 ? 'L' : 'R'] = { up, el, hand, side: s };
     }
@@ -132,11 +134,18 @@ export class Raider {
     this.w = { gait: 0, crouch: 0, air: 0, slide: 0, aim: 0, sprint: 0, roll: 0, use: 0 };
     this.hipYaw = 0;
     this.lean = 0;
+    this.rig = null;
+    this.shadows = shadows;
     this.solve(0, {});                                // a standing pose straight away
   }
+  // weapons on the model: holsters, and the hands on whatever is held (gear.js)
+  enableGear() { if (!this.rig) this.rig = new GearRig(this, { shadows: this.shadows }); return this.rig; }
+  setGear(kinds) { this.enableGear().setGear(kinds); }
+  // the muzzle of the gun in the hands, in the world, or null
+  muzzle(active, out) { return this.rig ? this.rig.muzzle(active, out) : null; }
 
   // s = { mode, speed, fwd, side, grounded, vy, crouch, sprint, aim, rollT (0..1), deathT, landT, landPower,
-  //       hurtT, turn, using, lookYaw, lookPitch, idle }
+  //       hurtT, turn, using, lookYaw, lookPitch, idle, hand (what is held: see gear.js) }
   update(dt, s) {
     dt = Math.min(Math.max(dt, 0), 0.05);
     this.t += dt;
@@ -257,10 +266,12 @@ export class Raider {
     this.body.position.y = pivotY;
     this.body.rotation.x = rot;
     this.hips.position.set(Math.sin(t * 0.45) * 0.012 * (1 - gait) * (s.idle ? 1 : 0.4), hipY - pivotY, 0);
+    if (this.rig) this.rig.solve(dt, s);
     return step;
   }
 
   dispose() {
+    this.rig?.dispose();
     this.root.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     for (const m of Object.values(this.mats)) m.dispose();
   }

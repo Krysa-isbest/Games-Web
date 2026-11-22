@@ -176,6 +176,7 @@ export default function createMenu() {
   // ---------- your raider, centre stage, lit warm from the front ----------
   const shadowTex = glowTexture(64, true);
   const raider = new Raider({ shadows: false });
+  raider.setGear({ weapon1: 'carbine', weapon2: 'pistol', melee: 'crowbar' });    // the starting kit, holstered
   raider.root.position.set(0, 0, RZ);
   raider.root.rotation.y = -0.22;
   scene.add(raider.root);
