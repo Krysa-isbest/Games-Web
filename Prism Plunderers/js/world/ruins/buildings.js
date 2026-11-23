@@ -26,6 +26,21 @@ export const STYLES = {
 };
 
 export function addLoot(L, kit, type, x, y, z, ry, zone) { containerLook(kit, type, x, y, z, ry); L.containers.push({ type, x, y, z, ry, zone }); }
+// a wrecked car, burnt out now and then (scorch under it), its boot sometimes worth searching
+export function carLoot(L, kit, x, z, yaw, zone, { y = 0, chance = 0.35, kinds = ['sedan', 'sedan', 'hatch', 'van', 'pickup'] } = {}) {
+  const R = kit.R, burnt = R() < 0.3, flipped = !burnt && R() < 0.12;
+  const boot = P.car(kit, x, z, yaw, { kind: kit.pick(kinds), burnt, flipped, y });
+  if (burnt && y < 0.5) L.decals.push({ kind: 'scorch', x, z, r: kit.range(2, 3) });
+  if (boot && !burnt && R() < chance) L.containers.push({ type: 'car', x: boot.x, y, z: boot.z, ry: yaw, zone });
+  return { burnt, flipped, boot };
+}
+// Prism crystals growing round a point (instanced in build.js); y = the ground under them (or a function of x, z)
+export function crystalsAround(L, kit, x, y, z, r, n) {
+  for (let k = 0; k < n; k++) {
+    const a = kit.R() * Math.PI * 2, d = Math.sqrt(kit.R()) * r, cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d;
+    L.crystals.push({ x: cx, y: typeof y === 'function' ? y(cx, cz) : y, z: cz, s: kit.range(0.25, 0.9), rx: kit.range(-0.4, 0.4), ry: kit.R() * Math.PI, rz: kit.range(-0.4, 0.4) });
+  }
+}
 const weighted = (opts, R) => { let t = 0; for (const o of opts) t += o[1]; let r = R() * t; for (const o of opts) { r -= o[1]; if (r <= 0) return o[0]; } return opts[0][0]; };
 
 export function building(L, kit, b) {

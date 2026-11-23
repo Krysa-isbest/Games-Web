@@ -39,6 +39,7 @@ import { Sound } from '../core/sound.js';
 import { addSky, glowTexture } from '../world/sky.js';
 
 const RESPAWN = 4;
+const DOWN = { x: 0, y: -1, z: 0 };
 const lerp = (a, b, t) => a + (b - a) * t;
 // what you start with (and get again after dying, until raid rules exist)
 export const KIT = {
@@ -57,7 +58,7 @@ export function giveKit(p) {
 export function createPlayScene(o) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, Engine.w / Engine.h, o.near || 0.05, o.far || 900);
-  let phys = null, sky = null, world = null, player = null, raider = null, cam = null, hud = null, glow = null, prism = null;
+  let phys = null, sky = null, world = null, player = null, raider = null, cam = null, hud = null, glow = null, prism = null, footing = null;
   let ground = null, inv = null, wheel = null, map = null, arc = null, extra = null, lamp = null;
   let deadT = 0, beatT = 0, slideLoop = null, gasLoop = null, windLoop = null, invOpen = false, pendingQuick = -1, reloadSound = 0;
   let lampOn = false, dark = 0, light0 = null;
@@ -304,6 +305,13 @@ export function createPlayScene(o) {
       world = o.build(scene, phys, glow);
       $('fade-msg').textContent = '';
       phys.step();                                         // the world is in place before the first ray cast
+      // what the raider's feet stand on: the world's own footing (it knows its stairs), or a ray down
+      footing = world.footing || ((x, top, z) => {          // the first surface below (x, top, z), within 1.6 m
+        const r = phys.ray({ x, y: top, z }, DOWN, 1.6, G.WORLD, true);
+        if (!r) return null;
+        const s = r.ny < 0 ? -1 : 1;
+        return { y: top - r.t, nx: r.nx * s, ny: r.ny * s, nz: r.nz * s };
+      });
       ctx.phys = phys; ctx.items = world.items;
       prism = new PrismDirector({ scene, phys, items: world.items, glow, seed: (o.seed || 2999) ^ 0x5bd1, drawRange: o.drawRange || Infinity });
       wctx.phys = phys; wctx.director = prism;
@@ -441,7 +449,7 @@ export function createPlayScene(o) {
         grounded: p.grounded, vy: p.vel.y, crouch: p.crouch, sprint: p.sprinting, aim: p.aiming || p.firing,
         rollT: p.rollT / ROLL.time, deathT: p.deathT, landT: p.landT, landPower: p.landPower, hurtT: p.hurtT,
         turn: p.turn, using: !!p.use || !!p.using, lookYaw: angDiff(facing, cam.yaw), lookPitch: cam.pitch,
-        hand: handState(p),
+        hand: handState(p), ground: footing,
       });
       if (step && !stop) Sfx.step(speed, p.crouch);
       raider.contact.position.set(x, y + 0.02, z);

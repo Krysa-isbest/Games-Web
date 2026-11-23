@@ -5,6 +5,7 @@
 // opens them).
 import * as THREE from 'three';
 import { makeRuins, zoneAt, HALF } from './layout.js';
+import { craterY } from './landmarks.js';
 import { K, FLOOR, CONTAINER_H } from './kit.js';
 import { paintGround, groundMaterial, G } from './groundmap.js';
 import { Interactions } from '../../game/interact.js';
@@ -13,6 +14,7 @@ import { makeBox } from '../../game/inventory.js';
 import { disposeTree } from '../../core/engine.js';
 import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
+import { wallPieces } from '../../core/physics.js';
 
 const CHUNK = 100, FAR = 340, NEAR = 150;                // chunks whose nearest edge is further than FAR are hidden; detail beyond NEAR
 const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
@@ -141,10 +143,10 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.03 }),
     pane: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.55 }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
-    ground: paint ? groundMaterial(paint, seed) : new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
+    ground: paint ? groundMaterial(paint, seed, L) : new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
     dune: new THREE.MeshStandardMaterial({ color: 0xcbb38b, roughness: 1, metalness: 0 }),
     crystal: new THREE.MeshStandardMaterial({ color: 0xb98aff, emissive: 0x8a4dff, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.1, flatShading: true }),
-    pod: new THREE.MeshStandardMaterial({ color: 0x150c22, roughness: 0.3, metalness: 0.6, flatShading: true }),
+    pod: new THREE.MeshStandardMaterial({ color: 0x150c22, roughness: 0.3, metalness: 0.6, flatShading: true, side: THREE.DoubleSide }),
     podEdge: new THREE.LineBasicMaterial({ color: 0xc49bff }),
   };
   mats.detail = mats.solid;                              // the same look; only drawn nearer
@@ -161,15 +163,35 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
   const ground = new THREE.Mesh(gg, mats.ground);
   ground.receiveShadow = true;
   group.add(ground);
-  const h = L.holes[0];
-  if (h) {
-    phys.box({ x: 0, y: -0.5, z: (-E + h.z0) / 2 }, { x: 2 * E, y: 1, z: h.z0 + E });
-    phys.box({ x: 0, y: -0.5, z: (h.z1 + E) / 2 }, { x: 2 * E, y: 1, z: E - h.z1 });
-    phys.box({ x: (-E + h.x0) / 2, y: -0.5, z: (h.z0 + h.z1) / 2 }, { x: h.x0 + E, y: 1, z: h.z1 - h.z0 });
-    phys.box({ x: (h.x1 + E) / 2, y: -0.5, z: (h.z0 + h.z1) / 2 }, { x: E - h.x1, y: 1, z: h.z1 - h.z0 });
-  } else phys.box({ x: 0, y: -0.5, z: 0 }, { x: 2 * E, y: 1, z: 2 * E });
+  // the ground's collision: 20 m pieces in triangle meshes, with the holes cut out. Not one big box: the
+  // character controller sank 15-21 cm into the old 2.2 km ground boxes (the legs "clipping through the road")
+  // and fell through them standing still (Physics.ground)
   const B = HALF + 3;
-  for (const [x, z, w, d] of [[0, -B, 2 * B, 4], [0, B, 2 * B, 4], [-B, 0, 4, 2 * B], [B, 0, 4, 2 * B]]) phys.box({ x, y: 20, z }, { x: w, y: 40, z: d });
+  const groundMeshes = phys.ground(-B - 20, -B - 20, B + 20, B + 20, { holes: L.holes });
+  // the map's edge: walls you cannot see, in 20 m pieces for the same reason
+  phys.boxes([[0, -B, 2 * B, 4], [0, B, 2 * B, 4], [-B, 0, 4, 2 * B], [B, 0, 4, 2 * B]]
+    .flatMap(([x, z, w, d]) => wallPieces(x - w / 2, z - d / 2, x + w / 2, z + d / 2, 0, 40)));
+  // the crater's bowl: a 2 m grid over the hole cut for it, shaped by craterY, painted like the rest of the ground
+  // (the same material: the scorch and the streets' remains run on into it), and its own collision mesh
+  for (const b of L.bowls) {
+    const nx = Math.round((b.x1 - b.x0) / b.cell), nz = Math.round((b.z1 - b.z0) / b.cell);
+    const bp = new Float32Array((nx + 1) * (nz + 1) * 3), bu = new Float32Array((nx + 1) * (nz + 1) * 2), bi = [];
+    for (let j = 0, k = 0; j <= nz; j++) for (let i = 0; i <= nx; i++, k++) {
+      const x = b.x0 + (b.x1 - b.x0) * i / nx, z = b.z0 + (b.z1 - b.z0) * j / nz;
+      bp[k * 3] = x; bp[k * 3 + 1] = craterY(x, z); bp[k * 3 + 2] = z;
+      bu[k * 2] = (x + G) / (2 * G); bu[k * 2 + 1] = (G - z) / (2 * G);
+    }
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, c = a + nx + 1; bi.push(a, c, a + 1, a + 1, c, c + 1); }
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.BufferAttribute(bp, 3));
+    bg.setAttribute('uv', new THREE.BufferAttribute(bu, 2));
+    bg.setIndex(bi);
+    bg.computeVertexNormals();
+    const bm = new THREE.Mesh(bg, mats.ground);
+    bm.receiveShadow = true;
+    group.add(bm);
+    phys.mesh(bp, new Uint32Array(bi));
+  }
 
   // ---------- every box: its collider, and its faces into its chunk's mesh ----------
   const batches = new Map();
@@ -272,16 +294,22 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     im.computeBoundingSphere();
     group.add(im);
   }
+  // the pod: a four-sided pyramid, sunk and tilted; an open one has three faces (its torn face shows the inside,
+  // the material is two-sided) and its core glows. The physics for it are hidden boxes from landmarks.js.
   for (const p of L.pods) {
     const g = new THREE.Group();
-    const geo = new THREE.ConeGeometry(p.s, p.h, 4);
+    const geo = p.open ? new THREE.ConeGeometry(p.s, p.h, 3, 1, true, p.thetaStart, Math.PI * 1.5) : new THREE.ConeGeometry(p.s, p.h, 4);
     const body = new THREE.Mesh(geo, mats.pod);
-    body.position.y = p.h * 0.32; body.castShadow = true; body.receiveShadow = true;
+    body.position.y = p.open ? p.h / 2 - p.sink : p.h * 0.32; body.castShadow = true; body.receiveShadow = true;
     body.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), mats.podEdge));
     g.add(body);
-    if (glow) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xa36bff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })); s.position.y = p.h * 0.8; s.scale.setScalar(9); g.add(s); }
-    g.position.set(p.x, 0, p.z);
-    g.rotation.set(p.tilt, p.ry, p.tilt * 0.4);
+    if (glow) {
+      const sprite = (y, scale, opacity) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xa36bff, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false })); s.position.y = y; s.scale.setScalar(scale); g.add(s); };
+      sprite(p.open ? p.h - p.sink - 1 : p.h * 0.8, 9, 0.7);
+      if (p.open) sprite(1.6, 7, 0.85);                                            // the core inside
+    }
+    g.position.set(p.x, p.y ?? 0, p.z);
+    if (p.open) g.rotation.set(p.tilt, p.ry, 0, 'YXZ'); else g.rotation.set(p.tilt, p.ry, p.tilt * 0.4);
     group.add(g);
   }
   if (L.dunes.length) {
@@ -322,13 +350,47 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     for (const d of L.dark) if (pos.x > d.x0 && pos.x < d.x1 && pos.z > d.z0 && pos.z < d.z1) return Math.max(0, Math.min(1, (-pos.y - 0.6) / 3));
     return 0;
   };
+
+  // ---------- footing: the surface you SEE under a point; the raider's feet stand on it (raider.js) ----------
+  // A ray down finds what you walk on. On stairs that is the hidden wedge through the steps' front edges, up to
+  // a step's height above the step you see, so there the drawn step is used instead.
+  const WC = 8, wgrid = new Map(), wkey = (i, j) => i * 4096 + j;
+  for (const w of L.wedges) {
+    const ax = w.axis === 'x', a0 = -w.tread, a1 = w.n * w.tread;
+    const xs = ax ? [w.x + w.dir * a0, w.x + w.dir * a1] : [w.x - w.w / 2, w.x + w.w / 2];
+    const zs = ax ? [w.z - w.w / 2, w.z + w.w / 2] : [w.z + w.dir * a0, w.z + w.dir * a1];
+    for (let i = Math.floor(Math.min(...xs) / WC); i <= Math.floor(Math.max(...xs) / WC); i++)
+      for (let j = Math.floor(Math.min(...zs) / WC); j <= Math.floor(Math.max(...zs) / WC); j++) {
+        const k = wkey(i, j);
+        if (!wgrid.has(k)) wgrid.set(k, []);
+        wgrid.get(k).push(w);
+      }
+  }
+  const stepAt = (x, z, hy) => {
+    for (const w of wgrid.get(wkey(Math.floor(x / WC), Math.floor(z / WC))) || []) {
+      const ax = w.axis === 'x', a = (ax ? x - w.x : z - w.z) * w.dir, c = ax ? z - w.z : x - w.x, T = w.tread, run = w.n * T;
+      if (Math.abs(c) > w.w / 2 || a < -T || a > run) continue;
+      const wy = w.y0 + (a <= run - T ? (a + T) * w.rise / T : w.n * w.rise);
+      if (Math.abs(hy - wy) > 0.05) continue;                    // the ray hit something else here
+      return a < 0 ? w.y0 : w.y0 + (Math.min(w.n - 1, Math.floor(a / T)) + 1) * w.rise;
+    }
+    return null;
+  };
+  const DOWN = { x: 0, y: -1, z: 0 };
+  const footing = (x, top, z) => {                                 // the first surface below (x, top, z), within 1.6 m
+    const r = phys.ray({ x, y: top, z }, DOWN, 1.6, undefined, true);
+    if (!r) return null;
+    const hy = top - r.t, st = stepAt(x, z, hy), s = r.ny < 0 ? -1 : 1;
+    return st !== null ? { y: st, nx: 0, ny: 1, nz: 0 } : { y: hy, nx: r.nx * s, ny: r.ny * s, nz: r.nz * s };
+  };
   let cullAt = null;
   return {
     layout: L, group, items, spawns: L.spawns, spawn: L.spawns[0], groundItems: L.groundItems,
     markers: [...L.extracts, ...L.landmarks],
-    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, colliderMeshes: solids.size, meshes: chunks.length, vertices: verts, detailVertices: detailVerts,
+    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, colliderMeshes: solids.size, groundMeshes, meshes: chunks.length, vertices: verts, detailVertices: detailVerts,
       containers: L.containers.length, fires: fires.length },
     wind: 0.03,
+    footing,
     // a drop zone: at random, but after a death not the one closest to where you fell
     spawnPoint(rnd, p) {
       const list = p ? L.spawns.filter(s => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) > 300) : L.spawns;
@@ -356,7 +418,7 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     dispose() {
       scene.remove(group);
       disposeTree(group);
-      for (const m of Object.values(mats)) { m.map?.dispose(); m.userData?.detail?.dispose(); m.dispose(); }
+      for (const m of Object.values(mats)) { m.map?.dispose(); m.userData?.detail?.dispose(); m.userData?.textures?.forEach(t => t?.dispose()); m.dispose(); }
     },
   };
 }

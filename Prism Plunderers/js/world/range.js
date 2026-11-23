@@ -11,6 +11,7 @@ import { makeBox, restock } from '../game/inventory.js';
 import { disposeTree } from '../core/engine.js';
 import { bus } from '../core/events.js';
 import { rng } from '../core/util.js';
+import { wallPieces } from '../core/physics.js';
 
 // what the test range's supply crate fills itself back up to every time you open it
 export const CRATE_STOCK = [
@@ -117,11 +118,14 @@ export function buildRange(scene, phys, glowTex) {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), mat.ground);
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
   group.add(ground);
-  phys.box({ x: 0, y: -0.5, z: 0 }, { x: 700, y: 1, z: 700 });
+  // the ground and the walls round the range are small pieces in triangle meshes: the character controller
+  // sinks into one big box (see Physics.ground)
+  phys.ground(-180, -180, 180, 180);
   const grid = new THREE.GridHelper(700, 175, 0x3d3530, 0x52483f);
   grid.position.y = 0.006; grid.material.transparent = true; grid.material.opacity = 0.32;
   group.add(grid);
-  for (const [x, z, w, d] of [[0, -165, 340, 2], [0, 165, 340, 2], [-165, 0, 2, 340], [165, 0, 2, 340]]) phys.box({ x, y: 10, z }, { x: w, y: 20, z: d });
+  phys.boxes([[0, -165, 340, 2], [0, 165, 340, 2], [-165, 0, 2, 340], [165, 0, 2, 340]]
+    .flatMap(([x, z, w, d]) => wallPieces(x - w / 2, z - d / 2, x + w / 2, z + d / 2, 0, 20)));
 
   // ---------- spawn ----------
   const spawn = { x: 0, y: 0.05, z: 8, yaw: 0 };

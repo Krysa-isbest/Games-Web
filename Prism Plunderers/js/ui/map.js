@@ -71,7 +71,7 @@ function draw(g, L) {
   for (const s of L.squares || []) box(s, '#544c43');
   if (L.plaza) box(L.plaza, '#5a5248');
   for (const r of L.ruins || []) box(r, '#4a4239');
-  g.fillStyle = '#1b1715'; g.beginPath(); g.arc(X(L.crater.x), Y(L.crater.z), L.crater.r * 0.8 * k, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#1b1715'; g.beginPath(); g.arc(X(L.crater.x), Y(L.crater.z), L.crater.r * k, 0, Math.PI * 2); g.fill();
   g.strokeStyle = 'rgba(185,138,255,0.8)'; g.lineWidth = 2; g.stroke();
   // buildings
   for (const f of L.footprints) {
@@ -86,11 +86,19 @@ function draw(g, L) {
   g.fillStyle = '#5f594f';
   for (const [a, b] of [[-H.foot, -H.end], [H.end, H.foot]]) g.fillRect(X(a), Y(H.z - H.w / 2 + 1), (b - a) * k, (H.w - 2) * k);
   g.fillStyle = '#8a8172'; g.fillRect(X(H.gap[0] + 8), Y(H.z - 6), (H.gap[1] - H.gap[0] - 8) * k, 12 * k);
-  // the Underground Base
+  // the off-ramps: west down to the street, east broken off (its fallen piece lighter)
+  g.fillStyle = '#5f594f';
+  if (H.west) g.fillRect(X(H.west.x - H.west.w / 2), Y(H.west.z0), H.west.w * k, (H.west.z1 - H.west.z0) * k);
+  if (H.east) {
+    g.fillRect(X(H.east.x - H.east.w / 2), Y(H.east.z1), H.east.w * k, (H.east.z0 - H.east.z1) * k);
+    g.fillStyle = '#8a8172'; g.fillRect(X(H.east.x - H.east.w / 2 + 0.7), Y(H.east.fallen), (H.east.w - 1.5) * k, (H.east.z1 - H.east.fallen) * k);
+  }
+  // the Underground Base, and its escape hatch
   const B = L.bunker;
   g.strokeStyle = 'rgba(185,138,255,0.75)'; g.setLineDash([4, 4]); g.lineWidth = 1.5;
   g.strokeRect(X(B.x0), Y(B.z0), (B.x1 - B.x0) * k, (B.z1 - B.z0) * k);
   g.setLineDash([]);
+  if (B.exit) { g.fillStyle = '#b98aff'; g.fillRect(X(B.exit.x0) - 2, Y(B.exit.top.z) - 2, 4, 4); }
   // labels: landmarks and extraction points
   g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const m of L.landmarks) {

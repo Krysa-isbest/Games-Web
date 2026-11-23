@@ -116,6 +116,7 @@ function medians(S) {
   const { L, kit, R, T } = S, w = 2.2;
   for (const s of L.streets) {
     if (s.w < 16) continue;
+    if (s.axis === 'x' && Math.abs(s.at - L.hwy.z) < 1) continue;     // not under the highway (its palms grew through the deck)
     for (const [a0, a1] of segments(L, s)) {
       const lo = Math.max(a0, -366) + 4, hi = Math.min(a1, 366) - 4;
       for (let p0 = lo; p0 < hi - 6; p0 += 12) {

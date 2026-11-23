@@ -4,45 +4,21 @@
 // North is -z. Eleven streets each way (10 to 20 m wide) cut the city into blocks of about 65 m. Every block is
 // built up round its edge, buildings shoulder to shoulder facing the streets, with a courtyard inside that you
 // reach through gaps, alleys and ruined lots. The districts:
-//   Downtown (red zone, the centre): tall blocks round the plaza with the Collapsed Tower; its fallen top is a
-//     ramp up to a room full of loot. A Roach walks the plaza; a Swatter circles it.
+//   Downtown (red zone, the centre): tall blocks round the plaza with the Collapsed Tower, a stump of eight floors
+//     you climb inside, its fallen top in pieces across the plaza (landmarks.js). A Roach walks the plaza.
 //   Midtown and the residential streets: offices and flats, then houses with balconies further out.
 //   Industrial yard (yellow, north-east): warehouses, container yards, and the Underground Base (Scatter nests).
 //   Old market (yellow, south-west): small houses tight together, a bazaar inside every block.
-//   Pod crater (yellow, north-west): a giant crashed Prism pod in a crater that took half a district with it.
-//   The highway runs east-west south of downtown on pillars, broken in the middle.
+//   Pod crater (yellow, north-west): a real bowl in the ground round a crashed Prism pod; it took half a district.
+//   The highway runs east-west south of downtown on pillars, broken in the middle, jammed with wrecks.
 //   The city's edge: sand, wrecks, a few shacks; three extraction points and six drop zones.
-import { Kit, K, COL, FLOOR, WALL, containerLook } from './kit.js';
-import { building, warehouse, containerStack, stall, addLoot } from './buildings.js';
+import { Kit, K, COL, FLOOR, WALL } from './kit.js';
+import { building, warehouse, containerStack, stall, addLoot, carLoot, crystalsAround } from './buildings.js';
 import * as P from './props.js';
 import { streetLife } from './streetlife.js';
-
-export const HALF = 400;
-// street centre lines (x of the north-south streets, z of the east-west ones) and how wide they are
-export const XS = [-372, -300, -228, -150, -70, 0, 70, 150, 226, 300, 372];
-export const ZS = [-372, -298, -226, -150, -70, 0, 70, 140, 220, 298, 372];
-export const WX = [10, 11, 12, 12, 14, 16, 14, 12, 12, 11, 10];
-export const WZ = [10, 11, 12, 12, 14, 16, 14, 20, 12, 11, 10];
-export const WALK = 2.5;                                 // the sidewalks round every block
-export const STREET_END = 392;                           // the streets run out into the sand here
-export const PLAZA = { x0: -63, z0: -63, x1: 63, z1: 63 };
-export const HWY = { z: 140, y: 7.2, w: 16, gap: [14, 56], end: 300, foot: 360 };   // the deck along z = 140, 7.2 m up
-export const ZONES = [
-  { kind: 'red', name: 'Downtown', x: 0, z: 0, r: 130 },
-  { kind: 'yellow', name: 'Industrial yard', x: 255, z: -250, r: 115 },
-  { kind: 'yellow', name: 'Old market', x: -255, z: 255, r: 115 },
-  { kind: 'yellow', name: 'Pod crater', x: -215, z: -215, r: 80 },
-];
-export function zoneAt(x, z) {
-  for (const k of ['red', 'yellow']) for (const zn of ZONES) if (zn.kind === k && Math.hypot(x - zn.x, z - zn.z) < zn.r) return zn;
-  return null;
-}
-export const zoneKind = (x, z) => (zoneAt(x, z) || { kind: 'outer' }).kind;
-// the Underground Base: the ramp comes up in the middle of an industrial block, facing the street to its south
-const BX = 263, BZ = -236;
-export const BUNKER = { x0: BX - 34, z0: BZ - 62, x1: BX + 34, z1: BZ, floor: -6, ramp: { x0: BX - 4, x1: BX + 4, z0: BZ - 18, z1: BZ }, hall: { x: BX, z: BZ - 32 } };
-export const TOWER = { x0: -11, z0: -31, x1: 11, z1: -9, breach: 20.4 };
-export const CRATER = { x: -215, z: -215, r: 55 };
+import { HALF, XS, ZS, WX, WZ, WALK, STREET_END, PLAZA, ZONES, zoneAt, zoneKind, onStreet } from './plan.js';
+import { TOWER, HWY, BUNKER, CRATER, BX, BZ, plaza, highway, bunker, baseYard, crater } from './landmarks.js';
+export { HALF, XS, ZS, WX, WZ, WALK, STREET_END, PLAZA, ZONES, zoneAt, zoneKind, onStreet, TOWER, HWY, BUNKER, CRATER };
 export const EXTRACTS = [{ id: 'north', name: 'North Relay', x: 0, z: -386 }, { id: 'east', name: 'Rail Yard', x: 386, z: 220 }, { id: 'west', name: 'Dune Pad', x: -386, z: 298 }];
 export const DROPS = [[-386, -150], [-150, 386], [150, 386], [386, -70], [150, -386], [-386, 70]];
 
@@ -67,7 +43,7 @@ export function makeRuins(seed = 3000) {
     containers: [], nestSpots: [], roofs: [], footprints: [], interiors: [], stairs: [], floorSpots: [], heaps: [], doors: [],
     streets: [], blocks: [], yards: [], ruins: [], vacant: [], alleys: [], squares: [],
     crystals: [], pods: [], signs: [], dunes: [], groundItems: [], props: [], fires: [], decals: [],
-    prism: [], spawns: [], extracts: [], landmarks: [], holes: [], dark: [],
+    prism: [], spawns: [], extracts: [], landmarks: [], holes: [], dark: [], bowls: [], fountain: null,
     zones: ZONES, hwy: HWY, tower: TOWER, crater: CRATER, bunker: BUNKER, plaza: PLAZA,
   };
   streets(L);
@@ -82,7 +58,7 @@ export function makeRuins(seed = 3000) {
   looseItems(L, kit);
   finalChecks(L);
   L.landmarks.push(
-    { name: 'Collapsed Tower', short: 'Tower', x: 0, z: -20, kind: 'landmark' },
+    { name: 'Collapsed Tower', short: 'Tower', x: 0, z: -24, kind: 'landmark' },
     { name: 'Underground Base', short: 'Base', x: BX, z: BZ, kind: 'landmark' },
     { name: 'Pod Crater', short: 'Crater', x: CRATER.x, z: CRATER.z, kind: 'landmark' },
     { name: 'Old Market', short: 'Market', x: -255, z: 255, kind: 'landmark' },
@@ -102,10 +78,6 @@ function streets(L) {
     const z = ZS[j], w = WZ[j];
     for (const [a, b] of j === 5 ? [[-E, PLAZA.x0], [PLAZA.x1, E]] : [[-E, E]]) L.streets.push({ axis: 'x', at: z, w, x0: a, x1: b, z0: z - w / 2, z1: z + w / 2 });
   }
-}
-export function onStreet(L, x, z, m = 0) {
-  for (const s of L.streets) if (x > s.x0 - m && x < s.x1 + m && z > s.z0 - m && z < s.z1 + m) return true;
-  return false;
 }
 
 // ---------- one city block ----------
@@ -267,7 +239,8 @@ function ring(L, kit, In, kind) {
     } else if (lot.kind === 'ruin') ruinLot(L, kit, lot, zone);
     else if (lot.kind === 'gap') gapLot(L, kit, lot, zone);
   }
-  if (yard) courtyard(L, kit, yard, kind, zoneKind((yard.x0 + yard.x1) / 2, (yard.z0 + yard.z1) / 2));
+  // (a courtyard the crater took is part of the bowl now: nothing stands in it)
+  if (yard && !nearCrater(yard.x0, yard.z0, yard.x1, yard.z1, 8)) courtyard(L, kit, yard, kind, zoneKind((yard.x0 + yard.x1) / 2, (yard.z0 + yard.z1) / 2));
 }
 
 // which sides of each building stand against a neighbour (no windows there)
@@ -426,194 +399,7 @@ function containerYard(L, kit, Y, zone, damage, street) {
   kit.wall(along ? 'x' : 'z', at, a0, a1, 0, 1.4, [{ a: kit.range(a0 + 6, a1 - 6), w: 6, b: 0, t: 1.4 }], COL.barrier, { t: 0.4, jag: 0.25 });
 }
 
-// ---------- props with loot ----------
-function carLoot(L, kit, x, z, yaw, zone) {
-  const R = kit.R, burnt = R() < 0.3, flipped = !burnt && R() < 0.12;
-  const boot = P.car(kit, x, z, yaw, { kind: kit.pick(['sedan', 'sedan', 'hatch', 'van', 'pickup']), burnt, flipped });
-  if (burnt) L.decals.push({ kind: 'scorch', x, z, r: kit.range(2, 3) });
-  if (boot && !burnt && R() < 0.35) L.containers.push({ type: 'car', x: boot.x, y: 0, z: boot.z, ry: yaw, zone });
-}
 const sandbags = (kit, x, z, yaw) => P.sandbags(kit, x, z, yaw);
-
-// ---------- the plaza and the Collapsed Tower ----------
-function plaza(L, kit) {
-  const T = TOWER, c = COL.tower;
-  // the stump: solid below and above, one storey hollow where the fallen top broke into it
-  const cx = 0, cz = (T.z0 + T.z1) / 2, W = T.x1 - T.x0, D = T.z1 - T.z0, b = T.breach;
-  kit.box(cx, 0, cz, W, b - 0.3, D, c);
-  kit.box(cx, b - 0.3, cz, W, 0.3, D, COL.slab, { top: COL.floor });                  // the room's floor
-  kit.wall('x', T.z0 + WALL / 2, T.x0, T.x1, b, 3.4, [{ a: -4, w: 1.4, b: 1, t: 2.3 }, { a: 4, w: 1.4, b: 1, t: 2.3 }], c);
-  kit.wall('x', T.z1 - WALL / 2, T.x0, T.x1, b, 3.4, [{ a: 0, w: 1.4, b: 1, t: 2.3 }], c);
-  kit.wall('z', T.x0 + WALL / 2, T.z0 + WALL, T.z1 - WALL, b, 3.4, [], c);
-  kit.wall('z', T.x1 - WALL / 2, T.z0 + WALL, T.z1 - WALL, b, 3.4, [{ a: -14, w: 10, b: 0, t: 3.4 }], c, { jag: 0.4 });  // the breach
-  kit.box(cx, b + 3.4, cz, W, 0.3, D, COL.slab);                                       // its ceiling
-  kit.box(cx, b + 3.7, cz, W, 22, D, c);
-  for (let k = 0; k < 4; k++) {                                                        // the broken top
-    const w = kit.range(5, 11), d = kit.range(5, 11);
-    kit.box(T.x0 + w / 2 + kit.R() * (W - w), b + 25.7, T.z0 + d / 2 + kit.R() * (D - d), w, kit.range(4, 18), d, c);
-  }
-  for (let k = 0; k < 6; k++) kit.box(kit.range(T.x0 + 1, T.x1 - 1), b + 25.7, kit.range(T.z0 + 1, T.z1 - 1), 0.12, kit.range(3, 8), 0.12, COL.rebar, { col: false });
-  for (let f = 0; f < 14; f++) {
-    if (f === 6) continue;
-    const y = f * FLOOR + 1.75;
-    kit.panesAlong('n', T.z0, T.x0, T.x1, y, 1.5, 1.7, 3.2, 0.15);
-    kit.panesAlong('s', T.z1, T.x0, T.x1, y, 1.5, 1.7, 3.2, 0.15);
-    kit.panesAlong('w', T.x0, T.z0, T.z1, y, 1.5, 1.7, 3.2, 0.15);
-    if (f < 5 || f > 7) kit.panesAlong('e', T.x1, T.z0, T.z1, y, 1.5, 1.7, 3.2, 0.15);
-  }
-  L.footprints.push({ x0: T.x0, z0: T.z0, x1: T.x1, z1: T.z1, h: 64, open: false, tower: true });
-  L.interiors.push({ x0: T.x0 + WALL, z0: T.z0 + WALL, x1: T.x1 - WALL, z1: T.z1 - WALL, y0: b, y1: b + 3.4 });
-  // the fallen top: a slab of tower lying from the plaza up to the breach (an 18° climb), propped on its debris
-  kit.ramp({ x: 60, y: 0, z: 26 }, { x: T.x1, y: b, z: -14 }, 10, 7, c);
-  const yaw = Math.atan2(49, 40);
-  kit.cbox(21, 4.3, -5.5, 9, 8.6, 10, kit.pick(COL.rubble), { ry: yaw + 0.3, rz: 0.08 });
-  for (let k = 0; k < 6; k++) {                                                        // debris along both sides of it
-    const s = kit.range(6, 50), off = (k % 2 ? 1 : -1) * kit.range(7.5, 11);
-    kit.rubble(60 - 0.775 * s + 0.632 * off, 26 - 0.632 * s - 0.775 * off, kit.range(3, 4.5), 4);
-  }
-  for (let k = 0; k < 4; k++) kit.rubble(kit.range(T.x0 - 6, T.x1 + 2), kit.range(T.z1 + 1.5, T.z1 + 8), kit.range(2, 3.5), 4);
-  // the loot room at the top of the climb
-  const lr = (type, x, z, ry) => { containerLook(kit, type, x, b, z, ry); L.containers.push({ type, x, y: b, z, ry, zone: 'red' }); };
-  lr('case', -9.5, -24, Math.PI / 2); lr('cache', -8, -12, Math.PI / 2); lr('crate', 0, -29.5, 0); lr('locker', 6, -29.6, 0);
-  crystalsAround(L, kit, -8, b, -12, 1.6, 8);
-  // round the plaza: a dry fountain, palms, wrecks, sandbags
-  const fx = 38, fz = 48;
-  for (let a = 0; a < 8; a++) kit.cbox(fx + Math.cos(a * Math.PI / 4) * 5, 0.4, fz + Math.sin(a * Math.PI / 4) * 5, 4.2, 0.8, 0.6, COL.white[0], { ry: -a * Math.PI / 4 + Math.PI / 2 });
-  kit.box(fx, 0, fz, 1.4, 2.4, 1.4, COL.stone[1]);
-  for (let k = 0; k < 8; k++) {
-    const x = -54 + k * 15 + kit.range(-3, 3), z = k % 2 ? kit.range(-59, -55) : kit.range(55, 59);
-    if (Math.hypot(x - fx, z - fz) > 9) kit.palm(x, z, kit.range(7, 11));
-  }
-  for (let k = 0; k < 5; k++) carLoot(L, kit, kit.range(-59, -52), -46 + k * 21 + kit.range(-3, 3), Math.PI / 2 + kit.range(-0.5, 0.5), 'red');
-  sandbags(kit, -30, -45, 0.3); sandbags(kit, 30, -50, -0.4); sandbags(kit, -40, 0, Math.PI / 2);
-  L.signs.push({ title: 'Collapsed Tower', sub: 'Climb the fallen top.\nSomething was left up there.', x: 58, y: 2.2, z: 36, ry: -2.2 });
-}
-
-// ---------- the highway ----------
-function highway(L, kit) {
-  const { z, y, w, gap, end, foot } = HWY, t = 1.0;
-  const deck = (xa, xb) => {
-    for (let x = xa; x < xb - 0.01; x += 32) {
-      const len = Math.min(32, xb - x);
-      kit.box(x + len / 2, y - t, z, len, t, w, COL.slab, { top: COL.asphalt });
-      for (const side of [-1, 1]) if (kit.R() > 0.12) kit.box(x + len / 2, y, z + side * (w / 2 - 0.3), len - kit.range(0, 2), 0.9, 0.5, COL.barrier);
-    }
-  };
-  deck(-end, gap[0]);
-  deck(gap[1], end);
-  kit.ramp({ x: -foot, y: 0, z }, { x: -end, y, z }, w - 2, t, COL.slab, { top: COL.asphalt });
-  kit.ramp({ x: foot, y: 0, z }, { x: end, y, z }, w - 2, t, COL.slab, { top: COL.asphalt });
-  kit.ramp({ x: gap[0] + 8, y: 0, z: z + 0.8 }, { x: gap[1], y, z }, w - 3, t, COL.slab, { top: COL.asphalt });   // the collapsed section: the way up
-  for (let k = 0; k < 4; k++) kit.rubble(kit.range(gap[0] - 8, gap[0] - 2), z + kit.range(-6, 6), kit.range(2, 3.5), 4);
-  for (let k = 0; k < 3; k++) kit.rubble(kit.range(gap[0] + 10, gap[1] - 6), z + (k % 2 ? 1 : -1) * kit.range(8.5, 10), kit.range(2, 3.5), 4);
-  for (let k = 0; k < 3; k++) kit.box(gap[0] - 2, y, z + (k - 1) * 4, 0.6, 0.9, 3, COL.barrier);   // warning: the deck ends
-  // pillars between the crossings, never on a crossing street
-  for (let x = -end + 12; x < end - 6; x += 26) {
-    if (x > gap[0] - 4 && x < gap[1] + 4) continue;
-    if (XS.some((sx, i) => Math.abs(x - sx) < WX[i] / 2 + 3)) continue;
-    kit.box(x, 0, z, 2.4, y - t, 2.4, COL.slab);
-  }
-  // wrecks on the deck, a jack-knifed truck, sign gantries
-  for (let k = 0; k < 24; k++) {
-    const x = kit.R() < 0.5 ? kit.range(-end + 10, gap[0] - 8) : kit.range(gap[1] + 6, end - 10);
-    deckCar(L, kit, x, z + kit.pick([-5, -1.8, 1.8, 5]), (kit.R() < 0.5 ? Math.PI / 2 : -Math.PI / 2) + kit.range(-0.4, 0.4));
-  }
-  const tx = kit.range(-250, -120);
-  kit.cbox(tx, y + 1.9, z - 1, 2.5, 3.0, 11, 0x6a6e73, { ry: Math.PI / 2 + 0.35 });
-  kit.cbox(tx + 6.5, y + 1.4, z + 2.4, 2.4, 2.4, 3, COL.rust[0], { ry: Math.PI / 2 - 0.5 });
-  for (const gx of [-262, 118, 240]) {
-    for (const s of [-1, 1]) kit.box(gx, y, z + s * (w / 2 - 0.6), 0.5, 6.5, 0.5, COL.metal[1]);
-    kit.box(gx, y + 6, z, 0.5, 0.5, w - 0.6, COL.metal[1], { col: false });
-    kit.box(gx, y + 4.8, z - 2, 0.2, 1.8, 5.5, 0x2f5a3c, { col: false });
-  }
-  L.signs.push({ title: 'Highway', sub: 'Broken in the middle.\nUp the collapsed slab.', x: gap[0] + 10, y: 2.2, z: z + 12, ry: Math.PI });
-}
-function deckCar(L, kit, x, z, yaw) {
-  const burnt = kit.R() < 0.25, boot = P.car(kit, x, z, yaw, { kind: kit.pick(['sedan', 'hatch', 'van', 'pickup', 'taxi']), burnt, y: HWY.y });
-  if (boot && !burnt && kit.R() < 0.3) L.containers.push({ type: 'car', x: boot.x, y: HWY.y, z: boot.z, ry: yaw, zone: zoneKind(x, z) });
-}
-
-// ---------- the Underground Base: a ramp down into a bunker with Scatter nests ----------
-function bunker(L, kit) {
-  const B = BUNKER, F = B.floor, H = 5, rp = B.ramp, c = 0x8c8478, cw = 0x6f685e, ox = BX, oz = BZ;
-  L.holes.push({ x0: rp.x0, z0: rp.z0, x1: rp.x1, z1: rp.z1 });
-  L.dark.push({ x0: B.x0, z0: B.z0, x1: B.x1, z1: B.z1 });
-  kit.ramp({ x: ox, y: F, z: rp.z0 }, { x: ox, y: 0, z: rp.z1 }, rp.x1 - rp.x0, 0.6, 0x77706a);
-  kit.box(rp.x0 - 0.15, F, (rp.z0 + rp.z1) / 2, 0.3, -F, rp.z1 - rp.z0, cw);
-  kit.box(rp.x1 + 0.15, F, (rp.z0 + rp.z1) / 2, 0.3, -F, rp.z1 - rp.z0, cw);
-  // the blockhouse over the top of the ramp, open to the street in the south
-  kit.wall('z', rp.x0 - 1.2, rp.z1 - 8, rp.z1 + 1.5, 0, 3.4, [], 0x9a8f80, { t: 0.6 });
-  kit.wall('z', rp.x1 + 1.2, rp.z1 - 8, rp.z1 + 1.5, 0, 3.4, [], 0x9a8f80, { t: 0.6 });
-  kit.box(ox, 3.4, rp.z1 - 3.25, rp.x1 - rp.x0 + 3, 0.5, 9.5, 0x8a8072);
-  kit.box(ox, 2.6, rp.z1 + 1.45, rp.x1 - rp.x0 + 2.4, 0.8, 0.3, 0x2b2a28, { col: false });
-  for (const x of [rp.x0 - 0.7, rp.x1 + 0.7]) kit.box(x, 2.2, rp.z1 + 1.6, 0.3, 0.3, 0.1, COL.lamp, { k: K.GLOW, col: false });
-  L.doors.push({ x: ox, z: rp.z1 + 1.5, nx: 0, nz: 1, w: rp.x1 - rp.x0 + 2, open: true });
-  crystalsAround(L, kit, rp.x0 - 2.5, 0, rp.z1 + 1.2, 1.0, 5);
-  L.signs.push({ title: 'Underground Base', sub: 'Dark inside. Use your light (F).\nScatter nests.', x: ox - 6, y: 2.0, z: rp.z1 + 2.2, ry: 0 });
-  // the floor, and ceilings you can see from below (the ground above is the real roof)
-  kit.slab(B.x0, B.z0, B.x1, rp.z0 + 0.05, F, 0x5f5a53, null, { thick: 0.4 });
-  const room = (x0, z0, x1, z1, doors) => {
-    kit.box((x0 + x1) / 2, -1.25, (z0 + z1) / 2, x1 - x0, 0.25, z1 - z0, 0x4f4a44, { col: false });
-    const ops = s => doors.filter(d => d.s === s).map(d => ({ a: d.a, w: d.w || 2.2, b: 0, t: 3 }));
-    kit.wall('x', z0, x0, x1, F, H, ops('n'), c);
-    kit.wall('x', z1, x0, x1, F, H, ops('s'), c);
-    kit.wall('z', x0, z0, z1, F, H, ops('w'), c);
-    kit.wall('z', x1, z0, z1, F, H, ops('e'), c);
-    for (let x = x0 + 4; x < x1 - 2; x += 7) kit.box(x, -2.6, z0 + 0.2, 0.9, 0.18, 0.1, COL.lamp, { k: K.GLOW, col: false });
-  };
-  room(ox - 18, oz - 46, ox + 18, rp.z0, [{ s: 's', a: ox, w: rp.x1 - rp.x0 }, { s: 'w', a: oz - 33 }, { s: 'e', a: oz - 35 }, { s: 'n', a: ox - 1, w: 4 }]);   // the hall
-  room(ox - 32, oz - 42, ox - 18, oz - 24, [{ s: 'e', a: oz - 33 }]);
-  room(ox + 18, oz - 44, ox + 32, oz - 26, [{ s: 'w', a: oz - 35 }]);
-  room(ox - 3, oz - 50, ox + 1, oz - 46, [{ s: 'n', a: ox - 1, w: 4 }, { s: 's', a: ox - 1, w: 4 }]);                                         // a short corridor
-  room(ox - 14, oz - 60, ox + 14, oz - 50, [{ s: 's', a: ox - 1, w: 4 }]);                                                                     // the nest room
-  for (const [dx, dz] of [[-9, -38], [9, -38], [-9, -26], [9, -26]]) kit.box(ox + dx, F, oz + dz, 1, H, 1, 0x7a736a);
-  for (let k = 0, t = 0; k < 6 && t < 30; t++) {                                     // crates about the hall, clear of the nests
-    const x = ox + (k % 2 ? 1 : -1) * kit.range(5, 14), z = oz + kit.range(-43, -22);
-    if (Math.hypot(x - (ox - 14), z - (oz - 42)) < 3.5) continue;
-    kit.box(x, F, z, 1.2, 1.2, 1.2, kit.pick(COL.rust));
-    k++;
-  }
-  const lr = (type, dx, dz, ry) => { containerLook(kit, type, ox + dx, F, oz + dz, ry); L.containers.push({ type, x: ox + dx, y: F, z: oz + dz, ry, zone: 'yellow' }); };
-  lr('locker', -31, -28, Math.PI / 2); lr('locker', -31, -31, Math.PI / 2); lr('crate', -24, -40.5, 0);
-  lr('toolbox', 31, -30, -Math.PI / 2); lr('case', 31, -39, -Math.PI / 2); lr('crate', 14, -44.5, 0);
-  lr('cache', -10, -57, 0); lr('cache', 10, -57, 0); lr('crate', -17.2, -20, Math.PI / 2);
-  crystalsAround(L, kit, ox, F, oz - 56, 5, 22);
-  crystalsAround(L, kit, ox - 28, F, oz - 38, 2.5, 8);
-  L.nestSpots.push({ x: ox, y: F + 0.1, z: oz - 56, zone: 'yellow', bunker: true }, { x: ox - 25, y: F + 0.1, z: oz - 35, zone: 'yellow', bunker: true },
-    { x: ox - 14, y: F + 0.1, z: oz - 42, zone: 'yellow', bunker: true });
-  L.interiors.push({ x0: ox - 18, z0: oz - 46, x1: ox + 18, z1: oz - 18, y0: F, y1: -1 });
-}
-// up top, the block round the blockhouse: container stacks, an office, a fence
-function baseYard(L, kit, In) {
-  const R = kit.R;
-  L.yards.push({ ...In, kind: 'industrial' });
-  containerStack(kit, BX + 20, BZ - 34, 0, 2); containerStack(kit, BX - 21, BZ - 30, Math.PI / 2, 1); containerStack(kit, BX + 23, BZ - 12, Math.PI / 2, 3);
-  containerStack(kit, BX + 12, BZ - 50, 0, 1); containerStack(kit, BX - 14, BZ - 20, 0, 2);
-  building(L, kit, { x0: In.x0 + 0.5, z0: In.z0 + 0.5, x1: In.x0 + 12.5, z1: In.z0 + 10.5, floors: 2, open: 2, front: 'e', style: 'industrial', zone: 'yellow', damage: 0.6, roof: R() < 0.5 });
-  addLoot(L, kit, 'crate', BX + 9, 0, BZ - 6, Math.PI / 2, 'yellow');
-  kit.wall('x', In.z0 + 0.3, In.x0 + 15, In.x1 - 1, 0, 1.4, [{ a: BX + 4, w: 6, b: 0, t: 1.4 }], COL.barrier, { t: 0.4, jag: 0.25 });
-  kit.wall('z', In.x1 - 0.3, In.z0 + 1, In.z1 - 1, 0, 1.4, [{ a: BZ - 30, w: 6, b: 0, t: 1.4 }], COL.barrier, { t: 0.4, jag: 0.25 });
-}
-
-// ---------- the Pod Crater ----------
-function crater(L, kit) {
-  const C = CRATER;
-  L.pods.push({ x: C.x - 2, z: C.z + 2, s: 7.5, h: 16, tilt: 0.38, ry: 0.6 });
-  // the pod's body, for the physics (a few boxes inside the shape)
-  kit.cbox(C.x - 2, 4, C.z + 2, 9, 8, 9, 0, { ry: 0.6 + Math.PI / 4, rx: 0.2, k: K.SOLID }).hide = true;
-  kit.cbox(C.x - 0.5, 10, C.z + 4.5, 4.5, 6, 4.5, 0, { ry: 0.6 + Math.PI / 4, rx: 0.3 }).hide = true;
-  for (let a = 0; a < 12; a++) {                                                      // the rim (it stays inside the crater)
-    const ang = a / 12 * Math.PI * 2 + kit.range(-0.1, 0.1), r = C.r * kit.range(0.7, 0.85);
-    kit.rubble(C.x + Math.cos(ang) * r, C.z + Math.sin(ang) * r, kit.range(3, 5.5), 4);
-  }
-  crystalsAround(L, kit, C.x - 2, 0, C.z + 2, 14, 40);
-  for (let k = 0; k < 5; k++) {
-    const a = kit.R() * Math.PI * 2, r = kit.range(18, 38);
-    kit.wall('x', C.z + Math.sin(a) * r, C.x + Math.cos(a) * r - 3, C.x + Math.cos(a) * r + 3, 0, kit.range(1.5, 3.5), [], kit.pick(COL.plaster), { jag: 0.8 });
-  }
-  for (const [dx, dz] of [[14, -6], [-12, 13]]) addLoot(L, kit, 'cache', C.x + dx, 0, C.z + dz, 0, 'yellow');
-  L.signs.push({ title: 'Pod Crater', sub: 'They landed here first.\nFlies guard it.', x: C.x + 37, y: 2.2, z: C.z + 37, ry: Math.PI / 4 });
-}
 
 // ---------- the city's edge: extraction points, drop zones, a few things in the sand, dunes ----------
 function edges(L, kit) {
@@ -659,13 +445,6 @@ function edges(L, kit) {
   }
 }
 
-function crystalsAround(L, kit, x, y, z, r, n) {
-  for (let k = 0; k < n; k++) {
-    const a = kit.R() * Math.PI * 2, d = Math.sqrt(kit.R()) * r;
-    L.crystals.push({ x: x + Math.cos(a) * d, y, z: z + Math.sin(a) * d, s: kit.range(0.25, 0.9), rx: kit.range(-0.4, 0.4), ry: kit.R() * Math.PI, rz: kit.range(-0.4, 0.4) });
-  }
-}
-
 // ---------- the Prism: who lives where, and the routes they patrol ----------
 function prismGroups(L, kit) {
   const R = kit.R;
@@ -692,8 +471,9 @@ function prismGroups(L, kit) {
     const route = loop(i0, j0, i1, j1);
     P('patrol', Array(n).fill('fly'), at(route, 3.5), { route, alt: 3.5, speed: 1.6 });
   }
-  // the plaza: Flies over the north of it, a Swatter with two Flies round the whole of it
-  P('patrol', ['fly', 'fly', 'fly'], { x: -40, y: 8, z: -50 }, { route: [{ x: -40, z: -50 }, { x: 52, z: -50 }, { x: 52, z: -38 }, { x: -40, z: -38 }], alt: 8, speed: 1.6 });
+  // the plaza: Flies over the north of it (between the tower and the burning bus, clear of the fallen pieces),
+  // a Swatter with two Flies round the whole of it
+  P('patrol', ['fly', 'fly', 'fly'], { x: -44, y: 9, z: -50 }, { route: [{ x: -44, z: -50 }, { x: 26, z: -50 }, { x: 26, z: -42 }, { x: -44, z: -42 }], alt: 9, speed: 1.6 });
   P('patrol', ['swatter', 'fly', 'fly'], { x: XS[4], y: 10, z: ZS[4] }, { route: loop(4, 4, 6, 6), alt: 10, speed: 1.8 });
   // a Swatter flies up and down the highway
   P('patrol', ['swatter'], { x: -280, y: HWY.y + 6, z: HWY.z }, { route: [{ x: -280, z: HWY.z }, { x: -120, z: HWY.z }, { x: 120, z: HWY.z }, { x: 280, z: HWY.z }], routeBack: true, alt: 6, speed: 1.8 });

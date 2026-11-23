@@ -66,40 +66,40 @@ export function car(kit, x, z, yaw, { kind = 'sedan', burnt = false, flipped = f
   }
   return loc(x, z, yaw, 0, -S.len / 2 - 0.15);
 }
-// a city bus, 11.6 m: the body collides; a dark band of windows; burnt out it sits low
-export function bus(kit, x, z, yaw, { burnt = false } = {}) {
-  const len = 11.6, w = 2.5, h = 2.75, base = burnt ? 0.12 : 0.35, dark = burnt ? 0x1d1a18 : PC.glass;
+// a city bus, 11.6 m: the body collides; a dark band of windows; burnt out it sits low. y: what it stands on
+export function bus(kit, x, z, yaw, { burnt = false, y = 0 } = {}) {
+  const len = 11.6, w = 2.5, h = 2.75, base = y + (burnt ? 0.12 : 0.35), dark = burnt ? 0x1d1a18 : PC.glass;
   kit.cbox(x, base + h / 2, z, w, h, len, burnt ? kit.pick(PC.burnt) : kit.pick(PC.bus), { ry: yaw });
   kit.cbox(x, base + h * 0.68, z, w + 0.04, 0.85, len - 1.4, dark, { ry: yaw, col: false });
   const f = loc(x, z, yaw, 0, len / 2 - 0.02);
   kit.cbox(f.x, base + h * 0.62, f.z, w - 0.3, 1.1, 0.06, dark, { ry: yaw, col: false });
   if (!burnt) for (const lz of [len / 2 - 2.2, -len / 2 + 2.4]) for (const lx of [-1, 1]) {
     const p = loc(x, z, yaw, lx * (w / 2 - 0.1), lz);
-    kit.cbox(p.x, 0.5, p.z, 0.3, 1.0, 1.0, PC.tyre, { ry: yaw, col: false, k: DET });
+    kit.cbox(p.x, y + 0.5, p.z, 0.3, 1.0, 1.0, PC.tyre, { ry: yaw, col: false, k: DET });
   }
 }
 // a lorry, about 8.2 m: cab and load collide. cargo: box | container; military: olive with a canvas back
-export function truck(kit, x, z, yaw, { burnt = false, military = false, cargo = 'box' } = {}) {
+export function truck(kit, x, z, yaw, { burnt = false, military = false, cargo = 'box', y = 0 } = {}) {
   const col = burnt ? kit.pick(PC.burnt) : military ? PC.army : kit.pick(PC.truck), dark = burnt ? 0x1d1a18 : PC.glass;
   const cab = loc(x, z, yaw, 0, 3.0), ws = loc(x, z, yaw, 0, 4.06), back = loc(x, z, yaw, 0, -1.2);
-  kit.cbox(cab.x, 1.7, cab.z, 2.4, 2.3, 2.1, col, { ry: yaw });
-  kit.cbox(ws.x, 2.25, ws.z, 2.1, 0.75, 0.06, dark, { ry: yaw, col: false });
-  kit.cbox(x, 0.75, z, 2.0, 0.4, 7.8, PC.dark, { ry: yaw, col: false, k: DET });
-  if (military) kit.cbox(back.x, 2.0, back.z, 2.45, 2.0, 5.2, burnt ? kit.pick(PC.burnt) : PC.canvas, { ry: yaw });
-  else if (cargo === 'container') kit.cbox(back.x, 2.3, back.z, 2.44, 2.6, 6.1, kit.pick(COL.container), { ry: yaw });
-  else kit.cbox(back.x, 2.35, back.z, 2.5, 2.7, 5.8, burnt ? kit.pick(PC.burnt) : kit.pick(PC.truck), { ry: yaw });
+  kit.cbox(cab.x, y + 1.7, cab.z, 2.4, 2.3, 2.1, col, { ry: yaw });
+  kit.cbox(ws.x, y + 2.25, ws.z, 2.1, 0.75, 0.06, dark, { ry: yaw, col: false });
+  kit.cbox(x, y + 0.75, z, 2.0, 0.4, 7.8, PC.dark, { ry: yaw, col: false, k: DET });
+  if (military) kit.cbox(back.x, y + 2.0, back.z, 2.45, 2.0, 5.2, burnt ? kit.pick(PC.burnt) : PC.canvas, { ry: yaw });
+  else if (cargo === 'container') kit.cbox(back.x, y + 2.3, back.z, 2.44, 2.6, 6.1, kit.pick(COL.container), { ry: yaw });
+  else kit.cbox(back.x, y + 2.35, back.z, 2.5, 2.7, 5.8, burnt ? kit.pick(PC.burnt) : kit.pick(PC.truck), { ry: yaw });
   if (!burnt) for (const lz of [3.0, -0.6, -2.6]) for (const lx of [-1, 1]) {
     const p = loc(x, z, yaw, lx * 1.05, lz);
-    kit.cbox(p.x, 0.5, p.z, 0.32, 1.0, 1.0, PC.tyre, { ry: yaw, col: false, k: DET });
+    kit.cbox(p.x, y + 0.5, p.z, 0.32, 1.0, 1.0, PC.tyre, { ry: yaw, col: false, k: DET });
   }
 }
 // a burnt-out armoured vehicle: hull and turret collide
-export function apc(kit, x, z, yaw, { burnt = true } = {}) {
+export function apc(kit, x, z, yaw, { burnt = true, y = 0 } = {}) {
   const col = burnt ? 0x3b3631 : 0x6b6a4e, t = loc(x, z, yaw, 0, -0.4), g = loc(x, z, yaw, 0, 2.3);
-  kit.cbox(x, 1.25, z, 2.9, 1.6, 6.4, col, { ry: yaw });
-  kit.cbox(t.x, 2.42, t.z, 1.9, 0.75, 2.2, col, { ry: yaw });
-  kit.cbox(g.x, 2.5, g.z, 0.14, 0.14, 3.2, PC.dark, { ry: yaw + 0.08, col: false });
-  for (const lx of [-1, 1]) { const p = loc(x, z, yaw, lx * 1.55, 0); kit.cbox(p.x, 0.45, p.z, 0.5, 0.9, 6.6, PC.tyre, { ry: yaw, col: false }); }
+  kit.cbox(x, y + 1.25, z, 2.9, 1.6, 6.4, col, { ry: yaw });
+  kit.cbox(t.x, y + 2.42, t.z, 1.9, 0.75, 2.2, col, { ry: yaw });
+  kit.cbox(g.x, y + 2.5, g.z, 0.14, 0.14, 3.2, PC.dark, { ry: yaw + 0.08, col: false });
+  for (const lx of [-1, 1]) { const p = loc(x, z, yaw, lx * 1.55, 0); kit.cbox(p.x, y + 0.45, p.z, 0.5, 0.9, 6.6, PC.tyre, { ry: yaw, col: false }); }
 }
 
 // ---------- on the pavement ----------
@@ -235,9 +235,9 @@ export function laundry(kit, a, b) {
 
 // ---------- barricades ----------
 // a concrete barrier, 3 m long across yaw's line: collides
-export function jersey(kit, x, z, yaw) {
-  kit.cbox(x, 0.2, z, 0.62, 0.4, 3.0, COL.barrier, { ry: yaw });
-  kit.cbox(x, 0.62, z, 0.3, 0.45, 3.0, COL.barrier, { ry: yaw });
+export function jersey(kit, x, z, yaw, y = 0) {
+  kit.cbox(x, y + 0.2, z, 0.62, 0.4, 3.0, COL.barrier, { ry: yaw });
+  kit.cbox(x, y + 0.62, z, 0.3, 0.45, 3.0, COL.barrier, { ry: yaw });
 }
 // a steel tank trap; you bump into the space it fills
 export function hedgehog(kit, x, z) {
@@ -246,19 +246,19 @@ export function hedgehog(kit, x, z) {
   kit.box(x, 0, z, 1.1, 1.1, 1.1, 0).hide = true;
 }
 // sandbags in a row along yaw's cross line (one 0.9 m row, or several layers of 0.44 m)
-export function sandbags(kit, x, z, yaw, n = 5, rows = 1) {
+export function sandbags(kit, x, z, yaw, n = 5, rows = 1, y = 0) {
   const h = rows === 1 ? 0.9 : 0.44;
   for (let r = 0; r < rows; r++) for (let k = 0; k < n - (r % 2); k++) {
     const p = loc(x, z, yaw, (k - (n - 1) / 2) * 1.1 + (r % 2) * 0.55, 0);
-    kit.cbox(p.x, h / 2 + r * h, p.z, 1.1, h, 0.6, COL.sandbag, { ry: yaw + kit.range(-0.08, 0.08) });
+    kit.cbox(p.x, y + h / 2 + r * h, p.z, 1.1, h, 0.6, COL.sandbag, { ry: yaw + kit.range(-0.08, 0.08) });
   }
 }
 // a coil of razor wire along yaw
 export function razor(kit, x, z, yaw, len) { kit.cbox(x, 0.3, z, 0.55, 0.55, len, 0x3a3835, { ry: yaw, col: false, k: DET }); }
-export function booth(kit, x, z, yaw) {
-  kit.cbox(x, 1.2, z, 1.8, 2.4, 1.8, 0x7a7563, { ry: yaw });
-  kit.cbox(x, 1.65, z, 1.84, 0.6, 1.84, PC.glass, { ry: yaw, col: false });
-  kit.cbox(x, 2.48, z, 2.2, 0.16, 2.2, 0x5f5a50, { ry: yaw, col: false });
+export function booth(kit, x, z, yaw, y = 0) {
+  kit.cbox(x, y + 1.2, z, 1.8, 2.4, 1.8, 0x7a7563, { ry: yaw });
+  kit.cbox(x, y + 1.65, z, 1.84, 0.6, 1.84, PC.glass, { ry: yaw, col: false });
+  kit.cbox(x, y + 2.48, z, 2.2, 0.16, 2.2, 0x5f5a50, { ry: yaw, col: false });
 }
 // a floodlight mast (one lamp still burning)
 export function floodlight(kit, x, z, yaw) {
