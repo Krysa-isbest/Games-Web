@@ -14,6 +14,8 @@
 //   The city's edge: sand, wrecks, a few shacks; three extraction points and six drop zones.
 import { Kit, K, COL, FLOOR, WALL, containerLook } from './kit.js';
 import { building, warehouse, containerStack, stall, addLoot } from './buildings.js';
+import * as P from './props.js';
+import { streetLife } from './streetlife.js';
 
 export const HALF = 400;
 // street centre lines (x of the north-south streets, z of the east-west ones) and how wide they are
@@ -62,9 +64,9 @@ export function makeRuins(seed = 3000) {
   const L = {
     seed, half: HALF,
     boxes: kit.boxes, panes: kit.panes, wedges: kit.wedges,
-    containers: [], nestSpots: [], roofs: [], footprints: [], interiors: [], stairs: [], floorSpots: [], heaps: [],
+    containers: [], nestSpots: [], roofs: [], footprints: [], interiors: [], stairs: [], floorSpots: [], heaps: [], doors: [],
     streets: [], blocks: [], yards: [], ruins: [], vacant: [], alleys: [], squares: [],
-    crystals: [], pods: [], signs: [], dunes: [], groundItems: [],
+    crystals: [], pods: [], signs: [], dunes: [], groundItems: [], props: [], fires: [], decals: [],
     prism: [], spawns: [], extracts: [], landmarks: [], holes: [], dark: [],
     zones: ZONES, hwy: HWY, tower: TOWER, crater: CRATER, bunker: BUNKER, plaza: PLAZA,
   };
@@ -75,9 +77,10 @@ export function makeRuins(seed = 3000) {
   bunker(L, kit);
   crater(L, kit);
   edges(L, kit);
+  streetLife(L, kit);
   prismGroups(L, kit);
   looseItems(L, kit);
-  pruneBlocked(L);
+  finalChecks(L);
   L.landmarks.push(
     { name: 'Collapsed Tower', short: 'Tower', x: 0, z: -20, kind: 'landmark' },
     { name: 'Underground Base', short: 'Base', x: BX, z: BZ, kind: 'landmark' },
@@ -232,12 +235,17 @@ function ring(L, kit, In, kind) {
     const mids = lots.filter(l => !l.corner && l.kind === 'building');
     if (mids.length) kit.pick(mids).kind = 'gap';
   }
-  // footprints: some buildings are shallower (the courtyard side gives), some stand behind a front yard
+  // footprints: some buildings are shallower (the courtyard side gives: only where they back onto the courtyard
+  // itself, so no back wall ends up a metre from a neighbour), some stand behind a front yard. backSpan: the stretch
+  // of the back that looks onto the courtyard (back doors only there; none without a courtyard)
   for (const lot of lots) {
     if (lot.kind !== 'building') continue;
-    const f = { x0: lot.x0, z0: lot.z0, x1: lot.x1, z1: lot.z1 };
+    const f = { x0: lot.x0, z0: lot.z0, x1: lot.x1, z1: lot.z1 }, row = lot.side === 'n' || lot.side === 's';
     const cut = (side, d) => { if (side === 'n') f.z0 += d; else if (side === 's') f.z1 -= d; else if (side === 'w') f.x0 += d; else f.x1 -= d; };
-    if (!lot.corner && R() < 0.5) cut(OPP[lot.side], kit.range(0.5, 3));
+    const span = !yard ? null : row ? [Math.max(lot.x0, yard.x0), Math.min(lot.x1, yard.x1)] : [Math.max(lot.z0, yard.z0), Math.min(lot.z1, yard.z1)];
+    lot.backSpan = span && span[1] - span[0] > 3 ? span : null;
+    const facesYard = !!yard && (!row || (lot.x0 >= yard.x0 - 0.01 && lot.x1 <= yard.x1 + 0.01));
+    if (!lot.corner && facesYard && R() < 0.5) cut(OPP[lot.side], kit.range(0.5, 3));
     if (!lot.corner && R() < P.setback) { lot.setback = kit.range(1.8, 3.2); cut(lot.side, lot.setback); }
     lot.front = lot.corner && R() < 0.3 ? lot.corner : lot.side;
     lot.f = f;
@@ -251,7 +259,7 @@ function ring(L, kit, In, kind) {
       if (kind === 'downtown' && Math.max(Math.abs(cx), Math.abs(cz)) < 120 && R() < 0.5) floors++;
       const open = R() < P.open ? (floors <= 3 ? floors : 1 + Math.floor(R() * 3)) : 0;
       building(L, kit, {
-        ...f, floors, open, front: lot.front, blank: lot.blank, shop: R() < P.shop, style: kit.pick(P.style), zone,
+        ...f, floors, open, front: lot.front, blank: lot.blank, backSpan: lot.front === lot.side ? lot.backSpan : null, shop: R() < P.shop, style: kit.pick(P.style), zone,
         damage: Math.max(0.15, Math.min(1, DAMAGE[zone] + kit.range(-0.15, 0.2) + (kind === 'crater' ? 0.15 : 0))),
         nest: open > 0 && R() < NEST[zone], rich: zone === 'red', roof: open === floors && R() < 0.55, balconies: R() < P.balconies,
       });
@@ -308,7 +316,7 @@ function ruinLot(L, kit, lot, zone) {
   const c = kit.pick(COL.plaster), s = lot.side, h = kit.range(1.5, 4.5);
   if (s === 'n' || s === 's') kit.wall('x', s === 'n' ? lot.z0 + 0.15 : lot.z1 - 0.15, lot.x0 + 0.5, lot.x0 + 0.5 + W * kit.range(0.3, 0.6), 0, h, [], c, { jag: 0.7 });
   else kit.wall('z', s === 'w' ? lot.x0 + 0.15 : lot.x1 - 0.15, lot.z0 + 0.5, lot.z0 + 0.5 + D * kit.range(0.3, 0.6), 0, h, [], c, { jag: 0.7 });
-  L.ruins.push({ x0: lot.x0, z0: lot.z0, x1: lot.x1, z1: lot.z1 });
+  L.ruins.push({ x0: lot.x0, z0: lot.z0, x1: lot.x1, z1: lot.z1, side: lot.side });
 }
 // an empty lot (often the way into the courtyard): sand, a wreck, a dead palm, a heap of rubble at the side
 function gapLot(L, kit, lot, zone) {
@@ -327,6 +335,7 @@ function courtyard(L, kit, Y, kind, zone) {
   const R = kit.R, W = Y.x1 - Y.x0, D = Y.z1 - Y.z0;
   L.yards.push({ ...Y, kind });
   const taken = L.heaps.filter(h => h.x > Y.x0 - h.r && h.x < Y.x1 + h.r && h.z > Y.z0 - h.r && h.z < Y.z1 + h.r).map(h => ({ x: h.x, z: h.z, m: h.r + 0.5 }));
+  for (const d of L.doors) if (d.x > Y.x0 - 1 && d.x < Y.x1 + 1 && d.z > Y.z0 - 1 && d.z < Y.z1 + 1) taken.push({ x: d.x + d.nx * 1.6, z: d.z + d.nz * 1.6, m: d.w / 2 + 1.2 });   // the way out of the back doors
   const place = (m, edge = 3) => {
     for (let t = 0; t < 12; t++) {
       const x = kit.range(Y.x0 + edge, Y.x1 - edge), z = kit.range(Y.z0 + edge, Y.z1 - edge);
@@ -419,14 +428,12 @@ function containerYard(L, kit, Y, zone, damage, street) {
 
 // ---------- props with loot ----------
 function carLoot(L, kit, x, z, yaw, zone) {
-  const flipped = kit.R() < 0.12;
-  const boot = kit.car(x, z, yaw, { flipped });
-  if (!flipped && kit.R() < 0.35) L.containers.push({ type: 'car', x: boot.x, y: 0, z: boot.z, ry: yaw, zone });
+  const R = kit.R, burnt = R() < 0.3, flipped = !burnt && R() < 0.12;
+  const boot = P.car(kit, x, z, yaw, { kind: kit.pick(['sedan', 'sedan', 'hatch', 'van', 'pickup']), burnt, flipped });
+  if (burnt) L.decals.push({ kind: 'scorch', x, z, r: kit.range(2, 3) });
+  if (boot && !burnt && R() < 0.35) L.containers.push({ type: 'car', x: boot.x, y: 0, z: boot.z, ry: yaw, zone });
 }
-function sandbags(kit, x, z, yaw) {
-  const s = Math.sin(yaw), c = Math.cos(yaw);
-  for (let k = -2; k <= 2; k++) kit.cbox(x + c * k * 1.1, 0.45, z - s * k * 1.1, 1.1, 0.9, 0.6, COL.sandbag, { ry: yaw + kit.range(-0.1, 0.1) });
-}
+const sandbags = (kit, x, z, yaw) => P.sandbags(kit, x, z, yaw);
 
 // ---------- the plaza and the Collapsed Tower ----------
 function plaza(L, kit) {
@@ -522,10 +529,8 @@ function highway(L, kit) {
   L.signs.push({ title: 'Highway', sub: 'Broken in the middle.\nUp the collapsed slab.', x: gap[0] + 10, y: 2.2, z: z + 12, ry: Math.PI });
 }
 function deckCar(L, kit, x, z, yaw) {
-  const s = Math.sin(yaw), c = Math.cos(yaw), y = HWY.y;
-  kit.cbox(x, y + 0.72, z, 1.85, 0.85, 4.3, kit.pick(COL.car), { ry: yaw });
-  kit.cbox(x - s * 0.2, y + 1.42, z - c * 0.2, 1.62, 0.62, 2.2, kit.pick(COL.car), { ry: yaw, col: false });
-  if (kit.R() < 0.3) L.containers.push({ type: 'car', x: x - s * 2.4, y, z: z - c * 2.4, ry: yaw, zone: zoneKind(x, z) });
+  const burnt = kit.R() < 0.25, boot = P.car(kit, x, z, yaw, { kind: kit.pick(['sedan', 'hatch', 'van', 'pickup', 'taxi']), burnt, y: HWY.y });
+  if (boot && !burnt && kit.R() < 0.3) L.containers.push({ type: 'car', x: boot.x, y: HWY.y, z: boot.z, ry: yaw, zone: zoneKind(x, z) });
 }
 
 // ---------- the Underground Base: a ramp down into a bunker with Scatter nests ----------
@@ -542,6 +547,7 @@ function bunker(L, kit) {
   kit.box(ox, 3.4, rp.z1 - 3.25, rp.x1 - rp.x0 + 3, 0.5, 9.5, 0x8a8072);
   kit.box(ox, 2.6, rp.z1 + 1.45, rp.x1 - rp.x0 + 2.4, 0.8, 0.3, 0x2b2a28, { col: false });
   for (const x of [rp.x0 - 0.7, rp.x1 + 0.7]) kit.box(x, 2.2, rp.z1 + 1.6, 0.3, 0.3, 0.1, COL.lamp, { k: K.GLOW, col: false });
+  L.doors.push({ x: ox, z: rp.z1 + 1.5, nx: 0, nz: 1, w: rp.x1 - rp.x0 + 2, open: true });
   crystalsAround(L, kit, rp.x0 - 2.5, 0, rp.z1 + 1.2, 1.0, 5);
   L.signs.push({ title: 'Underground Base', sub: 'Dark inside. Use your light (F).\nScatter nests.', x: ox - 6, y: 2.0, z: rp.z1 + 2.2, ry: 0 });
   // the floor, and ceilings you can see from below (the ground above is the real roof)
@@ -708,8 +714,25 @@ function prismGroups(L, kit) {
 
 // ---------- the last check: a container nobody could stand in front of stays as scenery ----------
 // (with this many random pieces something sometimes lands right in front of one). The test is the raider's
-// capsule (0.3 m round, 1.8 m tall) 1.0 and 1.4 m in front, against every solid box near it.
-function pruneBlocked(L) {
+// capsule (0.3 m round, 1.8 m tall) 1.0 and 1.4 m in front, against every solid box near it. Before that, loose
+// rubble and palms standing right outside a door you can use are cleared away (hidden, no longer solid).
+function finalChecks(L) {
+  const G = solidGrid(L);
+  for (const d of L.doors) {
+    if (!d.open) continue;
+    for (const dist of [1.2, 2.0]) {
+      const hit = G.hits(d.x + d.nx * dist, 0.02, d.z + d.nz * dist);
+      if (hit.length && hit.every(b => b.loose)) for (const b of hit) { b.hide = true; b.col = false; }
+    }
+  }
+  L.containers = L.containers.filter(c => {
+    if (c.type === 'car') return true;
+    const fx = Math.sin(c.ry), fz = Math.cos(c.ry);
+    return !G.hits(c.x + fx, c.y + 0.02, c.z + fz).length || !G.hits(c.x + fx * 1.4, c.y + 0.02, c.z + fz * 1.4).length;
+  });
+}
+// every solid box (and stair) on an 8 m grid; hits(x, y, z): the ones a standing raider there would touch
+function solidGrid(L) {
   const CELL = 8, grid = new Map(), key = (i, j) => i * 4096 + j;
   for (const b of L.boxes) {
     if (!b.col) continue;
@@ -728,8 +751,9 @@ function pruneBlocked(L) {
     grid.get(k).push(b);
   }
   const hits = (x, y, z) => {
-    const i0 = Math.floor(x / CELL), j0 = Math.floor(z / CELL);
+    const out = [], i0 = Math.floor(x / CELL), j0 = Math.floor(z / CELL);
     for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) for (const b of grid.get(key(i, j)) || []) {
+      if (b.col === false || out.includes(b)) continue;
       const a = Math.cos(b.rx), s = Math.sin(b.rx), c = Math.cos(b.ry), d = Math.sin(b.ry), e = Math.cos(b.rz), f = Math.sin(b.rz);
       const ce = c * e, cf = c * f, de = d * e, df = d * f;                       // the box's rotation (Euler YXZ, as three.js builds it)
       const m = [ce + df * s, a * f, cf * s - de, de * s - cf, a * e, df + ce * s, a * d, -s, a * c];
@@ -737,16 +761,12 @@ function pruneBlocked(L) {
         const dx = x - b.x, dy = y + 0.37 + t * 0.29 - b.y, dz = z - b.z;
         const lx = m[0] * dx + m[1] * dy + m[2] * dz, ly = m[3] * dx + m[4] * dy + m[5] * dz, lz = m[6] * dx + m[7] * dy + m[8] * dz;
         const qx = Math.max(Math.abs(lx) - b.w / 2, 0), qy = Math.max(Math.abs(ly) - b.h / 2, 0), qz = Math.max(Math.abs(lz) - b.d / 2, 0);
-        if (qx * qx + qy * qy + qz * qz < 0.31 * 0.31) return true;
+        if (qx * qx + qy * qy + qz * qz < 0.31 * 0.31) { out.push(b); break; }
       }
     }
-    return false;
+    return out;
   };
-  L.containers = L.containers.filter(c => {
-    if (c.type === 'car') return true;
-    const fx = Math.sin(c.ry), fz = Math.cos(c.ry);
-    return !hits(c.x + fx, c.y + 0.02, c.z + fz) || !hits(c.x + fx * 1.4, c.y + 0.02, c.z + fz * 1.4);
-  });
+  return { hits };
 }
 
 // ---------- a few things lying around (on empty bits of floor inside buildings) ----------

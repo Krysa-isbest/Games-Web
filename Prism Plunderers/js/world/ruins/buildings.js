@@ -11,7 +11,8 @@
 //                               back?, blank: [sides against neighbours], shop, style, zone, damage (0..1), nest, rich,
 //                               roof (stairs up to the roof), balconies, color?, sign? }
 //   warehouse(L, kit, b), containerStack(kit, ...), stall(kit, ...)
-import { FLOOR, WALL, SLAB, TREAD, STEPS, COL, containerLook } from './kit.js';
+import { K, FLOOR, WALL, SLAB, TREAD, STEPS, COL, containerLook } from './kit.js';
+import * as P from './props.js';
 
 export const RUN = STEPS * TREAD;               // one flight of stairs: 4.8 m
 const SW = 1.6;                                 // stair width
@@ -81,7 +82,11 @@ export function building(L, kit, b) {
   for (const s of 'nswe') {
     const n = S[s].n, set = new Set();
     if (s === b.front) { set.add(Math.floor(n / 2)); if (n >= 5 && R() < 0.5) set.add(1); }
-    else if (OPEN > 0 && s === back && !blank.has(s) && R() < 0.6) set.add(Math.floor(R() * n));
+    else if (OPEN > 0 && s === back && !blank.has(s) && b.backSpan !== null && R() < 0.6) {
+      // a back door, only where the back looks onto open courtyard (b.backSpan: that stretch, when the layout knows it)
+      const k = Math.floor(R() * n), [a0, a1] = bayA(s, k), mid = (a0 + a1) / 2;
+      if (!b.backSpan || (mid - 1.4 >= b.backSpan[0] && mid + 1.4 <= b.backSpan[1])) set.add(k);
+    }
     for (const k of [...set]) if (byStair(s, k)) set.delete(k);
     if (s === b.front && !set.size) for (let k = 0; k < n; k++) if (!byStair(s, k)) { set.add(k); break; }
     doorBays[s] = set;
@@ -97,15 +102,23 @@ export function building(L, kit, b) {
     return R() < 0.82 ? 'window' : 'blank';
   };
   const glass = () => R() < 0.12 ? COL.boarded : kit.pick(COL.glass);
-  const box = (s, a0, a1, y0, h, depth, out, col, cc) => {      // a strip along a facade, `out` = how far it stands out
+  const box = (s, a0, a1, y0, h, depth, out, col, cc, k = K.SOLID) => {      // a strip along a facade, `out` = how far it stands out
     const I = S[s], len = a1 - a0, mid = (a0 + a1) / 2;
     if (len < 0.05) return;
     const pos = I.face + I.out * (out - depth / 2);
-    if (I.along) kit.box(mid, y0, pos, len, h, depth, cc, { col });
-    else kit.box(pos, y0, mid, depth, h, len, cc, { col });
+    if (I.along) kit.box(mid, y0, pos, len, h, depth, cc, { col, k });
+    else kit.box(pos, y0, mid, depth, h, len, cc, { col, k });
+  };
+  let awningCol = null;
+  const awning = (s, mid, w, y) => {                  // canvas over a shop front, sloping down to the street (some torn)
+    const I = S[s], torn = R() < 0.25, d = torn ? kit.range(0.5, 0.9) : 1.35, tilt = torn ? kit.range(0.6, 1.1) : kit.range(0.25, 0.42);
+    const out = Math.cos(tilt) * d / 2, x = I.along ? mid : I.face + I.out * out, z = I.along ? I.face + I.out * out : mid;
+    awningCol ??= kit.pick(COL.awning);
+    kit.cbox(x, y - Math.sin(tilt) * d / 2, z, I.along ? w : d, 0.05, I.along ? d : w, awningCol, I.along ? { rx: I.out * tilt, col: false } : { rz: -I.out * tilt, col: false });
   };
   const standing = (f, s, k) => { const [i, j] = S[s].cell(k); return alive[f][i][j] && !holes.has(key(f, s, k)); };
-  const closedRuns = [], balconies = [];
+  const closedRuns = [], balconies = [], myDoors = [];
+  const door = d => { L.doors.push(d); myDoors.push(d); };
   for (let f = 0; f < F; f++) {
     const y0 = f * H, open = f < OPEN;
     for (const s of 'nswe') {
@@ -114,14 +127,22 @@ export function building(L, kit, b) {
       const flush = () => {
         if (!run.length) return;
         const r0 = run[0].a0, r1 = run[run.length - 1].a1;
+        const at = mid => I.along ? { x: mid, z: I.face } : { x: I.face, z: mid }, nrm = I.along ? { nx: 0, nz: I.out } : { nx: I.out, nz: 0 };
         if (open) {
           const ops = [];
           for (const q of run) {
             const len = q.a1 - q.a0, mid = (q.a0 + q.a1) / 2;
-            if (q.kind === 'window' && len > 2.2) ops.push({ a: mid, w: Math.min(1.4, len - 1.0), b: 1.0, t: 2.35 });
-            else if (q.kind === 'door') ops.push({ a: mid, w: Math.min(1.6, len - 0.6), b: 0, t: 2.5 });
-            else if (q.kind === 'shop') ops.push({ a: mid, w: Math.max(1.6, Math.min(3.4, len - 0.8)), b: 0, t: 2.9 });
-            else if (q.kind === 'balcony') ops.push({ a: mid, w: Math.min(1.4, len - 1.0), b: 0, t: 2.4 });
+            if (q.kind === 'window' && len > 2.2) {
+              const w = Math.min(1.4, len - 1.0);
+              ops.push({ a: mid, w, b: 1.0, t: 2.35 });
+              if (s === b.front) box(s, mid - w / 2 - 0.1, mid + w / 2 + 0.1, y0 + 0.93, 0.07, 0.14, 0.14, false, st.trim, K.DETAIL);     // the sill
+            } else if (q.kind === 'door') { const w = Math.min(1.6, len - 0.6); ops.push({ a: mid, w, b: 0, t: 2.5 }); door({ ...at(mid), ...nrm, w, open: true }); }
+            else if (q.kind === 'shop') {
+              const w = Math.max(1.6, Math.min(3.4, len - 0.8));
+              ops.push({ a: mid, w, b: 0, t: 2.9 });
+              door({ ...at(mid), ...nrm, w, open: true });
+              awning(s, mid, w + 0.3, 2.92);
+            } else if (q.kind === 'balcony') ops.push({ a: mid, w: Math.min(1.4, len - 1.0), b: 0, t: 2.4 });
           }
           kit.wall(axis, I.at, r0, r1, y0, H, ops, c);
         } else {
@@ -130,9 +151,19 @@ export function building(L, kit, b) {
             const len = q.a1 - q.a0, mid = (q.a0 + q.a1) / 2;
             if (q.kind === 'window' && len > 2.2) kit.pane(s, I.face, mid, y0 + 1.65, Math.min(1.3, len - 1.0), 1.4, glass());
             else if (q.kind === 'balcony') kit.pane(s, I.face, mid, y0 + 1.25, Math.min(1.3, len - 1.0), 2.3, glass());
-            else if (q.kind === 'shop') kit.pane(s, I.face, mid, y0 + 1.5, Math.min(3.4, len - 0.8), 2.6, R() < 0.5 ? kit.pick(COL.metal) : kit.pick(COL.glass));
-            else if (q.kind === 'door') kit.pane(s, I.face, mid, y0 + 1.2, 1.4, 2.4, kit.pick(COL.door));
+            else if (q.kind === 'shop') {
+              const w = Math.min(3.4, len - 0.8);
+              kit.pane(s, I.face, mid, y0 + 1.5, w, 2.6, R() < 0.5 ? kit.pick(COL.metal) : kit.pick(COL.glass));
+              door({ ...at(mid), ...nrm, w, open: false });
+              awning(s, mid, w + 0.3, 2.88);
+            } else if (q.kind === 'door') { kit.pane(s, I.face, mid, y0 + 1.2, 1.4, 2.4, kit.pick(COL.door)); door({ ...at(mid), ...nrm, w: 1.4, open: false }); }
           }
+        }
+        // air conditioners hanging under some windows of the upper floors
+        if (f > 0 && (s === b.front || s === back) && b.style !== 'market') for (const q of run) {
+          if (q.kind !== 'window' || R() > 0.07) continue;
+          const mid = (q.a0 + q.a1) / 2 + 0.5, x = I.along ? mid : I.face + I.out * 0.25, z = I.along ? I.face + I.out * 0.25 : mid;
+          P.acUnit(kit, x, y0 + 0.65, z, I.along ? 0 : Math.PI / 2);
         }
         // a plinth along the solid stretches at street level, floor bands and a shop sign on the front
         if (f === 0 && (s === b.front || s === back)) {
@@ -140,12 +171,18 @@ export function building(L, kit, b) {
           for (const q of run) {
             const gap = q.kind === 'door' || q.kind === 'shop';
             if (!gap && p0 === null) p0 = q.a0;
-            if (gap && p0 !== null) { box(s, p0, q.a0, 0, 0.55, 0.06, 0.06, false, COL.plinth); p0 = null; }
+            if (gap && p0 !== null) { box(s, p0, q.a0, 0, 0.55, 0.06, 0.06, false, COL.plinth, K.DETAIL); p0 = null; }
           }
-          if (p0 !== null) box(s, p0, r1, 0, 0.55, 0.06, 0.06, false, COL.plinth);
+          if (p0 !== null) box(s, p0, r1, 0, 0.55, 0.06, 0.06, false, COL.plinth, K.DETAIL);
         }
-        if (f > 0 && s === b.front) box(s, r0, r1, y0 - 0.1, 0.2, 0.08, 0.08, false, st.trim);
-        if (f === 0 && s === b.front && b.shop) box(s, r0, r1, 2.95, 0.5, 0.12, 0.12, false, b.sign ?? kit.pick(COL.shop));
+        if (f > 0 && s === b.front) box(s, r0, r1, y0 - 0.1, 0.2, 0.08, 0.08, false, st.trim, K.DETAIL);
+        if (f === 0 && s === b.front && b.shop) {
+          box(s, r0, r1, 2.95, 0.5, 0.12, 0.12, false, b.sign ?? kit.pick(COL.shop));
+          if (R() < 0.6) {                                   // a sign sticking out at the corner (a few still lit)
+            const a = r0 + 0.3, x = I.along ? a : I.face + I.out * 0.45, z = I.along ? I.face + I.out * 0.45 : a, neon = R() < 0.12;
+            kit.box(x, 3.6, z, I.along ? 0.08 : 0.8, 0.9, I.along ? 0.8 : 0.08, neon ? kit.pick([COL.prism, COL.amber, COL.red]) : kit.pick(COL.shop), { col: false, k: neon ? K.GLOW : K.SOLID });
+          }
+        }
         run = [];
       };
       for (let k = 0; k < I.n; k++) {
@@ -183,9 +220,14 @@ export function building(L, kit, b) {
   }
   // balconies (you can step out onto the ones on floors you can get into)
   for (const q of balconies) {
-    const [a0, a1] = bayA(q.s, q.k);
+    const [a0, a1] = bayA(q.s, q.k), I = S[q.s];
     box(q.s, a0 + 0.35, a1 - 0.35, q.f * H - 0.15, 0.15, 1.1, 1.1, q.open, COL.slab);
-    box(q.s, a0 + 0.35, a1 - 0.35, q.f * H, 1.0, 0.06, 1.1, q.open, kit.pick(COL.metal));
+    box(q.s, a0 + 0.35, a1 - 0.35, q.f * H, 1.0, 0.06, 1.1, q.open, kit.pick(COL.metal), K.DETAIL);
+    if (R() < 0.35) {                                      // a pot with something dead in it
+      const a = a0 + 0.7, x = I.along ? a : I.face + I.out * 0.75, z = I.along ? I.face + I.out * 0.75 : a;
+      kit.box(x, q.f * H, z, 0.32, 0.38, 0.32, 0x9a5a3a, { col: false, k: K.DETAIL });
+      kit.box(x, q.f * H + 0.38, z, 0.05, 0.5, 0.05, 0x6b5a46, { col: false, k: K.DETAIL });
+    }
   }
 
   // ---- floor slabs (on the floors you can get into) and the roof, with torn edges where cells are gone ----
@@ -205,7 +247,7 @@ export function building(L, kit, b) {
         const ez = dj ? Z(dj > 0 ? j + 1 : j) : Z(j) + bd * kit.range(0.2, 0.8);
         const len = (di ? bd : bw) * kit.range(0.25, 0.6), out = kit.range(0.5, 1.2), tilt = kit.range(0.15, 0.55);
         kit.cbox(ex + di * out * 0.45, f * H - SLAB / 2 - out * 0.2, ez + dj * out * 0.45, di ? out : len, SLAB, dj ? out : len, COL.slab,
-          { rx: dj ? dj * tilt : 0, rz: di ? -di * tilt : 0, col: false });
+          { rx: dj ? dj * tilt : 0, rz: di ? -di * tilt : 0, col: false, k: K.DETAIL });
         if (R() < 0.5) kit.rebar(ex + di * 0.3, f * H - 0.2, ez + dj * 0.3, 2);
         torn++;
       }
@@ -228,16 +270,42 @@ export function building(L, kit, b) {
       }
     }
   }
-  const onRoof = flights === F;
-  for (let n = 0, tries = 0, clutter = 1 + Math.floor(R() * 2); n < clutter && tries < 6; tries++) {
+  // on the roof: air conditioners, vents and antennas downtown; water tanks, solar panels and dishes elsewhere
+  const onRoof = flights === F, top = F * H;
+  for (let n = 0, tries = 0, clutter = 1 + Math.floor(R() * (b.style === 'downtown' ? 3 : 2)); n < clutter && tries < 8; tries++) {
     const i = Math.floor(R() * nx), j = Math.floor(R() * nz);
     if (!roofAt(i, j) || guard.has(key(i, j))) continue;
-    const x = X(i) + bw / 2, z = Z(j) + bd / 2, y = F * H, r = R();
-    if (r < 0.4) kit.box(x, y, z, 1.4, 1.1, 1.0, kit.pick(COL.metal), { col: onRoof });
-    else if (r < 0.7) kit.box(x, y, z, 1.4, 1.6, 1.4, kit.pick(COL.rust), { col: onRoof });
-    else if (r < 0.85) kit.box(x, y, z, 0.12, kit.range(2.5, 6), 0.12, COL.metal[0], { col: false });
-    else kit.cbox(x, y + 1.1, z, 1.2, 0.1, 1.2, COL.metal[1], { rx: 0.6, ry: R() * Math.PI, col: false });
+    const x = X(i) + bw * kit.range(0.3, 0.7), z = Z(j) + bd * kit.range(0.3, 0.7), r = R();
+    if (b.style === 'downtown' || b.style === 'industrial') {
+      if (r < 0.45) kit.box(x, top, z, 1.6, 1.2, 1.1, kit.pick(COL.metal), { col: onRoof });
+      else if (r < 0.65) P.antenna(kit, x, top, z);
+      else if (r < 0.82) kit.box(x, top, z, 1.4, 1.6, 1.4, kit.pick(COL.rust), { col: onRoof });
+      else P.dish(kit, x, top + 0.6, z, R() * Math.PI * 2);
+    } else {
+      if (r < 0.45) P.waterTank(kit, x, top, z, onRoof);
+      else if (r < 0.6) { P.solar(kit, x, top, z, 0); P.solar(kit, x + 1.1, top, z, 0); }
+      else if (r < 0.75) P.dish(kit, x, top + 0.5, z, R() * Math.PI * 2);
+      else if (r < 0.88) P.antenna(kit, x, top, z);
+      else kit.cbox(x, top + 0.3, z, 1.2, 0.6, 0.8, kit.pick(COL.rust), { ry: R() * Math.PI, col: onRoof, k: K.DETAIL });
+    }
     n++;
+  }
+  // now and then a banner hanging down the front, or scaffolding left standing along it
+  if (F >= 3 && R() < 0.03) {
+    const I = S[b.front], k = Math.floor(R() * I.n), [i, j] = I.cell(k);
+    if (roofAt(i, j)) {
+      const [a0, a1] = bayA(b.front, k), mid = (a0 + a1) / 2, h = Math.min(F * H - 1.5, kit.range(3, 7));
+      const x = I.along ? mid : I.face + I.out * 0.06, z = I.along ? I.face + I.out * 0.06 : mid;
+      kit.box(x, F * H - h, z, I.along ? 1.1 : 0.03, h, I.along ? 0.03 : 1.1, kit.pick(P.PC.cloth), { col: false });
+    }
+  }
+  if (F >= 3 && (b.style === 'downtown' || b.style === 'residential') && R() < 0.03) {
+    const I = S[b.front], lv = Math.min(3, F - 1), top = lv * H + 1.0;
+    for (let a = I.lo + 0.3; a < I.hi; a += 2.4) for (const out of [0.3, 1.3]) {
+      const x = I.along ? a : I.face + I.out * out, z = I.along ? I.face + I.out * out : a;
+      kit.box(x, 0, z, 0.06, top, 0.06, 0x8d8f91, { col: false, k: K.DETAIL });
+    }
+    for (let f = 1; f <= lv; f++) box(b.front, I.lo + 0.2, I.hi - 0.2, f * H - 0.05, 0.05, 1.0, 1.35, false, 0x7d6a55, K.DETAIL);
   }
 
   // ---- inside: stairs, a dividing wall with a doorway, furniture, loot (on the floors you can get into) ----
@@ -268,6 +336,7 @@ export function building(L, kit, b) {
       const [a0, a1] = bayA(s, k), mid = (a0 + a1) / 2, sz = kit.range(1.5, 2.4), d = 1.1 * sz + 0.3;
       const x = I.along ? mid : I.face + I.out * d, z = I.along ? I.face + I.out * d : mid;
       if (L.containers.some(q => q.y < 1 && Math.hypot(q.x - x, q.z - z) < 1.1 * sz + 2.4)) break;     // not on top of something to search
+      if (myDoors.some(q => Math.hypot(q.x - x, q.z - z) < 1.1 * sz + q.w / 2 + 1.4)) break;            // nor in front of a door or a shop
       kit.rubble(x, z, sz, 4);
       L.heaps.push({ x, z, r: 1.1 * sz });
       piles++;
@@ -414,7 +483,7 @@ function inside(L, kit, b, g) {
         if (ok && run0 < 0) run0 = k;
         if (!ok && run0 >= 0) {
           const a0 = alongX ? Z(run0) + WALL : X(run0) + WALL, a1 = alongX ? Z(k) - WALL : X(k) - WALL;
-          if (a1 - a0 > 2.2) kit.wall(alongX ? 'z' : 'x', alongX ? X(cut) : Z(cut), a0, a1, y0, H - SLAB, [{ a: (a0 + a1) / 2, w: 1.3, b: 0, t: 2.4 }], COL.inner, { t: 0.18 });
+          if (a1 - a0 > 2.2) kit.wall(alongX ? 'z' : 'x', alongX ? X(cut) : Z(cut), a0, a1, y0, H - SLAB, [{ a: (a0 + a1) / 2, w: 1.3, b: 0, t: 2.4 }], COL.inner, { t: 0.18, k: K.DETAIL });
           run0 = -1;
         }
       }
@@ -455,7 +524,7 @@ function inside(L, kit, b, g) {
           : res ? [2.0, 0.5, 1.0, 0.45, 0x7a6a5a] : [2.2, 1.0, 0.7, 0, kit.pick(COL.furniture)];
         const x = s.x + s.fx * off, z = s.z + s.fz * off, w = wide ? len : dep, d = wide ? dep : len;
         if (!free(x, z, w / 2 + 0.1, d / 2 + 0.1)) continue;
-        kit.box(x, y0, z, w, ht, d, col);
+        kit.box(x, y0, z, w, ht, d, col, { k: K.DETAIL });
         take(x, z, w / 2 + 0.1, d / 2 + 0.1);
         placed++;
         continue;
@@ -493,6 +562,11 @@ export function warehouse(L, kit, b) {
   const W = b.x1 - b.x0, D = b.z1 - b.z0, ix0 = b.x0 + WALL, ix1 = b.x1 - WALL, iz0 = b.z0 + WALL, iz1 = b.z1 - WALL;
   const big = { w: 5.5, b: 0, t: 5.2 };
   const op = s => b.doors.includes(s) ? [{ a: s === 'n' || s === 's' ? (b.x0 + b.x1) / 2 : (b.z0 + b.z1) / 2, ...big }] : [];
+  for (const s of b.doors) {
+    const mx = (b.x0 + b.x1) / 2, mz = (b.z0 + b.z1) / 2;
+    L.doors.push(s === 'n' ? { x: mx, z: b.z0, nx: 0, nz: -1, w: 5.5, open: true } : s === 's' ? { x: mx, z: b.z1, nx: 0, nz: 1, w: 5.5, open: true }
+      : s === 'w' ? { x: b.x0, z: mz, nx: -1, nz: 0, w: 5.5, open: true } : { x: b.x1, z: mz, nx: 1, nz: 0, w: 5.5, open: true });
+  }
   const jag = 0.25 + (b.damage ?? 0.5) * 0.4;
   kit.wall('x', b.z0 + WALL / 2, b.x0, b.x1, 0, H, op('n'), c, { jag });
   kit.wall('x', b.z1 - WALL / 2, b.x0, b.x1, 0, H, op('s'), c, { jag });
@@ -511,9 +585,9 @@ export function warehouse(L, kit, b) {
   for (let i = 0; i < rows; i++) {
     const x = b.x0 + 5 + i * 6 + kit.range(-0.5, 0.5);
     const len = D * kit.range(0.35, 0.55), z = (b.z0 + b.z1) / 2 + kit.range(-0.15, 0.15) * D;
-    kit.box(x, 0, z, 1.0, 2.6, len, 0x6b5a46);
+    kit.box(x, 0, z, 1.0, 2.6, len, 0x6b5a46, { k: K.DETAIL });
     const cz = z - len / 2 + 1;
-    if (R() < 0.6 && clear(x + 1.4, cz)) { kit.box(x + 1.4, 0, cz, 1.2, 1.2, 1.2, kit.pick(COL.rust)); crates.push({ x: x + 1.4, z: cz }); }
+    if (R() < 0.6 && clear(x + 1.4, cz)) { kit.box(x + 1.4, 0, cz, 1.2, 1.2, 1.2, kit.pick(COL.rust), { k: K.DETAIL }); crates.push({ x: x + 1.4, z: cz }); }
     const lz = z + kit.range(-0.3, 0.3) * len;                           // loot in the aisle, searched from further along it
     if (R() < 0.5 && clear(x + 1.4, lz) && clear(x + 2.6, lz)) addLoot(L, kit, R() < 0.5 ? 'crate' : 'toolbox', x + 1.4, 0, lz, Math.PI / 2, b.zone);
   }

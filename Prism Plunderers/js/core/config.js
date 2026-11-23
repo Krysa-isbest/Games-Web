@@ -1,6 +1,6 @@
 // Constants every part of the game shares.
-export const VERSION = 'Prototype v0.5.1';
-export const BUILD = 'The Ruins rebuilt';
+export const VERSION = 'Prototype v0.5.2';
+export const BUILD = 'The Ruins: street life';
 
 // The simulation runs in fixed steps, so movement, AI and damage behave the same at 30 FPS and at 240 FPS.
 export const TICK_HZ = 60;

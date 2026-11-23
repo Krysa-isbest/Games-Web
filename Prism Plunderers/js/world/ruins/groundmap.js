@@ -116,7 +116,51 @@ export function paintGround(L, seed) {
       const zc = c.z + dir * (c.wz / 2 + 2), xc = c.x + dir * (c.wx / 2 + 2);
       for (let a = -c.wx / 2 + 0.6; a < c.wx / 2 - 0.6; a += 1.6) if (R() > 0.2) g.fillRect(X(c.x + a), Y(zc - 1.5), 0.8 * k, 3 * k);
       for (let a = -c.wz / 2 + 0.6; a < c.wz / 2 - 0.6; a += 1.6) if (R() > 0.2) g.fillRect(X(xc - 1.5), Y(c.z + a), 3 * k, 0.8 * k);
+      // stop lines across the half of the street coming in
+      g.fillRect(X(c.x + (dir > 0 ? 0.2 : -c.wx / 2 + 0.4)), Y(c.z - dir * (c.wz / 2 + 4.1) - 0.2), (c.wx / 2 - 0.6) * k, 0.4 * k);
+      g.fillRect(X(c.x - dir * (c.wx / 2 + 4.1) - 0.2), Y(c.z + (dir > 0 ? -c.wz / 2 + 0.4 : 0.2)), 0.4 * k, (c.wz / 2 - 0.6) * k);
     }
+  }
+  // parking bays along the kerbs downtown
+  g.fillStyle = 'rgba(214,200,160,0.32)';
+  for (const s of L.streets) {
+    if (s.w < 12) continue;
+    const len = s.axis === 'z' ? s.z1 - s.z0 : s.x1 - s.x0;
+    for (let t = 1; t < len - 1; t += 5.5) {
+      const [x, z] = s.axis === 'z' ? [s.at, s.z0 + t] : [s.x0 + t, s.at];
+      if (Math.max(Math.abs(x), Math.abs(z)) > 240 || inCrossing(x, z)) continue;
+      for (const side of [-1, 1]) {
+        const o0 = side * (s.w / 2 - 2.3), o1 = side * (s.w / 2 - 0.15), a = Math.min(o0, o1), b = Math.max(o0, o1);
+        if (s.axis === 'z') g.fillRect(X(s.at + a), Y(z - 0.07), (b - a) * k, 0.14 * k + 0.6); else g.fillRect(X(x - 0.07), Y(s.at + a), 0.14 * k + 0.6, (b - a) * k);
+      }
+    }
+  }
+  // marks things left: scorch under burnt wrecks and fires, oil, manholes, drains, tree pits, rugs in the bazaars
+  for (const d of L.decals || []) {
+    if (d.kind === 'scorch') {
+      const grd = g.createRadialGradient(X(d.x), Y(d.z), 0, X(d.x), Y(d.z), d.r * k);
+      grd.addColorStop(0, 'rgba(20,16,14,0.85)'); grd.addColorStop(0.6, 'rgba(35,28,24,0.5)'); grd.addColorStop(1, 'rgba(35,28,24,0)');
+      g.fillStyle = grd; g.beginPath(); g.arc(X(d.x), Y(d.z), d.r * k, 0, Math.PI * 2); g.fill();
+    } else if (d.kind === 'oil') blob(d.x, d.z, d.r, d.r * 0.7, R() * 3, 'rgba(18,16,15,0.45)');
+    else if (d.kind === 'manhole') {
+      g.fillStyle = 'rgba(40,38,36,0.9)'; g.beginPath(); g.arc(X(d.x), Y(d.z), 0.45 * k, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(120,112,100,0.6)'; g.lineWidth = 1; g.stroke();
+    } else if (d.kind === 'drain') {
+      g.fillStyle = 'rgba(25,23,21,0.85)';
+      if (d.ax === 'z') rect(d.x - 0.18, d.z - 0.45, d.x + 0.18, d.z + 0.45); else rect(d.x - 0.45, d.z - 0.18, d.x + 0.45, d.z + 0.18);
+    } else if (d.kind === 'pit') { g.fillStyle = 'rgba(92,76,58,0.85)'; rect(d.x - 0.65, d.z - 0.65, d.x + 0.65, d.z + 0.65); }
+    else if (d.kind === 'rug') {
+      const c = Math.cos(d.a), s = Math.sin(d.a), pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [d.x + u * d.w / 2 * c - v * d.d / 2 * s, d.z + u * d.w / 2 * s + v * d.d / 2 * c]);
+      g.fillStyle = `rgba(${d.c >> 16 & 255},${d.c >> 8 & 255},${d.c & 255},0.8)`;
+      g.beginPath(); pts.forEach(([px, pz], i) => i ? g.lineTo(X(px), Y(pz)) : g.moveTo(X(px), Y(pz))); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(60,40,30,0.6)'; g.lineWidth = 1; g.stroke();
+    }
+  }
+  // litter: little light specks over the streets and pavements of the city
+  for (let i = 0; i < 6000; i++) {
+    const x = rr(-380, 380), z = rr(-380, 380);
+    g.fillStyle = R() < 0.5 ? 'rgba(235,228,210,0.7)' : 'rgba(150,140,120,0.6)';
+    g.fillRect(X(x), Y(z), 1, 1);
   }
 
   // the plaza: big stone paving, darker round the tower, a ring round the fountain

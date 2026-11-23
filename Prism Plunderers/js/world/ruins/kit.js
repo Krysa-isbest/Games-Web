@@ -4,13 +4,14 @@
 //
 //   a box:   { x, y, z, w, h, d, rx, ry, rz, c, t?, k, col, hide? }
 //            y = its centre; rotation in Euler YXZ order (yaw first); c = colour, t = the top face's colour
-//   k:       SOLID (casts shadows), GLOW (lights that glow in the dark)
+//   k:       SOLID (seen from anywhere), GLOW (lights that glow in the dark), DETAIL (small things, and what is inside
+//            rooms: drawn only near you). k only says how it is drawn: whether it collides is `col`.
 //   a pane:  { x, y, z, w, h, n, c? }  a window drawn as a single quad on a wall facing n ('n' | 's' | 'e' | 'w')
 // The ground itself is never a box: streets, sidewalks, floors and the plaza are painted on it (groundmap.js),
 // so you always stand exactly on what you see.
 import { rng } from '../../core/util.js';
 
-export const K = { SOLID: 0, GLOW: 2 };
+export const K = { SOLID: 0, GLOW: 2, DETAIL: 4 };
 export const FLOOR = 3.4, WALL = 0.3, SLAB = 0.3;
 export const STEPS = 16, RISE = FLOOR / STEPS, TREAD = 0.3;   // stairs: 16 steps a floor, 4.8 m of run
 const DEG = Math.PI / 180;
@@ -82,20 +83,20 @@ export class Kit {
   steps(axis, x, z, dir, y0, width, n, c, top = null) {
     for (let k = 0; k < n; k++) {
       const a = (k + 0.5) * TREAD * dir, h = (k + 1) * RISE;
-      if (axis === 'x') this.box(x + a, y0, z, TREAD, h, width, c, { top, col: false });
-      else this.box(x, y0, z + a, width, h, TREAD, c, { top, col: false });
+      if (axis === 'x') this.box(x + a, y0, z, TREAD, h, width, c, { top, col: false, k: K.DETAIL });
+      else this.box(x, y0, z + a, width, h, TREAD, c, { top, col: false, k: K.DETAIL });
     }
     this.wedges.push({ axis, x, z, dir, y0, w: width, n, rise: RISE, tread: TREAD });
   }
   // A wall along x (at z) or along z (at x), from a0 to a1, standing on y0, with openings
   // [{ a: centre along the wall, w, b: bottom, t: top }] (heights above y0). jag lowers the top of solid parts
   // at random (a broken wall).
-  wall(axis, at, a0, a1, y0, height, openings, c, { t = WALL, jag = 0, col = true } = {}) {
+  wall(axis, at, a0, a1, y0, height, openings, c, { t = WALL, jag = 0, col = true, k = K.SOLID } = {}) {
     const piece = (p0, p1, h0, h1) => {
       if (p1 - p0 < 0.02 || h1 - h0 < 0.02) return;
       const cx = (p0 + p1) / 2, len = p1 - p0;
-      if (axis === 'x') this.box(cx, y0 + h0, at, len, h1 - h0, t, c, { col });
-      else this.box(at, y0 + h0, cx, t, h1 - h0, len, c, { col });
+      if (axis === 'x') this.box(cx, y0 + h0, at, len, h1 - h0, t, c, { col, k });
+      else this.box(at, y0 + h0, cx, t, h1 - h0, len, c, { col, k });
     };
     const solidTop = () => height - (jag > 0 && this.R() < jag ? this.range(0.3, 0.75) * height : 0);
     // windows all at one height: one strip under them, one over them, and the piers between (fewer boxes)
@@ -153,44 +154,26 @@ export class Kit {
       const s = size * this.range(0.25, 0.6);
       const ox = this.range(-0.5, 0.5) * size, oz = this.range(-0.5, 0.5) * size;
       this.cbox(x + ox, y0 + s * 0.18, z + oz, s * this.range(0.8, 1.4), s * this.range(0.35, 0.7), s * this.range(0.7, 1.2), this.pick(COL.rubble),
-        { rx: this.range(-0.35, 0.35), ry: this.R() * Math.PI, rz: this.range(-0.35, 0.35) });
+        { rx: this.range(-0.35, 0.35), ry: this.R() * Math.PI, rz: this.range(-0.35, 0.35) }).loose = true;     // loose: cleared from a doorway at the end
     }
     for (let i = 0; i < n; i++) {                                     // small bits, only to look at
       const s = this.range(0.15, 0.5);
       this.cbox(x + this.range(-0.8, 0.8) * size, y0 + s * 0.3, z + this.range(-0.8, 0.8) * size, s, s * 0.6, s * 1.2, this.pick(COL.rubble),
-        { ry: this.R() * Math.PI, rz: this.range(-0.4, 0.4), col: false });
+        { ry: this.R() * Math.PI, rz: this.range(-0.4, 0.4), col: false, k: K.DETAIL });
     }
   }
   // steel bars sticking out of broken concrete
   rebar(x, y, z, n = 2) {
     for (let i = 0; i < n; i++) {
       this.cbox(x + this.range(-0.4, 0.4), y, z + this.range(-0.4, 0.4), 0.035, this.range(0.5, 1.4), 0.035, COL.rebar,
-        { rx: this.range(-0.9, 0.9), ry: this.R() * Math.PI, rz: this.range(-0.9, 0.9), col: false });
+        { rx: this.range(-0.9, 0.9), ry: this.R() * Math.PI, rz: this.range(-0.9, 0.9), col: false, k: K.DETAIL });
     }
-  }
-  // a burnt-out car. Returns where its boot is (for loot).
-  car(x, z, yaw, { flipped = false, c = null, y = 0 } = {}) {
-    const col = c ?? this.pick(COL.car), s = Math.sin(yaw), cs = Math.cos(yaw);
-    const at = (fx, fz) => ({ x: x + fx * cs + fz * s, z: z - fx * s + fz * cs });
-    if (flipped) {
-      this.cbox(x, y + 0.75, z, 1.8, 0.9, 4.3, col, { ry: yaw, rz: Math.PI });
-      this.cbox(x, y + 0.3, z, 1.6, 0.6, 2.2, this.pick(COL.metal), { ry: yaw, col: false });
-    } else {
-      this.cbox(x, y + 0.72, z, 1.85, 0.85, 4.3, col, { ry: yaw });
-      const cab = at(0, -0.2);
-      this.cbox(cab.x, y + 1.42, cab.z, 1.62, 0.62, 2.2, col, { ry: yaw, col: false });
-      for (const [fx, fz] of [[-0.85, 1.35], [0.85, 1.35], [-0.85, -1.35], [0.85, -1.35]]) {
-        const w = at(fx, fz);
-        this.cbox(w.x, y + 0.3, w.z, 0.3, 0.6, 0.62, 0x221f1d, { ry: yaw, col: false });
-      }
-    }
-    return at(0, -2.4);
   }
   // a dead palm: a leaning trunk and a few dry fronds
   palm(x, z, h) {
     const lean = this.range(-0.18, 0.18), yaw = this.R() * Math.PI * 2;
     const tx = x + Math.sin(yaw) * Math.sin(lean) * h, tz = z + Math.cos(yaw) * Math.sin(lean) * h;
-    this.cbox((x + tx) / 2, h / 2, (z + tz) / 2, 0.38, h, 0.38, COL.palm, { rx: lean, ry: yaw });
+    this.cbox((x + tx) / 2, h / 2, (z + tz) / 2, 0.38, h, 0.38, COL.palm, { rx: lean, ry: yaw }).loose = true;
     for (let i = 0; i < 5; i++) {
       const a = i / 5 * Math.PI * 2 + this.R();
       this.cbox(tx + Math.sin(a) * 1.1, h - 0.4, tz + Math.cos(a) * 1.1, 0.25, 0.06, 2.6, COL.frond, { rx: 0.55, ry: a, col: false });
@@ -198,28 +181,28 @@ export class Kit {
   }
 }
 
-// how a loot container looks: boxes (with the facing ry = into the room)
+// how a loot container looks: boxes (with the facing ry = into the room); drawn as detail (most stand in rooms)
 export function containerLook(kit, type, x, y, z, ry) {
-  const s = Math.sin(ry), c = Math.cos(ry);
+  const s = Math.sin(ry), c = Math.cos(ry), D = K.DETAIL;
   const off = (f, r = 0) => ({ x: x + s * f + c * r, z: z + c * f - s * r });
   if (type === 'crate') {
-    kit.cbox(x, y + 0.38, z, 1.15, 0.76, 0.78, COL.crate, { ry });
-    kit.cbox(x, y + 0.78, z, 1.2, 0.06, 0.82, 0x3c4529, { ry, col: false });
+    kit.cbox(x, y + 0.38, z, 1.15, 0.76, 0.78, COL.crate, { ry, k: D });
+    kit.cbox(x, y + 0.78, z, 1.2, 0.06, 0.82, 0x3c4529, { ry, col: false, k: D });
   } else if (type === 'locker') {
-    kit.cbox(x, y + 0.95, z, 0.62, 1.9, 0.5, COL.locker, { ry });
+    kit.cbox(x, y + 0.95, z, 0.62, 1.9, 0.5, COL.locker, { ry, k: D });
     const f = off(0.26);
-    kit.cbox(f.x, y + 1.55, f.z, 0.4, 0.08, 0.02, 0x2d3034, { ry, col: false });
+    kit.cbox(f.x, y + 1.55, f.z, 0.4, 0.08, 0.02, 0x2d3034, { ry, col: false, k: D });
   } else if (type === 'medcab') {
-    kit.cbox(x, y + 1.35, z, 0.82, 0.9, 0.3, COL.medcab, { ry });
+    kit.cbox(x, y + 1.35, z, 0.82, 0.9, 0.3, COL.medcab, { ry, k: D });
     const f = off(0.16);
     kit.cbox(f.x, y + 1.35, f.z, 0.36, 0.1, 0.02, COL.green, { ry, k: K.GLOW, col: false });
     kit.cbox(f.x, y + 1.35, f.z, 0.1, 0.36, 0.02, COL.green, { ry, k: K.GLOW, col: false });
   } else if (type === 'toolbox') {
-    kit.cbox(x, y + 0.42, z, 1.3, 0.84, 0.6, 0x6b5a46, { ry });                    // a workbench
-    kit.cbox(x, y + 1.0, z, 0.62, 0.32, 0.32, COL.toolbox, { ry, col: false });
+    kit.cbox(x, y + 0.42, z, 1.3, 0.84, 0.6, 0x6b5a46, { ry, k: D });             // a workbench
+    kit.cbox(x, y + 1.0, z, 0.62, 0.32, 0.32, COL.toolbox, { ry, col: false, k: D });
   } else if (type === 'case') {
-    kit.cbox(x, y + 0.42, z, 1.3, 0.84, 0.62, 0x4a4036, { ry });                   // a table
-    kit.cbox(x, y + 1.0, z, 1.15, 0.3, 0.48, COL.case, { ry, col: false });
+    kit.cbox(x, y + 0.42, z, 1.3, 0.84, 0.62, 0x4a4036, { ry, k: D });            // a table
+    kit.cbox(x, y + 1.0, z, 1.15, 0.3, 0.48, COL.case, { ry, col: false, k: D });
     kit.cbox(x, y + 1.0, z, 1.17, 0.06, 0.5, COL.amber, { ry, k: K.GLOW, col: false });
   } else if (type === 'cache') {
     kit.cbox(x, y + 0.32, z, 0.9, 0.64, 0.9, COL.cache, { ry: ry + 0.785 });

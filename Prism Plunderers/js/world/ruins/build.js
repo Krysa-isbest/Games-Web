@@ -14,7 +14,7 @@ import { disposeTree } from '../../core/engine.js';
 import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
 
-const CHUNK = 100, FAR = 340;                            // chunks whose nearest edge is further than FAR are hidden
+const CHUNK = 100, FAR = 340, NEAR = 150;                // chunks whose nearest edge is further than FAR are hidden; detail beyond NEAR
 const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
 const FACES = [
   { n: [1, 0, 0], c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], shade: 0.9 },
@@ -112,19 +112,23 @@ function wedgeTriangles(m, w) {
   }
   for (const t of WEDGE_TRIS) m.i.push(base + t);
 }
+// a window: a frame (light or dark) and the glass in front of it, each one quad on the wall
 function emitPane(batch, p) {
-  const n = PANE_N[p.n], o = 0.035;
+  const n = PANE_N[p.n];
   _n.set(n[0], n[1], n[2]);
-  const hw = p.w / 2, hh = p.h / 2;
-  if (p.n === 'n' || p.n === 's') {
-    const z = p.z + n[2] * o;
-    corners[0].set(p.x - hw, p.y - hh, z); corners[1].set(p.x + hw, p.y - hh, z); corners[2].set(p.x + hw, p.y + hh, z); corners[3].set(p.x - hw, p.y + hh, z);
-  } else {
-    const x = p.x + n[0] * o;
-    corners[0].set(x, p.y - hh, p.z - hw); corners[1].set(x, p.y - hh, p.z + hw); corners[2].set(x, p.y + hh, p.z + hw); corners[3].set(x, p.y + hh, p.z - hw);
-  }
-  _c.setHex(p.c ?? 0x1c1a19);
-  batch.quad(corners, _n, _c);
+  const quad = (o, hw, hh, col) => {
+    if (p.n === 'n' || p.n === 's') {
+      const z = p.z + n[2] * o;
+      corners[0].set(p.x - hw, p.y - hh, z); corners[1].set(p.x + hw, p.y - hh, z); corners[2].set(p.x + hw, p.y + hh, z); corners[3].set(p.x - hw, p.y + hh, z);
+    } else {
+      const x = p.x + n[0] * o;
+      corners[0].set(x, p.y - hh, p.z - hw); corners[1].set(x, p.y - hh, p.z + hw); corners[2].set(x, p.y + hh, p.z + hw); corners[3].set(x, p.y + hh, p.z - hw);
+    }
+    _c.setHex(col);
+    batch.quad(corners, _n, _c);
+  };
+  quad(0.025, p.w / 2 + 0.09, p.h / 2 + 0.09, (Math.floor(p.x * 3.1 + p.z * 1.7) & 1) ? 0xcfc6b4 : 0x4a4036);
+  quad(0.035, p.w / 2, p.h / 2, p.c ?? 0x1c1a19);
 }
 
 export function buildRuins(scene, phys, glow, seed = 3000) {
@@ -143,6 +147,7 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     pod: new THREE.MeshStandardMaterial({ color: 0x150c22, roughness: 0.3, metalness: 0.6, flatShading: true }),
     podEdge: new THREE.LineBasicMaterial({ color: 0xc49bff }),
   };
+  mats.detail = mats.solid;                              // the same look; only drawn nearer
 
   // ---------- the ground: painted sand, with a hole where the ramp goes down, and its colliders ----------
   const E = 1100;
@@ -187,7 +192,7 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       colliders++;
     }
     if (b.hide) continue;
-    emitBox(batchFor(b.x, b.z, b.k === K.GLOW ? 'glow' : 'solid'), b, vr);
+    emitBox(batchFor(b.x, b.z, b.k === K.GLOW ? 'glow' : b.k === K.DETAIL ? 'detail' : 'solid'), b, vr);
   }
   for (const w of L.wedges) {                            // the stairs you walk on (the steps you see are only drawn)
     const run = w.n * w.tread, cx = w.axis === 'x' ? w.x + w.dir * run / 2 : w.x, cz = w.axis === 'z' ? w.z + w.dir * run / 2 : w.z;
@@ -199,18 +204,59 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
   for (const m of solids.values()) phys.mesh(new Float32Array(m.v), new Uint32Array(m.i));
   for (const p of L.panes) emitPane(batchFor(p.x, p.z, 'pane'), p);
   const chunks = [];
-  let verts = 0;
+  let verts = 0, detailVerts = 0;
   for (const [key, batch] of batches) {
     const kind = key.split(',')[2];
     const mesh = new THREE.Mesh(batch.geometry(), mats[kind]);
-    mesh.castShadow = kind === 'solid';
-    mesh.receiveShadow = kind === 'solid';
+    mesh.castShadow = kind === 'solid' || kind === 'detail';
+    mesh.receiveShadow = kind === 'solid' || kind === 'detail';
     mesh.matrixAutoUpdate = false;
+    mesh.userData.kind = kind;
     group.add(mesh);
     verts += batch.v;
+    if (kind === 'detail') detailVerts += batch.v;
     const x0 = batch.ci * CHUNK - 2000, z0 = batch.cj * CHUNK - 2000;
-    chunks.push({ mesh, x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK });
+    chunks.push({ mesh, x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK, far: kind === 'detail' ? NEAR : FAR });
   }
+
+  // ---------- fires: flames that flicker, and smoke drifting up from them (sprites with the glow texture) ----------
+  const fires = [];
+  if (glow) L.fires.forEach((f, i) => {
+    const g = new THREE.Group();
+    g.position.set(f.x, f.y, f.z);
+    const flames = [0xff7a2a, 0xffc060].map((c, k) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      s.position.set((k - 0.5) * 0.4 * f.s, 0.3 * k * f.s, 0);
+      g.add(s);
+      return s;
+    });
+    const smoke = Array.from({ length: 6 }, (_, k) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0x2e2a27, transparent: true, opacity: 0, depthWrite: false }));
+      g.add(s);
+      return { s, phase: k / 6 };
+    });
+    group.add(g);
+    fires.push({ g, flames, smoke, s: f.s, seed: i * 1.7, x: f.x, z: f.z });
+  });
+  let fireT = 0;
+  const animateFires = dt => {
+    fireT += dt;
+    for (const f of fires) {
+      if (!f.g.visible) continue;
+      f.flames.forEach((s, k) => {
+        const t = fireT * (7 + k * 2.3) + f.seed, a = (1.3 + 0.35 * Math.sin(t) + 0.2 * Math.sin(t * 2.7)) * f.s;
+        s.scale.set(a * 1.1, a * 1.6, 1);
+        s.material.opacity = 0.6 + 0.25 * Math.sin(t * 1.9);
+      });
+      for (const p of f.smoke) {
+        const age = (fireT * 0.07 + p.phase) % 1, sc = (2.0 + age * 11) * f.s;
+        p.s.position.set(age * 7 * f.s + Math.sin(age * 6 + f.seed) * 0.8, 1 + age * 26 * f.s, Math.cos(age * 5 + f.seed) * 0.6);
+        p.s.scale.set(sc, sc, 1);
+        p.s.material.opacity = Math.sin(Math.min(1, age * 1.3) * Math.PI) * 0.45;
+      }
+    }
+  };
+  animateFires(0);
 
   // ---------- Prism crystals, the crashed pod, dunes ----------
   if (L.crystals.length) {
@@ -280,7 +326,8 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
   return {
     layout: L, group, items, spawns: L.spawns, spawn: L.spawns[0], groundItems: L.groundItems,
     markers: [...L.extracts, ...L.landmarks],
-    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, colliderMeshes: solids.size, meshes: chunks.length, vertices: verts, containers: L.containers.length },
+    stats: { boxes: L.boxes.length, panes: L.panes.length, colliders, colliderMeshes: solids.size, meshes: chunks.length, vertices: verts, detailVertices: detailVerts,
+      containers: L.containers.length, fires: fires.length },
     wind: 0.03,
     // a drop zone: at random, but after a death not the one closest to where you fell
     spawnPoint(rnd, p) {
@@ -295,14 +342,16 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       return z ? `The Ruins · ${z.name} · ${z.kind} zone` : 'The Ruins · Outskirts';
     },
     step() {},
-    // hide the chunks far from you (checked again whenever you have moved 10 m)
+    // the fires burn; chunks far from you are hidden, their detail sooner (checked again whenever you have moved 10 m)
     frame(dt, a, p) {
+      animateFires(dt);
       if (!p || (cullAt && Math.hypot(p.pos.x - cullAt.x, p.pos.z - cullAt.z) < 10)) return;
       cullAt = { x: p.pos.x, z: p.pos.z };
       for (const c of chunks) {
         const dx = Math.max(c.x0 - p.pos.x, 0, p.pos.x - c.x1), dz = Math.max(c.z0 - p.pos.z, 0, p.pos.z - c.z1);
-        c.mesh.visible = dx * dx + dz * dz < FAR * FAR;
+        c.mesh.visible = dx * dx + dz * dz < c.far * c.far;
       }
+      for (const f of fires) f.g.visible = Math.hypot(f.x - p.pos.x, f.z - p.pos.z) < 300;
     },
     dispose() {
       scene.remove(group);
