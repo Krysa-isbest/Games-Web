@@ -1,0 +1,58 @@
+/* File share panel (left side). Mirrors the party panel and reuses its .pt-* classes. */
+:root{ --fw:320px }
+
+#files{
+  position:fixed;top:0;left:0;bottom:0;width:var(--fw);z-index:50;
+  background:var(--paper);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;font-family:var(--sans);color:var(--ink);
+  transform:translateX(-100%);transition:transform .25s ease;
+}
+body.files-open #files{transform:none}
+body.files-open{padding-left:var(--fw)}
+body{transition:padding-right .25s ease,padding-left .25s ease}
+body.files-open #pg-frame{left:var(--fw)}
+
+#files-tab{
+  position:absolute;left:100%;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--ink);color:var(--paper);border:0;border-radius:0 12px 12px 0;
+  padding:14px 9px;cursor:pointer;font:600 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;
+  box-shadow:6px 8px 24px -12px rgba(40,25,10,.5);
+}
+#files-tab span{writing-mode:vertical-rl;transform:rotate(180deg)}
+body.files-open #files-tab{display:none}
+body.files-new #files-tab::after{content:'';width:7px;height:7px;border-radius:50%;background:#e9875f}
+
+.fs-drop{
+  border:2px dashed var(--line);border-radius:14px;padding:20px 14px;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;
+  transition:border-color .15s,background .15s;
+}
+.fs-drop b{font:600 17px var(--serif)}
+.fs-drop span{font-size:12px;color:var(--faint)}
+#files.drag .fs-drop{border-color:var(--accent);background:#f7e3da}
+.fs-off{display:flex;flex-direction:column;gap:8px;background:var(--bg);border-radius:12px;padding:12px}
+.fs-off .pt-btn{align-self:flex-start}
+
+.fs-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.fs-item{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+.fs-ico{font-size:20px;line-height:1.2}
+.fs-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.fs-main b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fs-main small{font-size:12px;color:var(--soft);line-height:1.4;overflow-wrap:anywhere}
+.fs-main small.bad{color:#9a3a22}
+.fs-prog{display:flex;flex-direction:column;gap:3px}
+.fs-bar{height:6px;border-radius:999px;background:var(--bg);overflow:hidden}
+.fs-bar i{display:block;height:100%;width:0;background:var(--live);transition:width .2s}
+.fs-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.fs-acts a.pt-btn{text-decoration:none;display:inline-block}
+.fs-prev{max-width:100%;max-height:140px;border-radius:8px;object-fit:contain;background:var(--bg);align-self:flex-start}
+.fs-x{background:none;border:0;color:var(--faint);font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
+.fs-x:hover{color:var(--ink)}
+
+@media (max-width:900px){
+  :root{--fw:min(340px,100vw)}
+  body.files-open{padding-left:0}
+  #files{box-shadow:20px 0 40px -20px rgba(40,25,10,.4)}
+  body.files-open #pg-frame{left:0}
+}

@@ -289,6 +289,14 @@
         if (mem) { mem.st = String(m.text || '').slice(0, 80); render(); }
         break;
       }
+      case 'x': { // extra panels (files.js): deliver here, or pass it on, stamped with who sent it
+        if (!l.id) return;
+        const to = String(m.to || ''), x = { t: 'x', from: l.id, d: m.d };
+        if (to === '*') { emit('msg', l.id, m.d); broadcast(x, l.id); }
+        else if (to === P.me) emit('msg', l.id, m.d);
+        else send(to, x);
+        break;
+      }
     }
   }
   function guestMsg(m) {
@@ -308,6 +316,7 @@
       case 'invite': if (P.game && P.game.lid === m.lid) { P.game.inbox.push({ k: 'invite', invId: m.invId, invite: m.invite }); pump(); } break;
       case 'endgame': if (P.game && P.game.lid === m.lid) { sys('The leader closed the game.'); P.game.ended = true; render(); } break;
       case 'bye': sys('The leader closed the party.'); resetParty(); render(); break;
+      case 'x': emit('msg', String(m.from || ''), m.d); break;
     }
   }
   function onLinkClosed(l) {
@@ -611,6 +620,28 @@
     finally { game.pumping = false; }
   }
 
+  /* ---------------- Hook for other panels (files.js) ----------------
+     A small message bus over the party links. Guests send everything to the
+     leader, who delivers it or passes it on and stamps who it came from.
+     Messages must stay small: PeerJS drops JSON messages over ~16 KB. */
+  const hooks = { msg: [], change: [], open: [] };
+  function emit(ev, ...args) { hooks[ev].forEach(fn => { try { fn(...args); } catch (e) { console.error(e); } }); }
+  function relay(to, d) { // to: a member id, or '*' for everyone else
+    if (!P.role) return;
+    if (P.role === 'guest') toLeader({ t: 'x', to, d });
+    else if (to === '*') broadcast({ t: 'x', from: P.me, d });
+    else send(to, { t: 'x', from: P.me, d });
+  }
+  window.PartyNet = {
+    me: () => P.me,
+    role: () => P.role,
+    members: () => P.members.slice(),
+    nameOf,
+    send: relay,
+    on: (ev, fn) => { if (hooks[ev]) hooks[ev].push(fn); },
+    setOpen: on => setOpen(on)
+  };
+
   /* ---------------- Panel UI ---------------- */
   function buildPanel() {
     const el = document.createElement('aside');
@@ -636,6 +667,7 @@
     P.open = on;
     store.set('party_open', on ? '1' : '0');
     document.body.classList.toggle('party-open', on);
+    emit('open', on);
   }
   function sendChat() {
     const inp = $('pt-chat-in'), text = inp.value.trim().slice(0, 300);
@@ -691,6 +723,7 @@
     const chat = $('pt-chat');
     if (chat) chat.scrollTop = chat.scrollHeight;
     document.querySelectorAll('.item').forEach(it => it.classList.toggle('pt-ok', !!ADAPTERS[(GAMES[it.dataset.idx] || {}).party]));
+    emit('change');
   }
   const fileWarning = () => location.protocol === 'file:' ? '<p class="pt-warn">You opened this page as a file. The party can only connect games on the website (https://…). Upload it to GitHub Pages and open it there.</p>' : '';
 
