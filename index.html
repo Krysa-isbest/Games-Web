@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="party.css">
 <link rel="stylesheet" href="files.css">
+<link rel="stylesheet" href="chat.css">
 <style>
 :root{
   --bg:#f3eee6; --paper:#fbf8f3; --ink:#1f1b16; --soft:#6b6257; --faint:#a39a8e;
@@ -31,6 +32,10 @@ h1 em{font-style:italic;color:var(--accent)}
 .chip:hover{color:var(--ink)}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
 .count{font-size:12px;opacity:.6;margin-left:4px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sortbtn{font:500 14px var(--sans);color:var(--soft);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:12px 16px;cursor:pointer;transition:background .15s,color .15s}
+.sortbtn:hover{color:var(--ink)}
+.sortbtn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 
 /* grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:28px}
@@ -55,6 +60,7 @@ h1 em{font-style:italic;color:var(--accent)}
 .flag.big{color:#fff;background:rgba(184,80,47,.94)}
 .flag.vr{color:#fff;background:rgba(32,120,160,.94)}
 .flag.pt{color:#fff;background:rgba(46,140,80,.94)}
+.flag.upd{color:#fff;background:rgba(214,124,30,.95)}
 .flag{
   font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
@@ -72,8 +78,12 @@ h1 em{font-style:italic;color:var(--accent)}
 .mode.mp{color:var(--accent)}
 .meta .sep{width:3px;height:3px;border-radius:50%;background:var(--faint)}
 
+.below{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.fav{background:none;border:0;cursor:pointer;font-size:19px;line-height:1;padding:2px 6px;color:var(--line);transition:color .15s,transform .15s}
+.fav:hover{color:var(--faint);transform:scale(1.15)}
+.fav[aria-pressed="true"]{color:#d6a21e}
 .logbtn{
-  align-self:flex-start;margin:10px 0 0 4px;font:500 13px var(--sans);color:var(--soft);
+  margin:0 0 0 4px;font:500 13px var(--sans);color:var(--soft);
   background:none;border:0;padding:4px 2px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
   border-bottom:1px solid transparent;transition:color .15s,border-color .15s;
 }
@@ -110,7 +120,7 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 @media (max-width:560px){
   .wrap{padding:40px 16px 60px}
   .grid{grid-template-columns:1fr}
-  .filters{width:100%}.chip{flex:1;padding:8px 6px}
+  .tools,.filters{width:100%}.chip{flex:1;padding:8px 6px}
   .play{opacity:1;transform:none}
 }
 </style>
@@ -123,10 +133,13 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
       <h1>Banger <em>Games</em></h1>
       <p class="tagline">A small collection of games that run right in your browser. Pick one and play — some are better with friends.</p>
     </div>
-    <div class="filters" role="group" aria-label="Filter games">
-      <button class="chip" data-f="all" aria-pressed="true">All</button>
-      <button class="chip" data-f="mp" aria-pressed="false">Multiplayer</button>
-      <button class="chip" data-f="solo" aria-pressed="false">Single player</button>
+    <div class="tools">
+      <div class="filters" role="group" aria-label="Filter games">
+        <button class="chip" data-f="all" aria-pressed="true">All</button>
+        <button class="chip" data-f="mp" aria-pressed="false">Multiplayer</button>
+        <button class="chip" data-f="solo" aria-pressed="false">Single player</button>
+      </div>
+      <button class="sortbtn" id="sortNew" aria-pressed="false" title="Games with the newest changelog first">Recently updated</button>
     </div>
   </header>
 
@@ -850,8 +863,30 @@ const ICON_PLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#1f1b16
 
 const grid = document.getElementById('grid');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ls = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+};
+
+/* "Updated" / "New" badges: compare each game's newest changelog entry with what this browser saw last visit.
+   The old list is kept for this browser tab (sessionStorage), so the badges survive a refresh. */
+const topKey = g => { const c = (g.changelog || [])[0]; return c ? (c.version || c.title || '') + '|' + (c.date || '') : '-'; };
+const nowSeen = Object.fromEntries(GAMES.map(g => [g.title, topKey(g)]));
+let seenBefore = null;
+try { seenBefore = JSON.parse(sessionStorage.getItem('hub_prev')); } catch (e) { }
+if (!seenBefore) {
+  seenBefore = ls.get('hub_seen', null) || nowSeen; // first visit ever: nothing is marked
+  try { sessionStorage.setItem('hub_prev', JSON.stringify(seenBefore)); } catch (e) { }
+}
+ls.set('hub_seen', nowSeen);
+const badgeOf = g => !(g.title in seenBefore) ? 'New' : seenBefore[g.title] !== nowSeen[g.title] ? 'Updated' : '';
+
+const favs = new Set(ls.get('hub_favs', []));
+let sortNew = ls.get('hub_sort_new', false);
+const newestDate = g => ((g.changelog || [])[0] || {}).date || '';
 
 GAMES.forEach((g, i) => {
+  const badge = badgeOf(g);
   const item = document.createElement('div');
   item.className = 'item';
   item.dataset.mp = g.mp ? 'mp' : 'solo';
@@ -860,7 +895,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag pt">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
+        ${badge || g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${badge ? `<span class="flag upd">✦ ${badge}</span>` : ''}${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag pt">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
@@ -873,9 +908,35 @@ GAMES.forEach((g, i) => {
         </div>
       </div>
     </a>
-    <button class="logbtn${g.updating ? ' live' : ''}" data-i="${i}"><span class="dot"></span>Changelog</button>`;
+    <div class="below"><button class="logbtn${g.updating ? ' live' : ''}" data-i="${i}"><span class="dot"></span>Changelog</button><button class="fav" data-fav="${i}" aria-pressed="${favs.has(g.title)}" aria-label="Favourite" title="Favourite: keeps it at the top">★</button></div>`;
   grid.appendChild(item);
 });
+
+// order: favourites first, then (if chosen) the most recently updated, then the list's own order
+function arrange() {
+  const items = [...grid.children];
+  items.sort((a, b) => {
+    const ga = GAMES[a.dataset.idx], gb = GAMES[b.dataset.idx];
+    const fa = favs.has(ga.title), fb = favs.has(gb.title);
+    if (fa !== fb) return fa ? -1 : 1;
+    if (sortNew) { const d = newestDate(gb).localeCompare(newestDate(ga)); if (d) return d; }
+    return a.dataset.idx - b.dataset.idx;
+  });
+  items.forEach(it => grid.appendChild(it));
+}
+const sortBtn = document.getElementById('sortNew');
+sortBtn.setAttribute('aria-pressed', sortNew);
+sortBtn.onclick = () => { sortNew = !sortNew; ls.set('hub_sort_new', sortNew); sortBtn.setAttribute('aria-pressed', sortNew); arrange(); };
+grid.addEventListener('click', e => {
+  const b = e.target.closest('.fav');
+  if (!b) return;
+  const t = GAMES[b.dataset.fav].title;
+  favs.has(t) ? favs.delete(t) : favs.add(t);
+  ls.set('hub_favs', [...favs]);
+  b.setAttribute('aria-pressed', favs.has(t));
+  arrange();
+});
+arrange();
 
 // filter counts
 const nMp = GAMES.filter(g => g.mp).length;
@@ -924,5 +985,7 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="party.js"></script>
 <!-- File share (left panel): sends files over the party connection, see files.js -->
 <script src="files.js"></script>
+<!-- Global chat (bottom corner): everyone on the site, live, through ntfy.sh, see chat.js -->
+<script src="chat.js"></script>
 </body>
 </html>

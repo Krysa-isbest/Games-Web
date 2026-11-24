@@ -1,0 +1,45 @@
+/* Global chat (bottom-right corner). Reuses the party panel's .pt-btn / .pt-x and the hub's colour tokens. */
+#gchat{position:fixed;right:16px;bottom:16px;z-index:45;font-family:var(--sans);color:var(--ink);transition:right .25s ease}
+body.party-open #gchat{right:calc(var(--pw) + 16px)}
+body.pg-playing #gchat{display:none}
+
+#gc-tab{
+  display:flex;align-items:center;gap:7px;background:var(--ink);color:var(--paper);border:0;border-radius:999px;
+  padding:10px 16px;cursor:pointer;font:600 13px var(--sans);box-shadow:0 10px 28px -12px rgba(40,25,10,.6);
+}
+#gc-n{min-width:18px;height:18px;border-radius:999px;background:#e9875f;color:#fff;font-size:11px;display:grid;place-items:center;padding:0 5px}
+body.gc-open #gc-tab{display:none}
+
+#gc-box{
+  display:none;flex-direction:column;width:320px;max-width:calc(100vw - 32px);height:400px;max-height:70vh;
+  background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 60px -20px rgba(40,25,10,.5);
+}
+body.gc-open #gc-box{display:flex}
+
+.gc-head{display:flex;align-items:center;gap:8px;padding:10px 10px 8px 14px;border-bottom:1px solid var(--line)}
+.gc-head b{font:600 18px var(--serif)}
+#gc-st{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+#gc-st.live{background:var(--live)}
+#gc-st.off{background:#c2553a}
+#gc-name{flex:1;min-width:0;margin-left:auto}
+.gc-note{margin:0;padding:6px 14px;font-size:11.5px;color:var(--faint);border-bottom:1px solid var(--line)}
+
+.gc-list{flex:1;overflow:auto;padding:8px 14px;display:flex;flex-direction:column;gap:5px}
+.gc-list p{margin:0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.gc-list p small{color:var(--faint);font-size:11px}
+.gc-list p.me b{color:var(--accent)}
+.gc-list a{color:var(--accent)}
+.gc-list .gc-empty{color:var(--faint);font-style:italic}
+.gc-code{font:600 12px var(--sans);letter-spacing:.08em;color:#fff;background:var(--accent);border:0;border-radius:6px;padding:1px 7px;cursor:pointer}
+.gc-code:hover{background:#a2441f}
+
+.gc-warn{display:none;margin:0 10px;font-size:12px;color:#9a3a22;background:#f7e3da;border-radius:8px;padding:6px 9px}
+.gc-row{display:flex;gap:6px;padding:8px 10px 10px}
+.gc-row input{flex:1;min-width:0}
+#gchat input{font:500 13px var(--sans);color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 9px;outline:none}
+#gchat input:focus{border-color:var(--soft)}
+
+@media (max-width:900px){
+  body.party-open #gchat{right:16px}
+}

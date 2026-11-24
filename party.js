@@ -348,11 +348,16 @@
     if (!box) {
       box = document.createElement('div');
       box.id = 'pg-frame';
-      box.innerHTML = `<div class="pg-bar"><button class="pg-back" id="pg-back" title="The game keeps running">← Games</button><b id="pg-title"></b><span id="pg-gst"></span><button class="pg-quit" id="pg-quit">Quit game</button></div>
+      box.innerHTML = `<div class="pg-bar"><button class="pg-back" id="pg-back" title="The game keeps running">← Games</button><b id="pg-title"></b><span id="pg-gst"></span><button class="pg-quit" id="pg-quit">Quit game</button><button class="pg-hide" id="pg-hide" title="Hide this bar">▲</button></div>
+        <button class="pg-show" id="pg-show" title="Show the bar">▼</button>
         <iframe id="pg-iframe" allow="microphone; camera; autoplay; fullscreen; gamepad; xr-spatial-tracking; clipboard-read; clipboard-write" allowfullscreen></iframe>`;
       document.body.appendChild(box);
       $('pg-back').onclick = () => { document.body.classList.remove('pg-playing'); render(); };
       $('pg-quit').onclick = () => { if (confirm('Quit the game?')) closeFrame(); };
+      const bar = on => { document.body.classList.toggle('pg-nobar', !on); store.set('pg_bar', on ? '1' : '0'); setTimeout(() => $('pg-iframe').focus(), 50); };
+      $('pg-hide').onclick = () => bar(false);
+      $('pg-show').onclick = () => bar(true);
+      document.body.classList.toggle('pg-nobar', store.get('pg_bar', '1') === '0');
     }
     $('pg-title').textContent = g.title;
     const fr = $('pg-iframe');
@@ -639,7 +644,11 @@
     nameOf,
     send: relay,
     on: (ev, fn) => { if (hooks[ev]) hooks[ev].push(fn); },
-    setOpen: on => setOpen(on)
+    setOpen: on => setOpen(on),
+    // for the global chat (chat.js): the shared name, and joining a party code posted there
+    name: () => P.name,
+    setName: n => { P.name = String(n || '').slice(0, 16); store.set('party_name', P.name); const f = $('pt-name'); if (f) f.value = P.name; },
+    join: code => { if (P.role || P.busy) return false; P.tab = 'peer'; setOpen(true); joinPeer(code); return true; }
   };
 
   /* ---------------- Panel UI ---------------- */
