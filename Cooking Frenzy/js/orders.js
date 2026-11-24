@@ -125,7 +125,7 @@ CF.Orders = (() => {
         const s = O.state;
         const n = Math.max(1, CF.Sync.playerCount());
         const prog = 1 - s.time / SHIFT;
-        let interval = CF.lerp(48, 24, prog) / (1 + 0.3 * (n - 1)) / (O.has('marketing') ? 1.12 : 1);
+        let interval = CF.lerp(80, 45, prog) / (1 + 0.6 * (n - 1)) / (O.has('marketing') ? 1.12 : 1);
         if (s.event && s.event.k === 'rush') interval /= 2.6;
         interval *= Math.max(0.75, 1 - (s.day - 1) * 0.03);
         s.spawnT -= dt;
@@ -147,7 +147,7 @@ CF.Orders = (() => {
         const ent = CF.World.entrance;
         const rowZ = seat.z + (seat.z <= 0 ? -1.5 : 1.5);
         const path = [[10.6, ent.z], [10.6, rowZ], [seat.x, rowZ], [seat.x, seat.z]];
-        let max = rec.time * (O.has('patience') ? 1.25 : 1) * Math.max(0.7, 1 - (s.day - 1) * 0.03);
+        let max = rec.time * 3 * (O.has('patience') ? 1.25 : 1) * Math.max(0.7, 1 - (s.day - 1) * 0.03);
         if (critic) max *= 0.75;
         const c = { id: custId++, seat: seat.idx, x: ent.x, z: ent.z, ry: -Math.PI / 2, st: 'walk', col: critic ? 0xffd166 : new THREE.Color().setHSL(Math.random(), 0.6, 0.55).getHex(), path, pat: max, max, r, v, greeted: false, critic: !!critic, bonus: 0, eatT: 0, dish: 0 };
         seatsBusy[seat.idx] = c.id;
