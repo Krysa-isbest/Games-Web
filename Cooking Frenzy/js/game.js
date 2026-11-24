@@ -25,6 +25,7 @@ CF.Game = (() => {
         addEventListener('pointerdown', unlock);
         addEventListener('keydown', unlock);
         CF.UI.showMenu();
+        CF.$('#fps').classList.toggle('hidden', !CF.settings.fps);
         last = performance.now();
         requestAnimationFrame(loop);
     };
@@ -91,9 +92,10 @@ CF.Game = (() => {
         const sp = rest(decor, 'plate', 6.62, 1.03, 0.5, 0, 0);
         inside(sp, 'steak', -0.055, sp.userData.top + CF.ITEMS.steak.h / 2 + 0.004, 0, 0.7, 0.3);
         inside(sp, 'fries', 0.06, sp.userData.top + CF.ITEMS.fries.h / 2 + 0.004, 0, 0.8, 1.2);
-        // back door delivery, extinguishers, spices
-        rest(decor, 'crate', Z.delivery.x, 0, Z.delivery.z, 0, 0.2);
+        // extinguishers, spices, the spare cookware by the back door
         for (const p of Z.extSpots) rest(decor, 'ext', p.x, 0, p.z, 0, 0);
+        rest(decor, 'pan', Z.ware[0].x, ch, Z.ware[0].z, 0, 0.6);
+        rest(decor, 'pot', Z.ware[1].x, ch, Z.ware[1].z, 0, 0);
         rest(decor, 'salt', Z.spices[0].x, 1.465, Z.spices[0].z, 0, 0);
         rest(decor, 'pepper', Z.spices[1].x, 1.465, Z.spices[1].z, 0, 0);
         decor.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
@@ -107,11 +109,6 @@ CF.Game = (() => {
         const tag = CF.Models.nameTag(CF.settings.name || 'Chef', col);
         tag.position.y = 2.42;
         menuChef.add(tag);
-        if (CF.settings.role === 'waiter') {
-            const bow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.03), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }));
-            bow.position.set(0, 1.47, 0.25);
-            menuChef.add(bow);
-        }
         menuChef.position.set(0.9, 0, -1.9);
         decor.add(menuChef);
     };
@@ -120,10 +117,12 @@ CF.Game = (() => {
         if (on && !decor.parent) CF.World.scene.add(decor);
         if (!on && decor.parent) decor.parent.remove(decor);
     }
-    // burners on and the oven glowing behind the menu
+    // burners on, the oven glowing and a well stocked pantry behind the menu
     function menuKitchen() {
         const st = CF.Stations.state;
         st.burners = [0, 2, 0, 1]; st.ovenOn = true; st.ovenOpen = false; st.fryerOn = false; st.open = false;
+        st.stock = {}; st.incoming = {};
+        for (const t in CF.PANTRY) st.stock[t] = Math.round(CF.PANTRY[t].cap * 0.6);
         showDecor(true);
     }
     function animDecor(dt) {
@@ -166,7 +165,10 @@ CF.Game = (() => {
         CF.Sync.startSolo();
         beginHost(fromSave);
     };
+    // the last co-op error (the hub's party adapter reads it to tell the party what went wrong)
+    G.lastError = '';
     G.hostLobby = async () => {
+        G.lastError = '';
         CF.UI.loading(true, 'Opening your kitchen…');
         try {
             await CF.Sync.startHost();
@@ -177,7 +179,8 @@ CF.Game = (() => {
             CF.Net.close();
             CF.Sync.reset();
             CF.UI.loading(false);
-            CF.UI.toast((e && e.message) || 'Could not open a room.', 'bad');
+            G.lastError = (e && e.message) || 'Could not open a room.';
+            CF.UI.toast(G.lastError, 'bad');
         }
     };
     G.hostStart = fromSave => {
@@ -185,17 +188,25 @@ CF.Game = (() => {
         CF.Sync.beginHosted();
         beginHost(fromSave);
     };
+    let joinSeq = 0;
     G.join = async code => {
+        G.lastError = '';
+        const seq = ++joinSeq;
         CF.UI.loading(true, 'Connecting to the kitchen…');
         try {
             await CF.Sync.startJoin(code);
-            if (G.mode !== 'play') CF.UI.loading(true, 'Waiting for the host…');
+            if (G.mode !== 'play' && G.mode !== 'lobby') CF.UI.loading(true, 'Waiting for the host…');
+            // the host answers our hello within a moment; if not, something is wrong (very old version...)
+            setTimeout(() => {
+                if (seq === joinSeq && CF.Sync.mode === 'client' && CF.Sync.myPid < 0) G.quit(G.lastError = 'The host did not let us in. Make sure you both have the newest version (Ctrl+F5).');
+            }, 12000);
         } catch (e) {
             CF.Net.close();
             CF.Sync.reset();
             CF.UI.loading(false);
-            CF.UI.joinStatus((e && e.message) || 'Could not join.');
-            CF.UI.toast((e && e.message) || 'Could not join.', 'bad');
+            G.lastError = (e && e.message) || 'Could not join.';
+            CF.UI.joinStatus(G.lastError);
+            CF.UI.toast(G.lastError, 'bad');
         }
     };
     // guest: welcomed into the lobby
@@ -275,11 +286,47 @@ CF.Game = (() => {
     }
 
     // ---------- main loop ----------
+    // A hidden tab gets no animation frames. A host (with friends in the kitchen) keeps the simulation going from
+    // a worker timer, so the kitchen doesn't freeze for everyone when the host alt-tabs or plays in another tab.
+    let bgWorker = null, bgLast = 0;
+    function background(on) {
+        if (on && !bgWorker) {
+            try {
+                const src = 'let t=0;onmessage=e=>{clearInterval(t);if(e.data>0)t=setInterval(()=>postMessage(0),e.data)}';
+                bgWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+                bgWorker.onmessage = bgTick;
+            } catch (e) { bgWorker = null; }
+        }
+        bgLast = performance.now();
+        if (bgWorker) bgWorker.postMessage(on ? 33 : 0);
+    }
+    function bgTick() {
+        if (!document.hidden || G.mode !== 'play' || !CF.Sync.needsBackground()) return;
+        const now = performance.now();
+        let dt = Math.min(0.25, Math.max(0, (now - bgLast) / 1000));
+        bgLast = now; last = now;
+        try { while (dt > 0.0001) { const st = Math.min(0.05, dt); frame(st, false); dt -= st; } }
+        catch (e) { errors++; if (errors <= 5) console.error(e); }
+    }
+    document.addEventListener('visibilitychange', () => background(document.hidden));
+    let fpsT = 0, fpsN = 0, capThen = 0;
     function loop(now) {
         requestAnimationFrame(loop);
-        const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+        // frame limit: skip display refreshes until the next frame is due (keeps the average on the limit)
+        const cap = +CF.settings.fpsCap || 0;
+        if (cap > 0) {
+            const interval = 1000 / cap, el = now - capThen;
+            if (el < interval * 0.9) return;
+            capThen = now - (el % interval);
+        }
+        const raw = Math.max(0, (now - last) / 1000), dt = Math.min(0.05, raw);
         last = now;
         G.t += dt;
+        fpsT += raw; fpsN++;
+        if (fpsT >= 0.5) {
+            if (CF.settings.fps) CF.$('#fps').textContent = Math.round(fpsN / fpsT) + ' fps';
+            fpsT = 0; fpsN = 0;
+        }
         try { frame(dt); }
         catch (e) {
             errors++;
@@ -287,7 +334,7 @@ CF.Game = (() => {
             if (errors === 1) CF.UI.toast('Something went wrong. Details are in the console (F12).', 'bad');
         }
     }
-    function frame(dt) {
+    function frame(dt, draw = true) {
         const W = CF.World, S = CF.Sync;
         if (G.mode !== 'play') {
             W.menuCam(G.t);
@@ -327,7 +374,7 @@ CF.Game = (() => {
         W.updateFx(dt);
         W.updateDoors(Object.values(S.players).map(p => p.pos), dt);
         CF.UI.update(dt);
-        W.render();
+        if (draw) W.render();
     }
 
     return G;

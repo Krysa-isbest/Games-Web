@@ -20,18 +20,25 @@ CF.Sync = (() => {
     function makePlayer(pid, info) {
         const sp = CF.World.spawns[pid % CF.World.spawns.length];
         return {
-            pid, name: cleanName(info.name), color: cleanColor(info.color), role: info.role === 'waiter' ? 'waiter' : 'chef', skills: cleanSkills(info.skills),
+            pid, name: cleanName(info.name), color: cleanColor(info.color), skills: cleanSkills(info.skills), level: info.level | 0,
             pos: { x: sp.x, y: 0, z: sp.z }, yaw: 0, pitch: 0, hold: [sp.x, 1.3, sp.z - 0.9], hy: 0, spray: false, moving: false, ready: false
         };
     }
     S.myInfo = () => ({
         name: CF.settings.name, color: CF.HAT_COLORS[CF.settings.color] || CF.HAT_COLORS[0],
-        role: CF.Player.role === 'waiter' ? 'waiter' : 'chef', skills: CF.Profile.data.skills.slice()
+        skills: CF.Profile.data.skills.slice(), level: CF.Profile.level()
     });
     S.me = () => S.players[S.myPid];
+    // host: two chefs never share a name or a hat colour (friends who never changed theirs, two tabs on one PC)
+    function makeUnique(p) {
+        const others = Object.values(S.players).filter(o => o !== p);
+        if (others.some(o => o.color === p.color)) p.color = CF.HAT_COLORS.find(c => !others.some(o => o.color === c)) || p.color;
+        const base = p.name.slice(0, 12);
+        for (let n = 2; others.some(o => o.name === p.name) && n < 9; n++) p.name = base + ' ' + n;
+    }
     function rosterPack() {
         const o = {};
-        for (const k in S.players) { const p = S.players[k]; o[k] = { name: p.name, color: p.color, role: p.role, skills: p.skills, ready: p.ready }; }
+        for (const k in S.players) { const p = S.players[k]; o[k] = { name: p.name, color: p.color, skills: p.skills, level: p.level, ready: p.ready }; }
         return o;
     }
     function rosterChanged() {
@@ -44,7 +51,7 @@ CF.Sync = (() => {
             const pid = +k, r = pl[k];
             seen[pid] = true;
             const p = S.players[pid] || (S.players[pid] = makePlayer(pid, r));
-            p.name = cleanName(r.name); p.color = cleanColor(r.color); p.role = r.role === 'waiter' ? 'waiter' : 'chef';
+            p.name = cleanName(r.name); p.color = cleanColor(r.color); p.level = r.level | 0;
             p.skills = cleanSkills(r.skills); p.ready = !!r.ready;
         }
         for (const k in S.players) if (!seen[k] && +k !== S.myPid) { delete S.players[k]; removeAvatar(k); }
@@ -110,12 +117,19 @@ CF.Sync = (() => {
         switch (m.t) {
             case 'hello': {
                 if (pid !== undefined) return;
+                // a different version speaks a different language: say so instead of breaking strangely
+                if (m.v !== CF.VERSION) {
+                    CF.Net.send(id, { t: 'reject', why: `Your game is version ${m.v || '1.0'} but the host runs ${CF.VERSION}. Both of you refresh the page (Ctrl+F5) and try again.` });
+                    CF.UI.toast(`A friend with an older or newer version (${m.v || '1.0'}) tried to join. Refresh the page with Ctrl+F5, both of you.`, 'bad');
+                    return;
+                }
                 let np = 1;
                 while (S.players[np]) np++;
                 if (np > 3) { CF.Net.send(id, { t: 'reject', why: 'That kitchen is full (4 chefs max).' }); return; }
                 pidOf[id] = np; connOf[np] = id;
                 const p = S.players[np] = makePlayer(np, m);
-                CF.Net.send(id, { t: 'welcome', pid: np, started: S.started, code: S.code });
+                makeUnique(p);
+                CF.Net.send(id, { t: 'welcome', pid: np, started: S.started, code: S.code, v: CF.VERSION, name: p.name, color: p.color });
                 rosterChanged();
                 if (S.started) sendFull(id);
                 S.broadcastToast(`👋 ${p.name} joined the kitchen!`, 'info');
@@ -155,11 +169,12 @@ CF.Sync = (() => {
             case 'welcome':
                 S.myPid = m.pid | 0;
                 S.code = m.code || S.code;
-                if (!S.players[S.myPid]) S.players[S.myPid] = makePlayer(S.myPid, S.myInfo());
+                if (!S.players[S.myPid]) S.players[S.myPid] = makePlayer(S.myPid, Object.assign(S.myInfo(), { name: m.name, color: m.color }));
+                if (m.color && m.color !== S.myInfo().color) CF.UI.toast('Another chef has your hat colour, so the host gave you a new one.', 'info');
                 if (m.started) { S.started = true; CF.Game.enterGame(); }
                 else CF.Game.showLobby();
                 return;
-            case 'reject': CF.Game.quit(m.why || 'Could not join that kitchen.'); return;
+            case 'reject': CF.Game.lastError = m.why || 'Could not join that kitchen.'; CF.Game.quit(CF.Game.lastError); return;
             case 'end': CF.Game.quit('The host closed the kitchen.'); return;
             case 'roster': applyRoster(m.pl || {}); CF.UI.updateLobby(); return;
             case 'start': S.started = true; CF.Game.enterGame(); return;
@@ -369,10 +384,7 @@ CF.Sync = (() => {
                 return;
             }
             case 'spray': P.spray = !!a.on; return;
-            case 'role':
-                if (a.role === 'chef' || a.role === 'waiter') { P.role = a.role; P.spray = false; rosterChanged(); }
-                return;
-            case 'skills': P.skills = cleanSkills(a.list); rosterChanged(); return;
+            case 'skills': P.skills = cleanSkills(a.list); P.level = a.level | 0; rosterChanged(); return;
             case 'chat': {
                 const text = String(a.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
                 if (text) chatAll(P.name, P.color, text);
@@ -396,7 +408,7 @@ CF.Sync = (() => {
         if (S.mode === 'host') fxQ.push([kind, r3(x), r3(y), r3(z), sound || 0]);
     };
     const FX = {
-        chop: ['poof', 5, { c: 0xffffff }], crate: ['poof', 12], poof: ['poof', 8], trash: ['poof', 6, { c: 0x8a8a8a }],
+        chop: ['poof', 5, { c: 0xffffff }], pantry: ['poof', 3, { c: 0xfff3c4 }], poof: ['poof', 8], trash: ['poof', 6, { c: 0x8a8a8a }],
         splash: ['splash', 10], fill: ['splash', 8], ladle: ['splash', 6, { c: 0xd8432c }], soup: ['splash', 10, { c: 0xd8432c }],
         wash: ['bubble', 14], ignite: ['spark', 12], break: ['shard', 16], flatten: ['poof', 8, { c: 0xf1dfb6 }],
         greet: ['star', 6], open: ['star', 10], leave: ['star', 5], rat: ['poof', 8, { c: 0x9a9a9a }], fail: ['poof', 6, { c: 0xff5a5a }]
@@ -415,11 +427,11 @@ CF.Sync = (() => {
         CF.UI.toast(text, kind);
         if (S.mode === 'host') CF.Net.broadcast({ t: 'toast', text, kind });
     };
-    // EXP only counts for the role you play right now (role null = anyone)
-    S.xp = (pid, amount, role) => {
+    // every job earns EXP for whoever did it
+    S.xp = (pid, amount) => {
         const p = S.players[pid];
         amount = Math.round(amount);
-        if (!p || amount <= 0 || (role && p.role !== role)) return;
+        if (!p || amount <= 0) return;
         if (pid === S.myPid) gain(amount);
         else if (S.mode === 'host' && connOf[pid] !== undefined) CF.Net.send(connOf[pid], { t: 'xp', n: amount });
     };
@@ -429,10 +441,9 @@ CF.Sync = (() => {
         CF.UI.xpGain(n, up);
     }
     S.skill = (pid, id) => {
-        const p = S.players[pid], s = CF.SKILL[id];
-        return !!(p && s && s.role === p.role && p.skills && p.skills.includes(id));
+        const p = S.players[pid];
+        return !!(p && CF.SKILL[id] && p.skills && p.skills.includes(id));
     };
-    S.hasWaiters = () => Object.values(S.players).some(p => p.role === 'waiter');
     S.playerCount = () => Math.max(1, Object.keys(S.players).length);
     S.served = info => {
         servedLocal(info);
@@ -449,6 +460,8 @@ CF.Sync = (() => {
         if (S.mode === 'host') CF.Net.broadcast({ t: 'eod', o: CF.Orders.pack(), stats: s.stats, best: s.best });
         CF.UI.showSummary();
     };
+    // a hidden host tab gets no animation frames; CF.Game keeps its simulation going from a timer
+    S.needsBackground = () => S.mode === 'host' && S.started;
 
     // ---------- the other chefs (everyone) ----------
     function removeAvatar(pid) {

@@ -4,7 +4,7 @@
 // CF.Sync.players every frame; the host steers held items from that.
 CF.Player = (() => {
     const P = {
-        held: null, role: 'chef', active: false, locked: false, yaw: 0, pitch: 0, holdYaw: 0, holdDist: 0.95,
+        held: null, active: false, locked: false, yaw: 0, pitch: 0, holdYaw: 0, holdDist: 0.95,
         pos: new THREE.Vector3(), vel: new THREE.Vector3(), onGround: true, target: null, prompt: {}, charge: -1, holdE: null, spraying: false
     };
     const EYE = 1.65, R = 0.3, HEIGHT = 1.8, STEP = 0.32, GRAV = 18, JUMP = 5.4, WALK = 3.3, RUN = 5.4, REACH = 2.3;
@@ -13,13 +13,12 @@ CF.Player = (() => {
     let cam = null, canvas = null, spot = null, bob = 0, smoothY = 0, fireCd = 0, t = 0;
 
     const inGame = () => CF.Game.mode === 'play';
-    const has = id => CF.Profile.has(id) && CF.SKILL[id] && CF.SKILL[id].role === P.role;
+    const has = id => CF.Profile.has(id);
 
     P.init = cv => {
         canvas = cv;
         cam = CF.World.camera;
         cam.rotation.order = 'YXZ';
-        P.role = CF.settings.role === 'waiter' ? 'waiter' : 'chef';
         // flashlight for blackouts (always in the scene so lights never get recompiled)
         spot = new THREE.SpotLight(0xfff1d0, 0, 14, 0.55, 0.45, 1.4);
         spot.position.set(0.15, -0.1, 0);
@@ -44,7 +43,6 @@ CF.Player = (() => {
         P.vel.set(0, 0, 0);
         P.yaw = 0; P.pitch = -0.12; P.holdYaw = 0; P.holdDist = 0.95;
         P.held = null; P.target = null; P.prompt = {}; P.charge = -1; P.holdE = null; P.spraying = false; P.onGround = true;
-        P.role = CF.settings.role === 'waiter' ? 'waiter' : 'chef';
         smoothY = 0;
         placeCamera(0);
     };
@@ -69,6 +67,7 @@ CF.Player = (() => {
         if (e.repeat || !inGame()) return;
         if (c === 'Tab') { CF.UI.toggleBook(); return; }
         if (c === 'Enter') { e.preventDefault(); CF.UI.openChat(); return; }
+        if (c === 'KeyJ') { CF.Goals.togglePanel(); return; }
         if (!P.active || CF.MG.busy()) return;
         if (c === 'KeyE') pressE();
         else if (c === 'KeyF') pressF();
@@ -137,6 +136,9 @@ CF.Player = (() => {
             if (it) { CF.Sync.act({ t: 'grab', id: it.id }); CF.Audio.play('grab'); }
         } else if (tg.kind === 'st' && (tg.sid === 'plates' || tg.sid === 'bowls')) {
             CF.Sync.act({ t: 'take', k: tg.sid });
+        } else if (tg.kind === 'st' && tg.sid === 'pantry') {
+            // grab one straight out of its crate / basket
+            CF.Stations.takeFromPantry(tg.part);
         }
     }
     function drop() {
@@ -303,7 +305,7 @@ CF.Player = (() => {
     function placeCamera(dt) {
         const hs = Math.hypot(P.vel.x, P.vel.z);
         if (P.onGround) bob += hs * dt * 2.4;
-        const by = P.onGround ? Math.sin(bob * 2) * 0.03 * CF.clamp(hs / 4, 0, 1) : 0;
+        const by = P.onGround && CF.settings.bob !== false ? Math.sin(bob * 2) * 0.03 * CF.clamp(hs / 4, 0, 1) : 0;
         smoothY = dt > 0 && P.onGround ? CF.damp(smoothY, P.pos.y, 16, dt) : P.pos.y;
         if (Math.abs(smoothY - P.pos.y) > 0.5) smoothY = P.pos.y;
         cam.position.set(P.pos.x, smoothY + EYE + by, P.pos.z);

@@ -7,7 +7,7 @@ CF.MG = (() => {
     const PW = 720, PH = 480;
     let cv, g, dpr = 1, sc = 1, ox = 0, oy = 0, data = null, st = null, endedAt = 0, doneT = 0, result = null, t = 0, flash = 0;
     const cur = { x: PW / 2, y: PH / 2 };
-    const has = id => CF.Profile.has(id) && CF.SKILL[id] && CF.Player.role === CF.SKILL[id].role;
+    const has = id => CF.Profile.has(id);
     const hex = n => '#' + (n >>> 0).toString(16).padStart(6, '0');
     const GOOD = '#46d17a', OK = '#ffd166', BAD = '#ff6b5b';
 

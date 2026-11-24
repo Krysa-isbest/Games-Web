@@ -27,6 +27,7 @@
         <div id="hud-event" class="hidden"></div>
         <div id="fire-warn" class="hidden"></div>
         <div id="tickets"></div>
+        <div id="goals"></div>
         <div id="hud-role"><div id="role-badge"></div><div id="xp"><div id="xp-fill"></div></div></div>
         <div id="crosshair"></div>
         <div id="hold-ring" class="hidden"><svg viewBox="0 0 48 48"><circle class="bg" cx="24" cy="24" r="20"/><circle id="hold-arc" cx="24" cy="24" r="20"/></svg></div>
@@ -34,9 +35,10 @@
         <div id="charge" class="hidden"><div id="charge-fill"></div><span>THROW</span></div>
         <div id="held"></div>
         <div id="served" class="hidden"></div>
-        <div id="hud-hint"><b>Tab</b> recipes · <b>Enter</b> chat · <b>Esc</b> pause</div>
+        <div id="hud-hint"><b>Tab</b> recipes · <b>J</b> goals · <b>Enter</b> chat · <b>Esc</b> pause</div>
     </div>
 
+    <div id="fps" class="hidden">-- fps</div>
     <div id="toasts"></div>
     <div id="chat"><div id="chat-log"></div><input id="chat-input" class="hidden" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Say something… (Enter to send)"></div>
     <div id="book" class="hidden"></div>
@@ -64,10 +66,10 @@
             <h3>Your chef</h3>
             <label class="field"><span>Name</span><input id="chef-name" maxlength="14" autocomplete="off" spellcheck="false"></label>
             <div class="field"><span>Hat colour</span><div id="hat-colors" class="swatches"></div></div>
-            <div class="field"><span>Role</span><div id="role-pick" class="role-pick"></div></div>
+            <p class="menu-note">Everyone cooks and serves: chop, fry, plate, greet guests and carry dishes out, however you like.</p>
             <div id="menu-level"></div>
         </div>
-        <div class="version">Cooking Frenzy v1.0 · 1 to 4 chefs</div>
+        <div class="version">Cooking Frenzy v1.3 · 1 to 4 chefs</div>
     </div>
 
     <!-- ================= Join ================= -->
@@ -87,7 +89,6 @@
             <h2>🏠 Kitchen lobby</h2>
             <div class="code-box"><span>Room code</span><b id="lobby-code">-----</b><button id="btn-copy" class="btn small">Copy</button></div>
             <ul id="lobby-list"></ul>
-            <div class="field"><span>Your role</span><div id="lobby-role" class="role-pick small"></div></div>
             <div id="lobby-host">
                 <label id="lobby-save-row" class="check hidden"><input id="lobby-save" type="checkbox" checked> <span id="lobby-save-label">Continue my saved restaurant</span></label>
                 <button id="btn-start" class="btn go big wide">Start the shift ▶</button>
@@ -119,7 +120,7 @@
 
     <!-- ================= Settings ================= -->
     <div id="settings" class="modal over hidden">
-        <div class="card narrow">
+        <div class="card">
             <h2>⚙️ Settings</h2>
             <div id="settings-body"></div>
             <div class="row end"><button class="btn" data-close="settings">Done</button></div>
@@ -140,13 +141,19 @@
                         <li><b>Wheel</b> hold closer / further · <b>R</b> rotate what you hold</li>
                         <li><b>E</b> use what you look at (hold <b>E</b> to flatten dough)</li>
                         <li><b>F</b> use your tool: salt, pepper, extinguisher (hold)</li>
-                        <li><b>Tab</b> recipe book · <b>Enter</b> chat · <b>Esc</b> pause</li>
+                        <li><b>Tab</b> recipe book · <b>J</b> goals · <b>Enter</b> chat · <b>Esc</b> pause</li>
                     </ul>
                 </section>
                 <section>
                     <h3>☀️ A day in the kitchen</h3>
                     <p>Prep first: cut things, stock up, plan. Flip the <b>OPEN</b> sign by the pass when you are ready (it opens by itself after 90 seconds). Service lasts 8 minutes, then there is one last round to finish the orders.</p>
+                    <p>The <b>goals</b> panel shows three goals for the day with cash rewards. New chefs get a <b>tutorial</b>: follow the yellow arrow through your first burger.</p>
                     <p>Money carries over. At the end of each day you can buy upgrades and new dishes, and spend your skill points.</p>
+                </section>
+                <section>
+                    <h3>🥕 The pantry</h3>
+                    <p>Every ingredient has its own bin: produce crates on the long counter, buns and dough in the baskets above, meat and cheese in the deli case. Click a bin or press <b>E</b> on it to take one. Fresh, whole ones go back with <b>E</b> (or just drop them into their bin).</p>
+                    <p>Running low? Order more at the <b>terminal</b> by the back door: the truck puts the food straight into the bins. You get a small free delivery every morning.</p>
                 </section>
                 <section>
                     <h3>🔪 Cooking</h3>
@@ -155,8 +162,9 @@
                 </section>
                 <section>
                     <h3>🛎️ Serving</h3>
-                    <p>Put finished dishes on the <b>pass</b> and ring the <b>bell</b>: the runner takes them to the right table. Waiters can carry plates out themselves (E on the guest) for bigger tips, and greet guests so they wait longer.</p>
-                    <p>Dirty dishes come back to the red tray by the sink. Wash them (E at the sink) or buy more. Order food at the <b>terminal</b> by the back door, then press E on the crate.</p>
+                    <p>Put finished dishes on the <b>pass</b> and ring the <b>bell</b>: the runner takes them to the right table. Or carry a plate out yourself and press <b>E</b> on the guest for a bigger tip. Greet waiting guests (E) and they wait longer.</p>
+                    <p>You can hand a guest anything, but they judge it against their order: the wrong dish, missing parts or food without a plate cost stars and pay.</p>
+                    <p>Clear finished tables before the busser does (he takes 25 seconds). Dirty dishes go to the red tray by the sink: wash them (E at the sink) or buy more.</p>
                 </section>
                 <section>
                     <h3>🔥 Chaos</h3>
@@ -165,7 +173,7 @@
                 <section>
                     <h3>🎲 Rush events</h3>
                     <p>🎩 Food critic (triple pay at 4★) · 🏃 Lunch rush · 🐀 Rat raid (throw things at it!) · 📋 Health inspector · 🛢️ Grease spill · 🔦 Blackout.</p>
-                    <p>👨‍🍳 Cooks and 🤵 waiters earn EXP for their own jobs and level up to unlock skills.</p>
+                    <p>⭐ Every job you do earns EXP. Level up for skill points: kitchen and service skills, all of them always work.</p>
                 </section>
             </div>
             <div class="row end"><button class="btn" data-close="howto">Got it</button></div>
@@ -198,6 +206,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
     <script src="js/core.js"></script>
+    <script src="js/mymusic.js"></script>
     <script src="js/models.js"></script>
     <script src="js/world.js"></script>
     <script src="js/physics.js"></script>
@@ -205,6 +214,7 @@
     <script src="js/cooking.js"></script>
     <script src="js/stations.js"></script>
     <script src="js/orders.js"></script>
+    <script src="js/goals.js"></script>
     <script src="js/minigames.js"></script>
     <script src="js/player.js"></script>
     <script src="js/net.js"></script>

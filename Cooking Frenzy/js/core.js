@@ -5,7 +5,7 @@
 // CF.Player (local chef), CF.Net (PeerJS), CF.Sync (authority + replication), CF.UI (DOM), CF.Game (boot + loop).
 const CF = window.CF = {};
 
-CF.VERSION = '1.0';
+CF.VERSION = '1.3';
 CF.rand = (a, b) => a + Math.random() * (b - a);
 CF.randi = (a, b) => Math.floor(CF.rand(a, b + 1));
 CF.choice = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -22,9 +22,41 @@ CF.money = v => '$' + Math.round(v);
 CF.HAT_COLORS = ['#ff5a5f', '#3fa7ff', '#46d17a', '#ffc93c', '#b77dff', '#ff8fd0'];
 
 // ---------- Settings ----------
-CF.settings = Object.assign({
-    name: 'Chef ' + CF.randi(10, 99), color: 0, role: 'chef', sens: 1, fov: 75, vol: 0.7, music: 0.4, shadows: true, invertY: false
-}, (() => { try { return JSON.parse(localStorage.getItem('cf-settings')) || {}; } catch (e) { return {}; } })());
+// Graphics: gfx = quality preset (low/medium/high/ultra/custom), scale = render resolution,
+// shadowQ = shadow resolution off/low/medium/high (1024/2048/4096), soft = soft shadow edges, lights = lamp lights off/on/all,
+// reflect = reflections off/low/high, ao = fake ambient shading, aniso = texture filtering, particles = low/high,
+// fireLights = fire lights up the room, aa = anti-aliasing (after reload)
+// Not in presets: bright = exposure, fpsCap = frame limit (0 = none), fps = FPS counter, bob = head bob
+// Audio: vol = sound effects, musicSrc = builtin / mine (the music folder) / off, music = built-in music volume,
+// myMusic = volume of your own songs. tutorial = show the first-day tutorial objectives
+CF.GFX_PRESETS = {
+    low: { scale: 0.75, shadowQ: 'off', soft: false, lights: 'off', reflect: 'off', ao: false, aniso: 1, particles: 'low', fireLights: false, aa: false },
+    medium: { scale: 1, shadowQ: 'low', soft: false, lights: 'off', reflect: 'low', ao: true, aniso: 4, particles: 'high', fireLights: true, aa: true },
+    high: { scale: 1, shadowQ: 'medium', soft: true, lights: 'on', reflect: 'high', ao: true, aniso: 8, particles: 'high', fireLights: true, aa: true },
+    ultra: { scale: 1.25, shadowQ: 'high', soft: true, lights: 'all', reflect: 'high', ao: true, aniso: 16, particles: 'high', fireLights: true, aa: true }
+};
+CF.GFX_KEYS = Object.keys(CF.GFX_PRESETS.high);
+CF.settings = (() => {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('cf-settings')) || {}; } catch (e) {}
+    const s = Object.assign({
+        name: 'Chef ' + CF.randi(10, 99), color: CF.randi(0, 5), sens: 1, fov: 75, vol: 0.7, music: 0.4, invertY: false,
+        gfx: 'high', bright: 1, fps: false, bob: true, fpsCap: 0, musicSrc: 'builtin', myMusic: 0.6, tutorial: true
+    }, CF.GFX_PRESETS.high, saved);
+    delete s.role;      // v1.3: no more Cook / Waiter roles
+    // settings saved before v1.2.1: re-apply the chosen preset, or translate the old shadow levels of a custom setup
+    if (!saved.v) {
+        if (saved.shadows === false && saved.shadowQ === undefined) { s.shadowQ = 'off'; s.gfx = 'custom'; }
+        if (CF.GFX_PRESETS[s.gfx]) Object.assign(s, CF.GFX_PRESETS[s.gfx]);
+        else if (saved.shadowQ) {
+            s.soft = saved.shadowQ === 'high' || saved.shadowQ === 'ultra';
+            s.shadowQ = { ultra: 'high', high: 'medium', medium: 'medium', low: 'low', off: 'off' }[saved.shadowQ] || 'medium';
+        }
+    }
+    s.v = 2;
+    delete s.shadows;
+    return s;
+})();
 CF.saveSettings = () => { try { localStorage.setItem('cf-settings', JSON.stringify(CF.settings)); } catch (e) {} };
 
 // ---------- Items ----------
@@ -68,6 +100,11 @@ CF.ITEMS = {
     crate:   { name: 'Delivery Crate', icon: '📦', shape: { t: 'box', s: [0.5, 0.34, 0.4] }, mass: 4 }
 };
 for (const k in CF.ITEMS) CF.ITEMS[k].key = k;
+// "tomatoes", "beef patties"... for messages
+CF.plural = type => {
+    const n = CF.ITEMS[type].name.toLowerCase();
+    return { tomato: 'tomatoes', potato: 'potatoes', lettuce: 'lettuce', patty: 'beef patties' }[type] || n + 's';
+};
 
 // What a raw ingredient becomes when it is chopped or flattened, for the recipe book
 CF.PIECES = { tomato: 'tomato_slice', onion: 'onion_ring', lettuce: 'lettuce_leaf', potato: 'fries', cheese: 'cheese_slice', salami: 'salami_slice', mushroom: 'mushroom_slice' };
@@ -141,6 +178,24 @@ CF.SHOP = [
 CF.PRICE = {};
 CF.SHOP.forEach(c => c.items.forEach(([k, p]) => { CF.PRICE[k] = p; }));
 
+// ---------- Pantry ----------
+// Every raw ingredient has its own bin: produce crates on the storage counter, bakery baskets on the shelf above,
+// a chilled deli case on the coral counter. cap = how many fit, start = a new restaurant's stock,
+// daily = the free morning delivery. Bought ingredients are put away into the bins (never over cap).
+CF.PANTRY = {
+    tomato:   { sec: 'produce', cap: 16, start: 5, daily: 2 },
+    onion:    { sec: 'produce', cap: 12, start: 3, daily: 1 },
+    lettuce:  { sec: 'produce', cap: 10, start: 3, daily: 1 },
+    potato:   { sec: 'produce', cap: 12, start: 0, daily: 0 },
+    mushroom: { sec: 'produce', cap: 12, start: 0, daily: 0 },
+    bun:      { sec: 'bakery',  cap: 16, start: 5, daily: 2 },
+    dough:    { sec: 'bakery',  cap: 10, start: 0, daily: 0 },
+    patty:    { sec: 'deli',    cap: 16, start: 5, daily: 2 },
+    steak:    { sec: 'deli',    cap: 10, start: 0, daily: 0 },
+    salami:   { sec: 'deli',    cap: 8,  start: 0, daily: 0 },
+    cheese:   { sec: 'deli',    cap: 8,  start: 2, daily: 1 }
+};
+
 // ---------- Upgrades (bought between shifts) ----------
 CF.UPGRADES = [
     { id: 'knives',   icon: '🔪', name: 'Razor Knives',     price: 80,  desc: 'Chopping is far more forgiving.' },
@@ -161,13 +216,14 @@ CF.EVENTS = {
     blackout:  { name: 'Blackout',         icon: '🔦', col: '#6c63ff', desc: 'The lights are out! Burners still work...' }
 };
 
-// ---------- Roles, EXP and skills (each player picks Cook or Waiter, progress is saved per player) ----------
-CF.ROLES = {
-    chef:   { name: 'Cook',   icon: '👨‍🍳', col: '#ff6b5b', desc: 'Chop, fry, bake and plate. Earns EXP for every prep step and dish served.' },
-    waiter: { name: 'Waiter', icon: '🤵', col: '#2ec4b6', desc: 'Greet guests, carry plates to tables and clear them. Earns EXP and tips for great service.' }
+// ---------- EXP and skills (progress is saved per player) ----------
+// Everyone cooks AND serves: every job earns EXP and every learned skill always works.
+CF.SKILL_CATS = {
+    kitchen: { name: 'Kitchen skills', icon: '👨‍🍳', col: '#ff6b5b' },
+    service: { name: 'Service skills', icon: '🤵', col: '#2ec4b6' }
 };
 CF.SKILLS = {
-    chef: [
+    kitchen: [
         { id: 'quickknife', icon: '🔪', name: 'Quick Knife',    cost: 1, desc: 'Much wider cut zones and the hand stays out of the way.' },
         { id: 'flipper',    icon: '🥞', name: 'Flip Master',    cost: 1, desc: 'Flip sweet spot is 50% bigger.' },
         { id: 'nose',       icon: '👃', name: "Chef's Nose",    cost: 1, desc: 'See exact doneness % and seasoning when looking at food.' },
@@ -176,22 +232,23 @@ CF.SKILLS = {
         { id: 'mise',       icon: '🧠', name: 'Mise en Place',  cost: 2, desc: 'Chopping gives one extra piece.' },
         { id: 'fireproof',  icon: '🧯', name: 'Firefighter',    cost: 2, desc: 'Extinguisher is twice as strong and fire never makes you drop things.' }
     ],
-    waiter: [
+    service: [
         { id: 'sprinter', icon: '👟', name: 'Sprinter',      cost: 1, desc: '+20% movement speed.' },
-        { id: 'charmer',  icon: '😊', name: 'Charmer',       cost: 1, desc: '+30% tips on dishes you deliver.' },
+        { id: 'charmer',  icon: '😊', name: 'Charmer',       cost: 1, desc: '+30% tips on dishes you carry to the table yourself.' },
         { id: 'greeter',  icon: '👋', name: 'Warm Welcome',  cost: 1, desc: 'Greeted guests wait 40% longer (instead of 20%).' },
         { id: 'busser',   icon: '🧺', name: 'Busser',        cost: 1, desc: '+$4 for every table you clear.' },
-        { id: 'eagle',    icon: '🦅', name: 'Eagle Eye',     cost: 1, desc: 'Patience bars over every guest and matching plates glow on the pass.' },
+        { id: 'eagle',    icon: '🦅', name: 'Eagle Eye',     cost: 1, desc: 'Matching table numbers glow over the plates on the pass.' },
         { id: 'steady',   icon: '🍽️', name: 'Steady Hands',  cost: 2, desc: 'Plates you carry never break.' },
         { id: 'upsell',   icon: '💬', name: 'Upseller',      cost: 2, desc: 'Guests you greet often order a drink: +$5 on their bill.' }
     ]
 };
 CF.SKILL = {};
-for (const r in CF.SKILLS) CF.SKILLS[r].forEach(s => { s.role = r; CF.SKILL[s.id] = s; });
+for (const r in CF.SKILLS) CF.SKILLS[r].forEach(s => { s.cat = r; CF.SKILL[s.id] = s; });
 CF.xpNeed = lvl => 60 + lvl * 40;   // EXP to go from lvl to lvl+1
 
 CF.Profile = {
-    data: Object.assign({ xp: 0, skills: [], days: 0, best: 0 }, (() => { try { return JSON.parse(localStorage.getItem('cf-profile')) || {}; } catch (e) { return {}; } })()),
+    // tutDone = finished the first-day tutorial
+    data: Object.assign({ xp: 0, skills: [], days: 0, best: 0, tutDone: false }, (() => { try { return JSON.parse(localStorage.getItem('cf-profile')) || {}; } catch (e) { return {}; } })()),
     save() { try { localStorage.setItem('cf-profile', JSON.stringify(this.data)); } catch (e) {} },
     level() { let l = 1, xp = this.data.xp; while (xp >= CF.xpNeed(l)) { xp -= CF.xpNeed(l); l++; } return l; },
     progress() { let l = 1, xp = this.data.xp; while (xp >= CF.xpNeed(l)) { xp -= CF.xpNeed(l); l++; } return { level: l, into: xp, need: CF.xpNeed(l) }; },
@@ -207,8 +264,6 @@ CF.Profile = {
     // returns true when this gain crossed a level
     gain(xp) { const before = this.level(); this.data.xp += Math.round(xp); this.save(); return this.level() > before; }
 };
-// Active skills for the role a player plays right now
-CF.activeSkills = (role, skills) => (skills || []).filter(id => CF.SKILL[id] && CF.SKILL[id].role === role);
 
 // ---------- Audio (all synthesized) ----------
 CF.Audio = {
@@ -330,12 +385,23 @@ CF.Audio = {
     stopLoops() { for (const k in this.loops) this.loop(k, 0); }
 };
 
-// ---------- Tiny music box (main menu + shift) ----------
+// ---------- Music: the tiny built-in music box (main menu + shift), or your own songs (CF.MyMusic) ----------
 CF.Music = {
-    timer: null, step: 0, mode: null,
-    play(mode) {
-        if (this.mode === mode) return;
-        this.stop(); this.mode = mode;
+    timer: null, step: 0, mode: null, synth: null,
+    // what should play now: 'menu' | 'shift'
+    play(mode) { this.mode = mode; this.refresh(); },
+    // pick the source from the settings (My music falls back to the built-in music while there are no songs)
+    refresh() {
+        const src = CF.settings.musicSrc || 'builtin', mine = src === 'mine' && CF.MyMusic && CF.MyMusic.ready();
+        if (mine) { this.stopSynth(); if (this.mode && CF.Audio.ctx) CF.MyMusic.start(); }
+        else {
+            if (CF.MyMusic) CF.MyMusic.stop();
+            if (src === 'off' || !this.mode) this.stopSynth(); else this.startSynth(this.mode);
+        }
+    },
+    startSynth(mode) {
+        if (this.synth === mode && this.timer) return;
+        this.stopSynth(); this.synth = mode;
         const A = CF.Audio; if (!A.ctx) return;
         const menu = [[523, 659], [587, 698], [659, 784], [587, 740], [523, 659], [440, 587], [494, 622], [523, 659]];
         const shift = [[392, 494], [440, 523], [392, 494], [349, 440], [392, 494], [523, 659], [494, 587], [440, 523]];
@@ -351,5 +417,6 @@ CF.Music = {
             if (mode !== 'menu' && i % 4 === 2) A.noise(0.04, { freq: 7000, vol: 0.04 * v });
         }, tempo * 1000);
     },
-    stop() { if (this.timer) clearInterval(this.timer); this.timer = null; this.mode = null; }
+    stopSynth() { if (this.timer) clearInterval(this.timer); this.timer = null; this.synth = null; },
+    stop() { this.mode = null; this.refresh(); }
 };

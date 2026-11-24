@@ -162,7 +162,7 @@ CF.UI = (() => {
         for (let i = list.length; i < rail.length; i++) rail[i].sp.visible = false;
     }
     function updateEagle() {
-        const O = CF.Orders, on = CF.Player.role === 'waiter' && CF.Profile.has('eagle');
+        const O = CF.Orders, on = CF.Profile.has('eagle');
         const dishes = on ? CF.Items.all().filter(it => it.def.dish && !it.s.dirty && it.contents.length && !it.container && it.heldBy === null && CF.World.inZone(CF.World.zones.pass, it.mesh.position)).slice(0, 6) : [];
         let n = 0;
         for (const d of dishes) {
@@ -206,10 +206,10 @@ CF.UI = (() => {
         const el = $('#hud-phase');
         if (cache.phaseCls !== ph) { cache.phaseCls = ph; el.className = 'pill phase ' + ph; }
         const time = ph === 'prep' ? s.prep : ph === 'open' ? s.time : ph === 'closing' ? s.closeT : 0;
-        setText('#hud-time', ph === 'summary' ? '--:--' : CF.fmtTime(time));
+        setText('#hud-time', ph === 'summary' || (ph === 'prep' && CF.Goals.holdPrep()) ? '--:--' : CF.fmtTime(time));
         setText('#hud-money', cash(s.money));
         $('#hud-money').classList.toggle('neg', s.money < 0);
-        setText('#hud-sub', ph === 'prep' ? 'Prep time: flip the OPEN sign by the pass when you are ready' : ph === 'closing' ? 'Kitchen closing: finish the last orders!' : '');
+        setText('#hud-sub', ph === 'prep' ? (CF.Goals.holdPrep() ? 'Prep time: the restaurant opens when you flip the OPEN sign by the pass' : 'Prep time: flip the OPEN sign by the pass when you are ready') : ph === 'closing' ? 'Kitchen closing: finish the last orders!' : '');
         const ev = s.event;
         if (ev && CF.EVENTS[ev.k]) {
             const E = CF.EVENTS[ev.k];
@@ -224,13 +224,12 @@ CF.UI = (() => {
         ticketT = 0.2;
         const O = CF.Orders, box = $('#tickets');
         const list = O.customers.filter(c => c.st === 'wait').sort((a, b) => (a.pat / a.max) - (b.pat / b.max)).slice(0, 8);
-        const waiters = CF.Sync.hasWaiters();
-        const key = list.map(c => c.id + ':' + (c.greeted ? 1 : 0)).join(',') + '|' + waiters;
+        const key = list.map(c => c.id + ':' + (c.greeted ? 1 : 0)).join(',');
         if (key !== ticketKey) {
             ticketKey = key;
             box.innerHTML = list.map(c => {
                 const o = O.orderText(c), seat = CF.World.seats[c.seat];
-                return `<div class="ticket ${c.critic ? 'critic' : ''}" data-c="${c.id}"><div class="t-top"><span class="t-table">T${seat ? seat.table + 1 : '?'}</span>${c.critic ? '<span class="t-crit">🎩 CRITIC</span>' : ''}${waiters && !c.greeted ? '<span class="t-wave" title="Not greeted yet">👋</span>' : ''}</div>`
+                return `<div class="ticket ${c.critic ? 'critic' : ''}" data-c="${c.id}"><div class="t-top"><span class="t-table">T${seat ? seat.table + 1 : '?'}</span>${c.critic ? '<span class="t-crit">🎩 CRITIC</span>' : ''}${!c.greeted ? '<span class="t-wave" title="Not greeted yet: greet them (E) and they wait longer">👋</span>' : ''}</div>`
                     + `<div class="t-dish"><span>${o.rec.icon}</span><b>${esc(o.rec.name)}</b></div>${o.label ? `<div class="t-var">${esc(o.label)}</div>` : ''}<div class="t-bar"><i></i></div></div>`;
             }).join('');
         }
@@ -247,8 +246,8 @@ CF.UI = (() => {
         roleT -= dt;
         if (roleT > 0) return;
         roleT = 0.5;
-        const R = CF.ROLES[CF.Player.role] || CF.ROLES.chef, pr = CF.Profile.progress(), pts = CF.Profile.points();
-        setHTML('#role-badge', `<span class="rb" style="background:${R.col}">${R.icon} ${R.name}</span><b>Lv ${pr.level}</b>${pts > 0 ? `<em>+${pts} skill pt</em>` : ''}`);
+        const pr = CF.Profile.progress(), pts = CF.Profile.points();
+        setHTML('#role-badge', `<span class="rb">⭐ Chef</span><b>Lv ${pr.level}</b>${pts > 0 ? `<em>+${pts} skill pt</em>` : ''}`);
         $('#xp-fill').style.width = (pr.into / pr.need * 100).toFixed(1) + '%';
     }
     function updatePrompt() {
@@ -259,7 +258,7 @@ CF.UI = (() => {
             if (tg && tg.kind === 'item') {
                 const it = CF.Items.get(tg.id);
                 if (it) {
-                    const det = CF.Items.details(it, P.role === 'chef' && CF.Profile.has('nose'));
+                    const det = CF.Items.details(it, CF.Profile.has('nose'));
                     h += `<div class="p-name">${esc(CF.Items.label(it))}${contentsIcons(it)}</div>${det ? `<div class="p-det">${esc(det)}</div>` : ''}`;
                 }
             }
@@ -313,6 +312,7 @@ CF.UI = (() => {
         updateRole(dt);
         updatePrompt();
         updateFire();
+        CF.Goals.updateHud();
         if (servedT > 0) { servedT -= dt; if (servedT <= 0) show('#served', false); }
         railT -= dt;
         if (railT <= 0) { railT = 0.4; updateRail(); updateEagle(); }
@@ -372,7 +372,6 @@ CF.UI = (() => {
     function refreshMenu() {
         const sv = CF.Orders.load(), bc = $('#btn-continue');
         if (sv) { bc.innerHTML = `▶ Continue <small>Day ${sv.day} · ${cash(sv.money)}</small>`; show(bc, true); } else show(bc, false);
-        $('#role-pick').innerHTML = rolePickHTML();
         $('#hat-colors').innerHTML = CF.HAT_COLORS.map((c, i) => `<button class="sw ${i === CF.settings.color ? 'on' : ''}" data-hat="${i}" style="background:${c}" title="Hat colour"></button>`).join('');
         const pr = CF.Profile.progress(), pts = CF.Profile.points();
         $('#menu-level').innerHTML = `<div class="lv"><b>Level ${pr.level}</b><span>${pr.into}/${pr.need} XP</span></div><div class="xpbar"><i style="width:${(pr.into / pr.need * 100).toFixed(1)}%"></i></div>`
@@ -380,23 +379,6 @@ CF.UI = (() => {
         const nm = $('#chef-name');
         if (document.activeElement !== nm) nm.value = CF.settings.name;
     }
-    function rolePickHTML() {
-        return Object.keys(CF.ROLES).map(k => {
-            const r = CF.ROLES[k];
-            return `<button class="role ${CF.Player.role === k ? 'on' : ''}" data-role="${k}" style="--rc:${r.col}"><span class="ic">${r.icon}</span><b>${r.name}</b><small>${esc(r.desc)}</small></button>`;
-        }).join('');
-    }
-    U.setRole = r => {
-        if (r !== 'chef' && r !== 'waiter') return;
-        CF.Player.role = r;
-        CF.settings.role = r;
-        CF.saveSettings();
-        if (CF.Sync.mode !== 'off') CF.Sync.act({ t: 'role', role: r });
-        for (const el of CF.$$('.role-pick')) el.innerHTML = rolePickHTML();
-        if (isOpen('summary')) renderSummary();
-        roleT = 0;
-        CF.Game.refreshMenuChef();
-    };
     U.showLobby = () => {
         for (const id of MODALS) show('#' + id, false);
         show('#menu', true);
@@ -410,12 +392,10 @@ CF.UI = (() => {
         const ps = Object.values(S.players).sort((a, b) => a.pid - b.pid);
         let h = '';
         for (const p of ps) {
-            const R = CF.ROLES[p.role] || CF.ROLES.chef;
-            h += `<li><span class="dot" style="background:${esc(p.color)}"></span><b>${esc(p.name)}</b><span class="tag" style="--rc:${R.col}">${R.icon} ${R.name}</span>${p.pid === 0 ? '<em>host</em>' : ''}${p.pid === S.myPid ? '<em class="you">you</em>' : ''}</li>`;
+            h += `<li><span class="dot" style="background:${esc(p.color)}"></span><b>${esc(p.name)}</b>${p.level ? `<span class="tag">⭐ Lv ${p.level}</span>` : ''}${p.pid === 0 ? '<em>host</em>' : ''}${p.pid === S.myPid ? '<em class="you">you</em>' : ''}</li>`;
         }
         for (let i = ps.length; i < 4; i++) h += '<li class="empty">Waiting for a chef…</li>';
         $('#lobby-list').innerHTML = h;
-        $('#lobby-role').innerHTML = rolePickHTML();
         show('#lobby-host', host);
         show('#lobby-wait', !host);
         const sv = CF.Orders.load();
@@ -443,20 +423,27 @@ CF.UI = (() => {
         for (const k in cart) t += (CF.PRICE[k] || 0) * cart[k];
         return Math.round(t * 100) / 100;
     }
+    // how many more of an ingredient fit into its pantry bin (counting what is already on the truck)
+    const shopMax = k => CF.PANTRY[k] ? CF.Stations.room(k) : 30;
     function renderShop() {
-        const money = CF.Orders.state.money, total = cartTotal(), un = CF.Orders.state.unlocks || {};
+        const money = CF.Orders.state.money, total = cartTotal(), un = CF.Orders.state.unlocks || {}, st = CF.Stations.state;
         let h = `<div class="shop-head"><h2>🛒 Fresh Market</h2><div class="pill money ${money < 0 ? 'neg' : ''}">${cash(money)}</div></div>`;
         h += '<div class="kits"><span>Quick kits</span>' + Object.keys(KITS).filter(k => un[k]).map(k => `<button class="btn small" data-shop="kit" data-k="${k}">${KITS[k].label}</button>`).join('') + '</div>';
         h += '<div class="shop-cats">';
         for (const c of CF.SHOP) {
             h += `<div class="shop-cat"><h3>${esc(c.cat)}</h3>`;
             for (const [k, p] of c.items) {
-                const d = CF.ITEMS[k], n = cart[k] || 0;
-                h += `<div class="shop-row ${n ? 'on' : ''}"><span class="ic">${d.icon}</span><span class="nm">${esc(d.name)}</span><span class="pr">${price(p)}</span><button data-shop="-" data-k="${k}">−</button><b>${n}</b><button data-shop="+" data-k="${k}">+</button></div>`;
+                const d = CF.ITEMS[k], n = cart[k] || 0, max = shopMax(k);
+                let have = '';
+                if (CF.PANTRY[k]) {
+                    const s = (st.stock || {})[k] || 0, inc = (st.incoming || {})[k] || 0;
+                    have = `<small class="have ${s ? '' : 'none'}" title="In the pantry / fits">${s}/${CF.PANTRY[k].cap}${inc ? ` +${inc}🚚` : ''}</small>`;
+                } else if (k === 'plate' || k === 'bowl') have = `<small class="have">${st[k + 's']} clean</small>`;
+                h += `<div class="shop-row ${n ? 'on' : ''}"><span class="ic">${d.icon}</span><span class="nm">${esc(d.name)}${have}</span><span class="pr">${price(p)}</span><button data-shop="-" data-k="${k}">−</button><b>${n}</b><button data-shop="+" data-k="${k}" ${n >= max ? 'disabled title="The pantry bin is full"' : ''}>+</button></div>`;
             }
             h += '</div>';
         }
-        h += `</div><div class="shop-foot"><div class="tot">Total <b class="${total > money ? 'bad' : ''}">${price(total)}</b><small>Arrives at the back door in ${CF.Orders.has('express') ? 4 : 12}s · plates and bowls go straight onto their stacks · Shift+click adds 5</small></div>`
+        h += `</div><div class="shop-foot"><div class="tot">Total <b class="${total > money ? 'bad' : ''}">${price(total)}</b><small>Arrives in ${CF.Orders.has('express') ? 4 : 12}s · food goes straight into its pantry bin, plates and bowls onto their stacks, cookware onto the table by the back door · Shift+click adds 5</small></div>`
             + `<button class="btn small" data-shop="clear">Clear</button><button class="btn small" data-shop="close">Close</button><button class="btn go" data-shop="order" ${!total || total > money ? 'disabled' : ''}>Order</button></div>`;
         $('#shop-body').innerHTML = h;
     }
@@ -465,11 +452,17 @@ CF.UI = (() => {
         if (!b || b.disabled) return;
         const a = b.dataset.shop, k = b.dataset.k;
         if (a === '+' || a === '-') {
-            const n = CF.clamp((cart[k] || 0) + (a === '+' ? 1 : -1) * (e.shiftKey ? 5 : 1), 0, 30);
+            const n = CF.clamp((cart[k] || 0) + (a === '+' ? 1 : -1) * (e.shiftKey ? 5 : 1), 0, shopMax(k));
             if (n) cart[k] = n; else delete cart[k];
             renderShop();
         } else if (a === 'kit' && KITS[k]) {
-            for (const t in KITS[k].items) cart[t] = Math.min(30, (cart[t] || 0) + KITS[k].items[t]);
+            let full = false;
+            for (const t in KITS[k].items) {
+                const n = Math.min(shopMax(t), (cart[t] || 0) + KITS[k].items[t]);
+                if (n < (cart[t] || 0) + KITS[k].items[t]) full = true;
+                if (n) cart[t] = n; else delete cart[t];
+            }
+            if (full) U.toast('Some of it doesn\'t fit in the pantry, so the kit was made smaller.', 'info');
             renderShop();
         } else if (a === 'clear') { cart = {}; renderShop(); }
         else if (a === 'close') { show('#shop', false); backToGame(); }
@@ -510,6 +503,7 @@ CF.UI = (() => {
         const best = st.best && CF.RECIPES[st.best.r];
         h += `<div class="sum-money"><span>Today <b class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '' : '+'}${cash(net)}</b></span><span>Bank <b>${cash(s.money)}</b></span><span>Best day <b>${cash(s.best)}</b></span>`
             + (best ? `<span>Best dish <b>${best.icon} ${esc(best.name)} ${st.best.stars}★</b></span>` : '') + '</div>';
+        h += CF.Goals.summaryHTML();
         h += '<div class="sum-cols"><div class="sum-col"><h3>🛠️ Upgrades</h3>' + CF.UPGRADES.map(u => {
             const own = !!(s.upgrades || {})[u.id], can = host && !own && s.money >= u.price;
             return `<div class="shop-up ${own ? 'own' : ''}"><span class="ic">${u.icon}</span><div><b>${esc(u.name)}</b><small>${esc(u.desc)}</small></div><button class="btn small" data-sum="upgrade" data-id="${u.id}" ${can ? '' : 'disabled'}>${own ? '✓ Owned' : cash(u.price)}</button></div>`;
@@ -519,7 +513,7 @@ CF.UI = (() => {
             return `<div class="shop-up ${own ? 'own' : ''}"><span class="ic">${r.icon}</span><div><b>${esc(r.name)}</b><small>Sells for ${cash(r.price)}</small></div><button class="btn small" data-sum="unlock" data-id="${k}" ${can ? '' : 'disabled'}>${own ? '✓ On the menu' : cash(r.cost)}</button></div>`;
         }).join('');
         const pr = CF.Profile.progress(), pts = CF.Profile.points();
-        h += `<h3>🧑‍🍳 You</h3><div class="role-pick small">${rolePickHTML()}</div><div class="sum-you"><span>Level ${pr.level} · ${pr.into}/${pr.need} XP</span><button class="btn small ${pts ? 'glow' : ''}" data-sum="skills">Skills${pts ? ` (${pts} pt)` : ''}</button></div></div></div>`;
+        h += `<h3>🧑‍🍳 You</h3><div class="sum-you"><span>Level ${pr.level} · ${pr.into}/${pr.need} XP</span><button class="btn small ${pts ? 'glow' : ''}" data-sum="skills">Skills${pts ? ` (${pts} pt)` : ''}</button></div></div></div>`;
         if (!host) h += '<p class="note">Only the host buys upgrades and new dishes.</p>';
         h += `<div class="sum-foot"><button class="btn small" data-sum="quit">Quit to menu</button>${host ? `<button class="btn go big" data-sum="next">Start Day ${s.day + 1} ▶</button>` : '<span class="wait">Waiting for the host to start the next day…</span>'}</div>`;
         $('#summary-body').innerHTML = h;
@@ -540,11 +534,11 @@ CF.UI = (() => {
     function renderSkills() {
         const pr = CF.Profile.progress(), pts = CF.Profile.points();
         let h = `<div class="sk-head"><div><b>Level ${pr.level}</b> <span>${pr.into}/${pr.need} XP</span></div><div class="pts ${pts ? 'on' : ''}">${pts} skill point${pts === 1 ? '' : 's'}</div></div>`
-            + '<p class="note">You get a point every level. Skills only work while you play that role.</p><div class="sk-cols">';
-        for (const role of ['chef', 'waiter']) {
-            const R = CF.ROLES[role];
-            h += `<div class="sk-col"><h3 style="color:${R.col}">${R.icon} ${R.name} skills</h3>`;
-            for (const s of CF.SKILLS[role]) {
+            + '<p class="note">You get a point every level. Everyone cooks and serves, so every skill you learn always works.</p><div class="sk-cols">';
+        for (const cat in CF.SKILL_CATS) {
+            const R = CF.SKILL_CATS[cat];
+            h += `<div class="sk-col"><h3 style="color:${R.col}">${R.icon} ${R.name}</h3>`;
+            for (const s of CF.SKILLS[cat]) {
                 const own = CF.Profile.has(s.id), can = !own && pts >= s.cost;
                 h += `<div class="skill ${own ? 'own' : ''}"><span class="ic">${s.icon}</span><div><b>${esc(s.name)}</b><small>${esc(s.desc)}</small></div><button class="btn small" data-skill="${s.id}" ${can ? '' : 'disabled'}>${own ? '✓ Learned' : `Learn · ${s.cost} pt`}</button></div>`;
             }
@@ -553,7 +547,7 @@ CF.UI = (() => {
         h += '</div><div class="row end"><button class="btn small" data-skill="reset">Reset skills</button><button class="btn" data-close="skills">Done</button></div>';
         $('#skills-body').innerHTML = h;
     }
-    function syncSkills() { if (CF.Sync.mode !== 'off') CF.Sync.act({ t: 'skills', list: CF.Profile.data.skills.slice() }); }
+    function syncSkills() { if (CF.Sync.mode !== 'off') CF.Sync.act({ t: 'skills', list: CF.Profile.data.skills.slice(), level: CF.Profile.level() }); }
     function refreshAll() {
         if (!inPlay()) refreshMenu();
         if (isOpen('summary')) renderSummary();
@@ -571,40 +565,112 @@ CF.UI = (() => {
     }
 
     // ---------- settings ----------
-    const SETS = [['sens', 'Mouse sensitivity', 0.2, 3, 0.05], ['fov', 'Field of view', 60, 100, 1], ['vol', 'Volume', 0, 1, 0.05], ['music', 'Music', 0, 1, 0.05]];
+    // settings rows: [key, label, kind, ...] kind = range (min, max, step) | select (options) | check
+    const SET_UI = [
+        ['Graphics', [
+            ['gfx', 'Quality preset', 'select', [['low', 'Low (fastest)'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra'], ['custom', 'Custom']]],
+            ['scale', 'Render scale', 'range', 0.5, 1.5, 0.05],
+            ['bright', 'Brightness', 'range', 0.6, 1.5, 0.05],
+            ['fpsCap', 'Frame limit', 'select', [[0, 'Unlimited'], [144, '144 FPS'], [120, '120 FPS'], [60, '60 FPS'], [30, '30 FPS']]],
+            ['fps', 'Show FPS', 'check']
+        ]],
+        ['Advanced graphics', [
+            ['shadowQ', 'Shadow quality', 'select', [['off', 'Off'], ['low', 'Low (1024)'], ['medium', 'Medium (2048)'], ['high', 'High (4096)']]],
+            ['soft', 'Soft shadow edges', 'check'],
+            ['lights', 'Lamp lights', 'select', [['off', 'Off (fastest)'], ['on', 'Every other lamp'], ['all', 'All lamps']]],
+            ['reflect', 'Reflections', 'select', [['off', 'Off (fastest)'], ['low', 'Subtle'], ['high', 'Full']]],
+            ['ao', 'Ambient shading', 'check'],
+            ['aniso', 'Texture filtering', 'select', [[1, 'Basic'], [4, '4x'], [8, '8x'], [16, '16x']]],
+            ['particles', 'Particles', 'select', [['low', 'Fewer'], ['high', 'All']]],
+            ['fireLights', 'Fire lights up the room', 'check'],
+            ['aa', 'Anti-aliasing (after reload)', 'check']
+        ]],
+        ['Controls', [
+            ['sens', 'Mouse sensitivity', 'range', 0.2, 3, 0.05],
+            ['invertY', 'Invert mouse Y', 'check'],
+            ['fov', 'Field of view', 'range', 60, 100, 1],
+            ['bob', 'Head bob', 'check']
+        ]],
+        ['Audio', [
+            ['vol', 'Sound effects', 'range', 0, 1, 0.05],
+            ['musicSrc', 'Music', 'select', [['builtin', 'Built-in tunes'], ['mine', 'My music (the music folder)'], ['off', 'Off']]],
+            ['music', 'Built-in music volume', 'range', 0, 1, 0.05],
+            ['myMusic', 'My music volume', 'range', 0, 1, 0.05],
+            ['musicBtns', '', 'buttons', [['musicNext', '⏭ Next song'], ['musicReload', '🔄 Look for new songs']]],
+            ['musicNote', '', 'note']
+        ]],
+        ['Gameplay', [
+            ['tutorial', 'Tutorial for new chefs', 'check'],
+            ['tutBtns', '', 'buttons', [['tutRestart', '🎓 Play the tutorial again']]]
+        ]]
+    ];
+    const GFX_KEYS = CF.GFX_KEYS;
     const fmtSet = (k, v) => k === 'fov' ? Math.round(v) + '°' : k === 'sens' ? (+v).toFixed(2) : Math.round(v * 100) + '%';
     function buildSettings() {
         const body = $('#settings-body');
-        body.innerHTML = SETS.map(([k, label, a, b, s]) => `<label class="set-row"><span>${label}</span><input type="range" min="${a}" max="${b}" step="${s}" data-set="${k}"><output data-out="${k}"></output></label>`).join('')
-            + '<label class="set-row check"><span>Shadows</span><input type="checkbox" data-set="shadows"></label>'
-            + '<label class="set-row check"><span>Invert mouse Y</span><input type="checkbox" data-set="invertY"></label>';
+        body.innerHTML = SET_UI.map(([title, rows]) => `<details class="set-group" open><summary class="set-head">${title}</summary>` + rows.map(r => {
+            const [k, label, kind] = r;
+            if (kind === 'range') return `<label class="set-row"><span>${label}</span><input type="range" min="${r[3]}" max="${r[4]}" step="${r[5]}" data-set="${k}"><output data-out="${k}"></output></label>`;
+            if (kind === 'select') return `<label class="set-row sel"><span>${label}</span><select data-set="${k}">${r[3].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
+            if (kind === 'buttons') return `<div class="set-row btns">${r[3].map(([a, t]) => `<button class="btn small" data-act="${a}">${t}</button>`).join('')}</div>`;
+            if (kind === 'note') return `<p class="set-info" id="set-${k}"></p>`;
+            return `<label class="set-row check"><span>${label}</span><input type="checkbox" data-set="${k}"></label>`;
+        }).join('') + '</details>').join('') + '<p class="note set-note">Low = fastest · High = soft shadows and lamp light · Ultra = sharpest shadows and every lamp. Changing an advanced option switches the preset to Custom. Anti-aliasing changes after you reload the page.</p>';
+        body.addEventListener('click', e => {
+            const b = e.target.closest('[data-act]');
+            if (!b) return;
+            const a = b.dataset.act;
+            if (a === 'musicNext') { if (CF.MyMusic.playing()) CF.MyMusic.skip(); else U.toast(CF.settings.musicSrc === 'mine' ? 'No songs to skip yet: add some to the music folder.' : 'Pick "My music" first.', 'info'); }
+            else if (a === 'musicReload') CF.MyMusic.reload().then(() => U.toast(CF.MyMusic.status, CF.MyMusic.ready() ? 'good' : 'info'));
+            else if (a === 'tutRestart') {
+                CF.settings.tutorial = true; CF.saveSettings(); syncSettings();
+                CF.Goals.restartTutorial();
+                U.toast(CF.Game.mode === 'play' && CF.Sync.isHost ? '🎓 The tutorial starts again now.' : '🎓 The tutorial plays again on your next day in the kitchen.', 'good');
+            }
+            U.refreshMusic();
+        });
         const onSet = e => {
-            const k = e.target.dataset.set;
+            const el = e.target, k = el.dataset.set;
             if (!k) return;
-            const v = e.target.type === 'checkbox' ? e.target.checked : +e.target.value;
+            const v = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? (el.value !== '' && !isNaN(+el.value) ? +el.value : el.value) : +el.value;
             if (CF.settings[k] === v) return;
             CF.settings[k] = v;
+            if (k === 'gfx' && CF.GFX_PRESETS[v]) Object.assign(CF.settings, CF.GFX_PRESETS[v]);
+            else if (GFX_KEYS.includes(k)) CF.settings.gfx = 'custom';
             applySetting(k, v);
             CF.saveSettings();
-            const o = body.querySelector(`[data-out="${k}"]`);
-            if (o) o.textContent = fmtSet(k, v);
+            syncSettings();
         };
         body.addEventListener('input', onSet);
         body.addEventListener('change', onSet);
     }
-    U.openSettings = () => {
+    function syncSettings() {
         const body = $('#settings-body');
         for (const el of body.querySelectorAll('[data-set]')) {
             const k = el.dataset.set;
-            if (el.type === 'checkbox') el.checked = !!CF.settings[k]; else el.value = CF.settings[k];
+            if (el.type === 'checkbox') el.checked = CF.settings[k] !== false && !!CF.settings[k]; else el.value = CF.settings[k];
         }
         for (const o of body.querySelectorAll('[data-out]')) o.textContent = fmtSet(o.dataset.out, CF.settings[o.dataset.out]);
-        show('#settings', true);
+        U.refreshMusic();
+    }
+    U.openSettings = () => { syncSettings(); show('#settings', true); };
+    // the line under the music settings: how many songs, what plays now
+    U.refreshMusic = () => {
+        const el = $('#set-musicNote');
+        if (!el) return;
+        const M = CF.MyMusic, src = CF.settings.musicSrc;
+        let t = M.status;
+        if (src === 'mine' && M.playing() && M.now) t += ' · ▶ ' + M.now;
+        else if (src === 'mine' && !M.ready() && M.loaded) t += ' Until then the built-in tunes play.';
+        el.textContent = t;
     };
     function applySetting(k, v) {
         if (k === 'fov') { CF.World.camera.fov = v; CF.World.camera.updateProjectionMatrix(); }
         else if (k === 'vol') CF.Audio.setVolume(v);
-        else if (k === 'shadows') CF.World.setShadows(v);
+        else if (k === 'fps') show('#fps', !!v);
+        else if (k === 'musicSrc') CF.Music.refresh();
+        else if (k === 'myMusic') CF.MyMusic.setVolume(v);
+        else if (k === 'gfx' || GFX_KEYS.includes(k) || k === 'bright' || k === 'scale') CF.World.applyGraphics();
     }
 
     U.confirm = (text, ok, cb) => {
@@ -628,8 +694,6 @@ CF.UI = (() => {
         nm.addEventListener('input', () => { CF.settings.name = nm.value.replace(/[<>]/g, '').slice(0, 14); CF.saveSettings(); CF.Game.refreshMenuChef(); });
         nm.addEventListener('keydown', e => e.stopPropagation());
         document.addEventListener('click', e => {
-            const r = e.target.closest('[data-role]');
-            if (r) { U.setRole(r.dataset.role); CF.Audio.play('click'); return; }
             const hb = e.target.closest('[data-hat]');
             if (hb) { CF.settings.color = +hb.dataset.hat; CF.saveSettings(); refreshMenu(); CF.Game.refreshMenuChef(); CF.Audio.play('click'); return; }
             const c = e.target.closest('[data-close]');

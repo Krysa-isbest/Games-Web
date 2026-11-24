@@ -16,7 +16,6 @@ CF.Items = (() => {
     function defaultState(def) {
         const s = { c: [0, 0], up: 0, salt: 0, pepper: 0, dirty: 0, q: 1 };
         if (def.key === 'pot') { s.water = 0; s.soup = 0; s.sc = 0; s.ss = 0; s.stir = 1; }
-        if (def.key === 'crate') s.crate = [];
         return s;
     }
 
@@ -212,7 +211,7 @@ CF.Items = (() => {
         if (it.type === 'pot' && s.soup) out.push((s.sc >= 0.7 ? 'Ready' : 'Cooking') + (exact ? ` ${Math.round(s.sc * 100)}%` : '') + (s.stir < 0.35 ? ' · needs stirring!' : ''));
         if (it.type === 'pot' && !s.soup && s.water) { const n = I.deep(it).length; out.push(n ? n + ' ingredient' + (n > 1 ? 's' : '') : 'add 3 tomato + 1 onion'); }
         if (d.cont && it.contents.length && it.type !== 'pot') out.push(it.contents.length + ' on it');
-        if (it.type === 'crate') out.push((s.crate || []).length + ' items · E to open');
+        if (CF.PANTRY[it.type] && !it.container && CF.Stations.returnable(it)) out.push('↩ can go back in its bin');
         return out.join(' · ');
     };
 

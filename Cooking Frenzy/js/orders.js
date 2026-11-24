@@ -17,7 +17,8 @@ CF.Orders = (() => {
     const seatsBusy = {};   // seat idx -> customer id | 'dish:<id>'
     const tmp = new THREE.Vector3();
 
-    const newStats = () => ({ served: 0, stars: 0, earned: 0, tips: 0, spent: 0, fails: 0, broken: 0, fines: 0, bonus: 0, best: null, log: [] });
+    // greets / hand (dishes carried to a table yourself) / washed / cleared (tables) / fires feed the daily goals
+    const newStats = () => ({ served: 0, stars: 0, earned: 0, tips: 0, spent: 0, fails: 0, broken: 0, fines: 0, bonus: 0, best: null, log: [], greets: 0, hand: 0, washed: 0, cleared: 0, fires: 0 });
     O.has = id => !!O.state.upgrades[id];
 
     // ---------- save ----------
@@ -27,13 +28,15 @@ CF.Orders = (() => {
     };
     O.save = () => {
         const s = O.state;
-        try { localStorage.setItem('cf-save', JSON.stringify({ day: s.day, money: s.money, unlocks: s.unlocks, upgrades: s.upgrades, best: s.best })); } catch (e) {}
+        try { localStorage.setItem('cf-save', JSON.stringify({ day: s.day, money: s.money, unlocks: s.unlocks, upgrades: s.upgrades, best: s.best, stock: CF.Stations.state.stock })); } catch (e) {}
     };
     O.newGame = (fromSave) => {
         const s = O.state = blank();
         const sv = fromSave ? O.load() : null;
         if (sv) Object.assign(s, { day: sv.day, money: sv.money, unlocks: Object.assign(s.unlocks, sv.unlocks), upgrades: sv.upgrades || {}, best: sv.best || 0 });
         s.stats = newStats();
+        // saves from before the pantry have no stock: they start with the new-restaurant stock
+        CF.Stations.initStock(sv ? (sv.stock || null) : null);
     };
     O.hasSave = () => !!O.load();
 
@@ -45,10 +48,11 @@ CF.Orders = (() => {
         for (const c of O.customers) removeCustomerMesh(c);
         O.customers = []; O.rat = null;
         for (const k in seatsBusy) delete seatsBusy[k];
-        CF.Items.clear(); CF.Cook.reset(); CF.Stations.reset();
+        CF.Items.clear(); CF.Cook.reset(); CF.Stations.flushDeliveries(); CF.Stations.reset();
         CF.Stations.state.plates = 6 + (s.upgrades.morePlates || 0); CF.Stations.state.bowls = 4;
-        CF.Stations.setupKitchen(s.day === 1);
+        CF.Stations.setupKitchen();
         CF.World.setBlackout(false); CF.World.grease.visible = false; CF.World.inspector.visible = false;
+        CF.Goals.startDay();
         CF.Sync.broadcastToast(`☀️ Day ${s.day}: prep your station, then flip the sign to OPEN.`, 'info');
         CF.Sync.fullSync();
     };
@@ -72,6 +76,10 @@ CF.Orders = (() => {
         s.event = null; O.rat = null;
         const st = s.stats;
         st.rating = st.served + st.fails ? st.stars / (st.served + st.fails) : 0;
+        CF.Goals.endDay();
+        CF.Stations.flushDeliveries();          // paid-for food still on the truck goes into the bins (and the save)
+        const back = CF.Stations.returnLeftovers();
+        if (back) CF.Sync.broadcastToast(`🧺 ${back} unused ingredient${back > 1 ? 's' : ''} went back into the pantry.`, 'info');
         s.best = Math.max(s.best || 0, st.earned + st.tips);
         O.save();
         CF.Sync.endOfDay();
@@ -85,7 +93,8 @@ CF.Orders = (() => {
     O.update = (dt) => {
         const s = O.state;
         if (s.phase === 'prep') {
-            s.prep -= dt;
+            // the tutorial waits for you to flip the sign yourself
+            if (!CF.Goals.holdPrep()) s.prep -= dt;
             if (s.prep <= 0) O.open();
         } else if (s.phase === 'open') {
             s.time -= dt;
@@ -103,6 +112,7 @@ CF.Orders = (() => {
         }
         updateCustomers(dt);
         updateRat(dt);
+        CF.Goals.update(dt);
     };
 
     // ---------- customers ----------
@@ -130,8 +140,10 @@ CF.Orders = (() => {
         const seats = freeSeats(); if (!seats.length) return null;
         const seat = CF.choice(seats);
         const keys = Object.keys(CF.RECIPES).filter(k => s.unlocks[k]);
-        const r = CF.choice(keys), rec = CF.RECIPES[r];
-        const v = CF.choice(rec.vars).id;
+        // the tutorial's first guest wants the burger you just made
+        const tut = CF.Goals.tutorialActive() && !s.stats.served && !O.customers.length;
+        const r = tut ? 'burger' : CF.choice(keys), rec = CF.RECIPES[r];
+        const v = tut ? 'classic' : CF.choice(rec.vars).id;
         const ent = CF.World.entrance;
         const rowZ = seat.z + (seat.z <= 0 ? -1.5 : 1.5);
         const path = [[10.6, ent.z], [10.6, rowZ], [seat.x, rowZ], [seat.x, seat.z]];
@@ -140,7 +152,6 @@ CF.Orders = (() => {
         const c = { id: custId++, seat: seat.idx, x: ent.x, z: ent.z, ry: -Math.PI / 2, st: 'walk', col: critic ? 0xffd166 : new THREE.Color().setHSL(Math.random(), 0.6, 0.55).getHex(), path, pat: max, max, r, v, greeted: false, critic: !!critic, bonus: 0, eatT: 0, dish: 0 };
         seatsBusy[seat.idx] = c.id;
         O.customers.push(c);
-        if (!CF.Sync.hasWaiters()) c.greeted = true;
         return c;
     }
     function failOrder(c) {
@@ -158,7 +169,6 @@ CF.Orders = (() => {
         return [[seat.x, rowZ], [10.6, rowZ], [10.6, ent.z], [ent.x, ent.z]];
     }
     function updateCustomers(dt) {
-        const waiters = CF.Sync.hasWaiters();
         for (let k = O.customers.length - 1; k >= 0; k--) {
             const c = O.customers[k];
             if (c.st === 'walk' || c.st === 'leave') {
@@ -176,35 +186,39 @@ CF.Orders = (() => {
                 if (c.pat <= 0) failOrder(c);
             } else if (c.st === 'eat') {
                 c.eatT -= dt;
-                if (c.eatT <= 0) finishMeal(c, waiters);
+                if (c.eatT <= 0) finishMeal(c);
             }
         }
-        // a seat stays blocked by the dirty dish until someone clears the table
+        // a seat stays blocked by the dirty dish until someone clears the table (or the busser comes by)
         for (const seat of CF.World.seats) {
             const b = seatsBusy[seat.idx];
             if (typeof b !== 'string') continue;
             const it = CF.Items.get(+b.slice(5));
             const tz = CF.World.tables[seat.table].zone;
             if (!it || it.heldBy !== null || !CF.World.inZone(tz, it.mesh.position)) delete seatsBusy[seat.idx];
-            else if (!waiters && it.s.busT !== undefined) {
+            else if (it.s.busT !== undefined) {
                 it.s.busT -= dt;
                 if (it.s.busT <= 0) { delete it.s.busT; bus(it); delete seatsBusy[seat.idx]; }
             }
         }
     }
-    function finishMeal(c, waiters) {
+    const BUSSER_WAIT = 25;      // seconds before the busser clears a table nobody cleared
+    function finishMeal(c) {
         const dish = CF.Items.get(c.dish);
         c.st = 'leave'; c.path = leavePath(c);
-        if (dish) {
+        if (dish && !dish.def.dish) {
+            // food handed over without a plate: eaten, nothing to clear
+            CF.Items.remove(dish.id);
+            delete seatsBusy[c.seat];
+        } else if (dish) {
             for (const id of dish.contents.slice()) CF.Items.remove(id);
-            dish.s.dirty = 1; dish.s.bus = 1;
-            if (!waiters) dish.s.busT = 5;
+            dish.s.dirty = 1; dish.s.bus = 1; dish.s.busT = BUSSER_WAIT;
             CF.Items.touch(dish); CF.Items.refresh(dish);
             seatsBusy[c.seat] = 'dish:' + dish.id;
         } else delete seatsBusy[c.seat];
         CF.Sync.onFx('leave', { x: c.x, y: 1.5, z: c.z }, c.happy ? 'star' : null);
     }
-    // nobody plays waiter: the busser NPC brings dirty dishes to the sink tray
+    // a table nobody cleared: the busser brings the dirty dish to the sink tray
     function bus(it) {
         const z = CF.World.zones.dirty;
         delete it.s.bus;
@@ -215,11 +229,9 @@ CF.Orders = (() => {
     O.onGrab = (pid, it) => {
         if (!it.s.bus) return;
         delete it.s.bus; delete it.s.busT;
-        const P = CF.Sync.players[pid];
-        if (P && P.role === 'waiter') {
-            CF.Sync.xp(pid, 6, 'waiter');
-            if (CF.Sync.skill(pid, 'busser')) { O.earn(4, 'tips'); CF.Sync.toastTo(pid, '🧺 Table cleared +$4', 'good'); }
-        }
+        CF.Sync.xp(pid, 4);
+        if (O.state.stats) O.state.stats.cleared++;
+        if (CF.Sync.skill(pid, 'busser')) { O.earn(4, 'tips'); CF.Sync.toastTo(pid, '🧺 Table cleared +$4', 'good'); }
     };
 
     // ---------- scoring ----------
@@ -233,9 +245,10 @@ CF.Orders = (() => {
     }
     O.needsFor = needsFor;
     const range = (val, r, slope) => val >= r[0] && val <= r[1] ? 1 : Math.max(0, 1 - (val < r[0] ? r[0] - val : val - r[1]) * slope);
+    // dish = a plate / bowl, or any food handed over without one (that costs stars)
     O.score = (dish, order) => {
         const { rec, need, price } = needsFor(order);
-        const foods = CF.Items.deep(dish).filter(f => f.def.food);
+        const foods = (dish.def.dish ? [] : [dish]).concat(CF.Items.deep(dish)).filter(f => f.def.food);
         const used = new Set(), notes = [];
         let total = 0, count = 0, missing = 0;
         for (const n of need) {
@@ -264,9 +277,11 @@ CF.Orders = (() => {
         for (const f of foods) if (!used.has(f)) { extras += f.type === 'charcoal' || f.s.dirty ? 0.3 : 0.07; }
         if (extras) notes.push('Random extra stuff on the plate');
         quality -= Math.min(0.5, extras);
-        if (dish.type !== rec.dish) { quality -= 0.2; notes.push(`Should be served in a ${rec.dish}`); }
+        if (!foods.length) notes.unshift('There is nothing on it!');
+        if (!dish.def.dish) { quality -= 0.3; notes.unshift('Handed over without a plate!'); }
+        else if (dish.type !== rec.dish) { quality -= 0.2; notes.push(`Should be served in a ${rec.dish}`); }
         if (order.r === 'burger') {
-            const st = dish.contents.map(id => CF.Items.get(id)).filter(x => x && x.def.food);
+            const st = (dish.def.dish ? dish.contents.map(id => CF.Items.get(id)) : [dish]).filter(x => x && x.def.food);
             if (st.length && st[0].type === 'bun_bottom' && st[st.length - 1].type === 'bun_top') quality += 0.04; else { quality -= 0.1; notes.push('Burger stacked wrong'); }
         }
         const stars = CF.clamp(Math.round(quality * 10) / 2, 0, 5);
@@ -274,17 +289,19 @@ CF.Orders = (() => {
     };
 
     // ---------- serving ----------
+    // pid = who carried it to the table (null = the runner from the pass)
     O.serve = (dish, c, pid) => {
         const s = O.state, st = s.stats;
         const res = O.score(dish, c);
-        const waiterServed = pid !== null && CF.Sync.players[pid] && CF.Sync.players[pid].role === 'waiter';
+        const byHand = pid !== null && pid !== undefined && !!CF.Sync.players[pid];
         let pay = res.stars >= 1 ? res.price * (0.3 + 0.7 * res.stars / 5) : 0;
         let tip = 0;
         if (res.stars >= 3.5) {
             tip = res.price * 0.3 * (0.4 + 0.6 * c.pat / c.max) * (O.has('marketing') ? 1.2 : 1);
-            if (waiterServed) tip *= 1.25 * (CF.Sync.skill(pid, 'charmer') ? 1.3 : 1);
-            else if (CF.Sync.hasWaiters()) tip *= 0.5;
+            // carried to the table yourself: guests tip better than for the runner
+            if (byHand) tip *= 1.25 * (CF.Sync.skill(pid, 'charmer') ? 1.3 : 1);
         }
+        if (byHand) st.hand++;
         if (c.critic) { if (res.stars >= 4) { pay *= 3; st.bonus += pay * 2 / 3; } else { pay *= 0.5; } }
         pay += c.bonus;
         s.money += pay + tip;
@@ -300,9 +317,8 @@ CF.Orders = (() => {
         c.dish = dish.id; c.happy = res.stars >= 3.5;
         if (res.stars < 1) { c.st = 'eat'; c.eatT = 1.5; }
         else { c.st = 'eat'; c.eatT = 9 + Math.random() * 4; }
-        // EXP: the waiter who carried it, and every cook for the team effort
-        if (waiterServed) CF.Sync.xp(pid, 8 + res.stars * 3, 'waiter');
-        for (const p of Object.values(CF.Sync.players)) if (p.role === 'chef') CF.Sync.xp(p.pid, 2 + res.stars * 2.4, 'chef');
+        // EXP: everyone for the team effort, a bit more for whoever carried it out
+        for (const p of Object.values(CF.Sync.players)) CF.Sync.xp(p.pid, 2 + res.stars * 2.4 + (byHand && p.pid === pid ? 4 + res.stars * 1.5 : 0));
         CF.Sync.served({ cid: c.id, stars: res.stars, pay: Math.round(pay + tip), tip: Math.round(tip), notes: res.notes, r: c.r, critic: c.critic, by: pid, table: seat.table + 1, x: c.x, z: c.z });
         return res;
     };
@@ -343,17 +359,18 @@ CF.Orders = (() => {
             case 'greet': {
                 const c = O.customers.find(x => x.id === a.cid); if (!c || c.st !== 'wait' || c.greeted) return true;
                 c.greeted = true;
-                const isW = P && P.role === 'waiter';
-                c.pat = Math.min(c.max * 1.6, c.pat + c.max * (isW && CF.Sync.skill(pid, 'greeter') ? 0.4 : 0.2));
-                if (isW && CF.Sync.skill(pid, 'upsell') && Math.random() < 0.6) { c.bonus += 5; CF.Sync.toastTo(pid, '💬 They ordered a drink too! +$5', 'good'); }
-                if (isW) CF.Sync.xp(pid, 5, 'waiter');
+                c.pat = Math.min(c.max * 1.6, c.pat + c.max * (CF.Sync.skill(pid, 'greeter') ? 0.4 : 0.2));
+                if (CF.Sync.skill(pid, 'upsell') && Math.random() < 0.6) { c.bonus += 5; CF.Sync.toastTo(pid, '💬 They ordered a drink too! +$5', 'good'); }
+                CF.Sync.xp(pid, 3);
+                s.stats.greets++;
                 CF.Sync.onFx('greet', { x: c.x, y: 1.5, z: c.z }, 'pop');
                 return true;
             }
+            // hand a guest whatever you carry: a dish, or food without a plate. They judge it against their order.
             case 'serveTo': {
                 const c = O.customers.find(x => x.id === a.cid), d = CF.Items.get(a.id);
-                if (!c || c.st !== 'wait' || !d || !d.def.dish || d.heldBy !== pid || d.s.dirty || !d.contents.length) return true;
-                if (!c.greeted && P && P.role === 'waiter') CF.Sync.xp(pid, 3, 'waiter');
+                if (!c || c.st !== 'wait' || !d || d.heldBy !== pid) return true;
+                if (!(d.def.dish ? !d.s.dirty : d.def.food && !d.def.liquid)) return true;
                 c.greeted = true;
                 O.serve(d, c, pid);
                 return true;
@@ -492,7 +509,8 @@ CF.Orders = (() => {
             ph: s.phase, d: s.day, m: Math.round(s.money), ti: Math.round(s.time), pr: Math.round(s.prep), cl: Math.round(s.closeT),
             un: s.unlocks, up: s.upgrades, ev: s.event ? [s.event.k, Math.round(s.event.t)] : null, fail: s.fail,
             cu: O.customers.map(c => [c.id, c.seat, CF.r3(c.x), CF.r3(c.z), CF.r3(c.ry), c.st, c.col, c.r, c.v, Math.round(c.pat), Math.round(c.max), c.greeted ? 1 : 0, c.critic ? 1 : 0, c.happy === undefined ? -1 : c.happy ? 1 : 0]),
-            rat: O.rat ? [CF.r3(O.rat.x), CF.r3(O.rat.y), CF.r3(O.rat.z), CF.r3(O.rat.ry), O.rat.carry] : null
+            rat: O.rat ? [CF.r3(O.rat.x), CF.r3(O.rat.y), CF.r3(O.rat.z), CF.r3(O.rat.ry), O.rat.carry] : null,
+            gl: CF.Goals.pack()
         };
     };
     O.unpack = g => {
@@ -515,6 +533,7 @@ CF.Orders = (() => {
         for (let k = O.customers.length - 1; k >= 0; k--) if (!seen.has(O.customers[k].id)) { removeCustomerMesh(O.customers[k]); O.customers.splice(k, 1); }
         if (g.rat) { if (!O.rat) O.rat = {}; Object.assign(O.rat, { tx: g.rat[0], ty: g.rat[1], tz: g.rat[2], ry: g.rat[3], carry: g.rat[4] }); if (O.rat.x === undefined) { O.rat.x = O.rat.tx; O.rat.y = O.rat.ty; O.rat.z = O.rat.tz; } }
         else O.rat = null;
+        CF.Goals.unpack(g.gl);
     };
 
     // ---------- visuals (everyone): guests, order bubbles, the rat ----------
@@ -532,6 +551,7 @@ CF.Orders = (() => {
         for (const k in seatsBusy) delete seatsBusy[k];
         if (ratMesh) { CF.World.scene.remove(ratMesh); ratMesh = null; }
         O.state = blank();
+        CF.Goals.reset();
     };
     function bubble(c) {
         const cv = c.bcv || (c.bcv = document.createElement('canvas'));
@@ -547,7 +567,7 @@ CF.Orders = (() => {
             g.beginPath(); g.arc(64, 60, 46, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); g.stroke();
         }
         g.font = '54px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(c.st === 'eat' ? (c.happy === false ? '😠' : '😋') : (!c.greeted ? '👋' : CF.RECIPES[c.r].icon), 64, 62);
+        g.fillText(c.st === 'eat' ? (c.happy === false ? '😠' : '😋') : CF.RECIPES[c.r].icon, 64, 62);
         if (!c.btex) c.btex = new THREE.CanvasTexture(cv);
         c.btex.needsUpdate = true;
         return c.btex;
@@ -556,7 +576,7 @@ CF.Orders = (() => {
         const host = CF.Sync.isHost;
         bubbleT += dt;
         const redraw = bubbleT > 0.25; if (redraw) bubbleT = 0;
-        const eagle = CF.Player.role === 'waiter' && CF.Profile.has('eagle');
+        const eagle = CF.Profile.has('eagle');
         for (const c of O.customers) {
             if (!c.mesh) {
                 c.mesh = CF.World.makeDiner(c.col, false, c.critic);
@@ -589,6 +609,7 @@ CF.Orders = (() => {
         }
         const ins = CF.World.inspector;
         if (ins.visible && ins.userData.anim) ins.userData.anim(null, dt);
+        CF.Goals.visuals();
     };
 
     // ---------- prompts for guests (client) ----------
@@ -596,9 +617,21 @@ CF.Orders = (() => {
         const c = O.customers.find(x => x.id === cid); if (!c) return {};
         const seat = CF.World.seats[c.seat], table = seat ? seat.table + 1 : '?';
         const rec = CF.RECIPES[c.r], v = rec.vars.find(x => x.id === c.v) || rec.vars[0];
-        const info = `Table ${table} · ${rec.icon} ${rec.name}${rec.vars.length > 1 ? ' (' + v.label + ')' : ''}${c.critic ? ' · 🎩 CRITIC' : ''}`;
-        if (c.st === 'wait' && held && held.def.dish && !held.s.dirty && held.contents.length) return { e: { text: `Serve to table ${table}`, run: () => CF.Sync.act({ t: 'serveTo', cid: c.id, id: held.id }) }, info };
-        if (c.st === 'wait' && !c.greeted) return { e: { text: `Greet table ${table}`, run: () => CF.Sync.act({ t: 'greet', cid: c.id }) }, info };
+        const info = `Table ${table} · wants ${rec.icon} ${rec.name}${rec.vars.length > 1 ? ' (' + v.label + ')' : ''}${c.critic ? ' · 🎩 CRITIC' : ''}${c.st === 'wait' && !c.greeted ? ' · not greeted yet' : ''}`;
+        const serve = () => CF.Sync.act({ t: 'serveTo', cid: c.id, id: held.id });
+        if (c.st === 'wait' && held) {
+            // you can hand them anything: the closer it is to their order, the more stars and pay
+            if (held.def.dish) {
+                if (held.s.dirty) return { e: { text: 'That one is dirty: wash it first', none: true }, info };
+                if (!held.contents.length) return { e: { text: `Give table ${table} an empty ${held.def.name.toLowerCase()}?! (0★)`, run: serve }, info };
+                const sc = O.score(held, c).stars;
+                return { e: { text: `Serve to table ${table}${sc < 2.5 ? ' (not what they ordered!)' : ''}`, run: serve }, info };
+            }
+            if (held.def.food && !held.def.liquid) return { e: { text: `Hand them the ${held.def.name.toLowerCase()} without a plate (fewer ★)`, run: serve }, info };
+            if (!c.greeted) return { e: { text: `Greet table ${table} (they wait longer)`, run: () => CF.Sync.act({ t: 'greet', cid: c.id }) }, info };
+            return { e: { text: 'They don\'t want that', none: true }, info };
+        }
+        if (c.st === 'wait' && !c.greeted) return { e: { text: `Greet table ${table} (they wait longer)`, run: () => CF.Sync.act({ t: 'greet', cid: c.id }) }, info };
         if (c.st === 'wait') return { e: { text: 'Waiting for: ' + rec.name, none: true }, info };
         if (c.st === 'eat') return { e: { text: 'Enjoying their meal', none: true }, info };
         return { info };

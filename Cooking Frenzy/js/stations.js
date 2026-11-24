@@ -1,39 +1,80 @@
 'use strict';
-// Fixed kitchen equipment: burner knobs, oven, fryer, sink, cutting boards, plate/bowl stacks, trash, crates,
-// deliveries. state is host-owned and replicated. promptFor() builds the [E]/[F] hint and local action.
+// Fixed kitchen equipment: burner knobs, oven, fryer, sink, cutting boards, plate/bowl stacks, trash, the pantry
+// (a bin for every raw ingredient, see CF.PANTRY) and deliveries. state is host-owned and replicated.
+// promptFor() builds the [E]/[F] hint and local action.
 CF.Stations = (() => {
     const S = {};
-    S.state = { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, plates: 6, bowls: 4, open: false };
+    // stock = what is in the pantry bins, incoming = bought and still on the truck
+    S.state = { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, plates: 6, bowls: 4, open: false, stock: {}, incoming: {} };
     const deliveries = [];   // host: { t, items }
     const tmp = new THREE.Vector3();
     const act = a => CF.Sync.act(a);
     S.dirtyState = true;
     const changed = () => { S.dirtyState = true; };
+    let skipTopUp = false, wareIdx = 0;
 
     S.reset = () => {
-        Object.assign(S.state, { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, open: false });
+        Object.assign(S.state, { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, open: false, incoming: {} });
         deliveries.length = 0;
         changed();
     };
 
-    // Starting kitchen (host): cookware, spices, extinguishers and a welcome crate
-    S.setupKitchen = (first) => {
-        const Z = CF.World.zones, CH = CF.World.CH, I = CF.Items;
+    // ---------- pantry stock (host) ----------
+    const capOf = t => CF.PANTRY[t] ? CF.PANTRY[t].cap : 0;
+    // a new restaurant gets the starting stock, a saved one what was left in its bins
+    S.initStock = saved => {
+        const st = {};
+        for (const t in CF.PANTRY) st[t] = saved && saved[t] !== undefined ? CF.clamp(saved[t] | 0, 0, capOf(t)) : CF.PANTRY[t].start;
+        S.state.stock = st;
+        skipTopUp = !saved;          // day 1 of a new restaurant already got its stock
+        changed();
+    };
+    function addStock(t, n) {
+        const st = S.state.stock, before = st[t] || 0;
+        st[t] = Math.min(capOf(t), before + n);
+        changed();
+        return st[t] - before;
+    }
+    // the free morning delivery of basics
+    function topUp() {
+        const got = [];
+        for (const t in CF.PANTRY) { const n = addStock(t, CF.PANTRY[t].daily); if (n) got.push(CF.ITEMS[t].icon + '×' + n); }
+        return got;
+    }
+    // can this item go back into its bin? only whole, fresh, clean, unseasoned ingredients
+    S.returnable = it => !!(it && CF.PANTRY[it.type] && !it.s.dirty && !it.contents.length && CF.Items.cook(it) < 0.06
+        && (it.s.q === undefined || it.s.q >= 0.999) && !(it.s.salt > 0.05) && !(it.s.pepper > 0.05));
+    S.room = t => Math.max(0, capOf(t) - (S.state.stock[t] || 0) - (S.state.incoming[t] || 0));
+    // closing time: whole fresh ingredients lying around go back into their bins instead of being thrown out
+    S.returnLeftovers = () => {
+        let n = 0;
+        for (const it of CF.Items.all()) {
+            if (it.container || it.heldBy !== null || !S.returnable(it) || (S.state.stock[it.type] || 0) >= capOf(it.type)) continue;
+            CF.Items.remove(it.id); addStock(it.type, 1); n++;
+        }
+        return n;
+    };
+
+    // Starting kitchen (host): cookware, spices, extinguishers; the pantry gets its morning delivery
+    S.setupKitchen = () => {
+        const Z = CF.World.zones, CH = CF.World.CH, I = CF.Items, W = Z.ware;
         I.spawn('pan', { x: Z.burners[0].x, y: CH + 0.05, z: Z.burners[0].z });
         I.spawn('pan', { x: Z.burners[1].x, y: CH + 0.05, z: Z.burners[1].z });
         I.spawn('pot', { x: Z.burners[3].x, y: CH + 0.13, z: Z.burners[3].z });
-        I.spawn('pan', { x: 1.0, y: CH + 0.05, z: 4.7 });
-        I.spawn('pot', { x: 1.6, y: CH + 0.13, z: 4.7 });
+        I.spawn('pan', { x: W[0].x, y: CH + 0.05, z: W[0].z });
+        I.spawn('pot', { x: W[1].x, y: CH + 0.13, z: W[1].z });
         I.spawn('basket', { x: 1.15, y: CH - 0.05, z: -4.69 });
         I.spawn('salt', { x: Z.spices[0].x, y: Z.spices[0].y + 0.02, z: Z.spices[0].z });
         I.spawn('pepper', { x: Z.spices[1].x, y: Z.spices[1].y + 0.02, z: Z.spices[1].z });
         I.spawn('salt', { x: 0.9, y: CH + 0.07, z: 0.9 });
         I.spawn('pepper', { x: 1.1, y: CH + 0.07, z: 0.9 });
         for (const p of Z.extSpots) I.spawn('ext', { x: p.x, y: p.y + 0.02, z: p.z });
-        const list = first
-            ? ['bun', 'bun', 'bun', 'patty', 'patty', 'patty', 'tomato', 'tomato', 'tomato', 'lettuce', 'lettuce', 'onion', 'onion', 'cheese']
-            : ['bun', 'bun', 'patty', 'patty', 'tomato', 'tomato', 'lettuce', 'onion', 'cheese'];
-        I.spawn('crate', { x: Z.delivery.x, y: 0.2, z: Z.delivery.z }, { s: { crate: list } });
+        wareIdx = 2;
+        if (skipTopUp) skipTopUp = false;
+        else {
+            const got = topUp();
+            if (got.length) CF.Sync.broadcastToast('🚚 Morning delivery put away in the pantry: ' + got.join(' '), 'info');
+        }
         changed();
     };
 
@@ -70,9 +111,26 @@ CF.Stations = (() => {
                 trash(held, true);
                 return true;
             }
-            case 'crate': {
-                const c = I.get(a.id); if (!c || c.type !== 'crate') return true;
-                openCrate(c);
+            case 'pantryTake': {
+                const t = a.k; if (!CF.PANTRY[t]) return true;
+                if (held) return true;
+                if ((st.stock[t] || 0) <= 0) { CF.Sync.toastTo(pid, `No ${CF.plural(t)} left. Order more at the terminal by the back door.`, 'bad'); return true; }
+                st.stock[t]--; changed();
+                const B = CF.World.pantry[t];
+                const p = P.hold ? { x: P.hold[0], y: P.hold[1], z: P.hold[2] } : { x: B.x, y: B.y + 0.25, z: B.z };
+                const it = I.spawn(t, p, { yaw: Math.random() * 6 });
+                I.grab(pid, it.id);
+                CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'grab');
+                return true;
+            }
+            case 'pantryPut': {
+                if (!held || !S.returnable(held)) return true;
+                const t = held.type;
+                if ((st.stock[t] || 0) >= capOf(t)) { CF.Sync.toastTo(pid, `The ${CF.ITEMS[t].name.toLowerCase()} bin is full.`, 'bad'); return true; }
+                const B = CF.World.pantry[t];
+                I.remove(held.id);
+                addStock(t, 1);
+                CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'drop');
                 return true;
             }
             case 'ladle': {
@@ -98,7 +156,7 @@ CF.Stations = (() => {
                     I.spawn(t, { x: pos.x + Math.cos(a2) * 0.05 * (types.length > 1 ? 1 : 0), y: pos.y + 0.03 + k * 0.02, z: pos.z + Math.sin(a2) * 0.05 * (types.length > 1 ? 1 : 0) }, { s: { q, dirty, c: [0, 0] }, yaw: Math.random() * 6 });
                 });
                 CF.Sync.onFx('chop', pos, 'chop');
-                CF.Sync.xp(pid, 4 + q * 4, 'chef');
+                CF.Sync.xp(pid, 4 + q * 4);
                 return true;
             }
             case 'flatten': {
@@ -107,13 +165,13 @@ CF.Stations = (() => {
                 I.remove(it.id);
                 I.spawn('pizza_base', { x: pos.x, y: pos.y + 0.02, z: pos.z }, { s: { q: 1 } });
                 CF.Sync.onFx('flatten', pos, 'thud');
-                CF.Sync.xp(pid, 4, 'chef');
+                CF.Sync.xp(pid, 4);
                 return true;
             }
             case 'flip': {
                 const pan = I.get(a.id); if (!pan || pan.type !== 'pan') return true;
                 const foods = pan.contents.map(id => I.get(id)).filter(f => f && f.def.sides);
-                if (a.r === 'good') { foods.forEach(f => { f.s.up = 1 - f.s.up; I.touch(f); I.refresh(f); }); CF.Sync.xp(pid, 4, 'chef'); CF.Sync.onFx('flip', I.worldPos(pan), 'flip'); }
+                if (a.r === 'good') { foods.forEach(f => { f.s.up = 1 - f.s.up; I.touch(f); I.refresh(f); }); CF.Sync.xp(pid, 4); CF.Sync.onFx('flip', I.worldPos(pan), 'flip'); }
                 else if (a.r === 'wild' && foods.length) {
                     const f = foods[0];
                     const dir = Math.random() * Math.PI * 2;
@@ -129,7 +187,7 @@ CF.Stations = (() => {
                 pot.s.stir = Math.min(1, pot.s.stir + 0.35 + 0.65 * q);
                 if (a.spill && pot.s.soup) { pot.s.sq = (pot.s.sq || 1) * 0.92; CF.Sync.onFx('splash', I.worldPos(pot), 'splash'); }
                 I.touch(pot);
-                CF.Sync.xp(pid, 3, 'chef');
+                CF.Sync.xp(pid, 3);
                 return true;
             }
             case 'season': {
@@ -141,7 +199,7 @@ CF.Stations = (() => {
                     if (tgt.type === 'pot' && !foods.length) { tgt.s[key] = (tgt.s[key] || 0) + amt; I.touch(tgt); }
                     foods.forEach(f => { f.s[key] = (f.s[key] || 0) + amt; I.touch(f); });
                 } else if (tgt.def.food) { tgt.s[key] = (tgt.s[key] || 0) + amt; I.touch(tgt); }
-                CF.Sync.xp(pid, 2, 'chef');
+                CF.Sync.xp(pid, 2);
                 return true;
             }
             case 'wash': {
@@ -149,7 +207,8 @@ CF.Stations = (() => {
                 for (const id of d.contents.slice()) I.remove(id);
                 d.s.dirty = 0; I.touch(d); I.refresh(d);
                 CF.Sync.onFx('wash', I.worldPos(d), 'pop');
-                CF.Sync.xp(pid, 4, 'chef');
+                CF.Sync.xp(pid, 4);
+                if (CF.Orders.state.stats) CF.Orders.state.stats.washed++;
                 return true;
             }
             case 'buy': return buy(pid, a.cart || {}), true;
@@ -170,32 +229,55 @@ CF.Stations = (() => {
         CF.Sync.onFx('trash', pos, 'thud');
     }
 
-    function openCrate(c) {
-        const I = CF.Items, pos = I.worldPos(c).clone(), list = (c.s.crate || []).slice();
-        I.remove(c.id);
-        list.forEach((t, k) => {
-            const a = k * 2.4, r = 0.12 + (k % 4) * 0.06;
-            I.spawn(t, { x: pos.x + Math.cos(a) * r, y: pos.y + 0.25 + Math.floor(k / 4) * 0.12, z: pos.z + Math.sin(a) * r }, { v: [Math.cos(a) * 0.8, 1.5, Math.sin(a) * 0.8], yaw: Math.random() * 6 });
-        });
-        CF.Sync.onFx('crate', pos, 'pop');
-        CF.Sync.onFx('poof', pos, null);
-    }
-
+    // Buying: ingredients go into their pantry bins when the truck arrives (never more than fits),
+    // plates and bowls onto their stacks, cookware and tools onto the table by the back door
     function buy(pid, cart) {
-        const O = CF.Orders, items = [];
+        const O = CF.Orders, items = [], st = S.state, cut = [];
         let cost = 0;
         for (const k in cart) {
-            const n = CF.clamp(cart[k] | 0, 0, 30);
+            let n = CF.clamp(cart[k] | 0, 0, 30);
             if (!n || CF.PRICE[k] === undefined) continue;
+            if (CF.PANTRY[k]) { const room = S.room(k); if (n > room) { cut.push(CF.plural(k)); n = room; } }
+            if (!n) continue;
             cost += CF.PRICE[k] * n;
             for (let i = 0; i < n; i++) items.push(k);
         }
+        if (cut.length) CF.Sync.toastTo(pid, `The pantry has no room for more ${cut.join(', ')}.`, 'bad');
         if (!items.length) return;
         if (cost > O.state.money) { CF.Sync.toastTo(pid, 'Not enough money!', 'bad'); return; }
         O.spend(cost, 'ingredients');
+        for (const k of items) if (CF.PANTRY[k]) st.incoming[k] = (st.incoming[k] || 0) + 1;
+        changed();
         const t = CF.Orders.has('express') ? 4 : 12;
         deliveries.push({ t, items });
-        CF.Sync.broadcastToast(`🚚 Order placed (${CF.money(cost)}). Delivery in ${t}s at the back door.`, 'info');
+        CF.Sync.broadcastToast(`🚚 Order placed (${CF.money(cost)}). It arrives in ${t}s.`, 'info');
+    }
+    // a new morning: anything still on the truck is put away too (it was paid for)
+    S.flushDeliveries = () => { while (deliveries.length) deliver(deliveries.shift(), true); };
+    function deliver(d, quiet) {
+        const I = CF.Items, Z = CF.World.zones, st = S.state, CH = CF.World.CH, got = [];
+        const count = {};
+        for (const t of d.items) count[t] = (count[t] || 0) + 1;
+        for (const t in count) {
+            const n = count[t];
+            if (t === 'plate') st.plates += n;
+            else if (t === 'bowl') st.bowls += n;
+            else if (CF.PANTRY[t]) {
+                st.incoming[t] = Math.max(0, (st.incoming[t] || 0) - n);
+                const put = addStock(t, n);
+                if (put) got.push(CF.ITEMS[t].icon + '×' + put);
+            } else {
+                for (let i = 0; i < n; i++) {
+                    const w = Z.ware[wareIdx++ % Z.ware.length];
+                    I.spawn(t, { x: w.x + CF.rand(-0.05, 0.05), y: CH + 0.35 + i * 0.12, z: w.z + CF.rand(-0.05, 0.05) }, { yaw: Math.random() * 6 });
+                }
+                got.push(CF.ITEMS[t].icon + '×' + n);
+            }
+        }
+        changed();
+        if (quiet) return;
+        CF.Sync.onFx('truck', Z.delivery, 'truck');
+        CF.Sync.broadcastToast('📦 Delivery put away: ' + got.join(' '), 'good');
     }
 
     // ---------- host: per-tick ----------
@@ -206,24 +288,19 @@ CF.Stations = (() => {
             d.t -= dt;
             if (d.t > 0) continue;
             deliveries.splice(k, 1);
-            const crateItems = [];
-            for (const t of d.items) {
-                if (t === 'plate') st.plates++;
-                else if (t === 'bowl') st.bowls++;
-                else crateItems.push(t);
-            }
-            changed();
-            for (let i = 0; i < crateItems.length; i += 16) {
-                I.spawn('crate', { x: Z.delivery.x + CF.rand(-0.3, 0.3), y: 0.5 + i * 0.03, z: Z.delivery.z + CF.rand(-0.2, 0.2) }, { s: { crate: crateItems.slice(i, i + 16) } });
-            }
-            CF.Sync.onFx('truck', Z.delivery, 'truck');
-            CF.Sync.broadcastToast('📦 Delivery arrived at the back door!', 'good');
+            deliver(d);
         }
-        // dropped into the trash bin / clean empty dishes returned to their stack
+        // dropped into the trash bin / clean empty dishes returned to their stack / fresh ingredients back in their bin
         for (const it of I.all()) {
             if (it.container || it.heldBy !== null || it.removed) continue;
             const p = it.mesh.position;
             if (CF.World.inZone(Z.trash, p)) { trash(it, false); continue; }
+            const B = CF.World.pantry[it.type];
+            if (B && it.age > 0.6 && CF.World.inZone(B.zone, p) && S.returnable(it) && (st.stock[it.type] || 0) < capOf(it.type)) {
+                I.remove(it.id); addStock(it.type, 1);
+                CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'drop');
+                continue;
+            }
             if ((it.type === 'plate' || it.type === 'bowl') && !it.s.dirty && !it.contents.length && it.age > 1) {
                 const z = it.type === 'plate' ? Z.plates : Z.bowls;
                 const dx = p.x - z.x, dz = p.z - z.z;
@@ -246,12 +323,21 @@ CF.Stations = (() => {
         CF.World.oven.doorPivot.rotation.x = CF.damp(CF.World.oven.doorPivot.rotation.x, want, 10, dt);
         CF.World.ovenDoorOpen = st.ovenOpen;
         const fsw = CF.World.fryer.sw.material;
-        fsw.color.set(st.fryerOn ? 0xff5a3c : 0x29d37a); fsw.emissive.set(st.fryerOn ? 0x551100 : 0x000000);
+        fsw.color.set(st.fryerOn ? 0xff5a3c : 0x29d37a).convertSRGBToLinear(); fsw.emissive.set(st.fryerOn ? 0x551100 : 0x000000).convertSRGBToLinear();
         if (st.plates !== shownPlates) { shownPlates = st.plates; stack(CF.World.plateStack, 'plate', Math.min(st.plates, 12), 0.018); }
         if (st.bowls !== shownBowls) { shownBowls = st.bowls; stack(CF.World.bowlStack, 'bowl', Math.min(st.bowls, 8), 0.035); }
         if (S._sign !== st.open) { S._sign = st.open; CF.World.setSign(st.open); }
         if (CF.World.sinkWater.visible) { S._sinkT = (S._sinkT || 0) - dt; if (S._sinkT <= 0) CF.World.sinkWater.visible = false; }
+        // pantry bins: labels + the ingredients on show
+        const stock = st.stock || {};
+        for (const t in CF.PANTRY) {
+            const n = stock[t] || 0;
+            if (shownStock[t] !== n) { shownStock[t] = n; CF.World.drawPantryLabel(t, n); }
+        }
     };
+    const shownStock = {};
+    // local: take one ingredient out of its bin (click or E)
+    S.takeFromPantry = t => { if (CF.PANTRY[t]) act({ t: 'pantryTake', k: t }); };
     S.runSink = t => { CF.World.sinkWater.visible = true; S._sinkT = t || 1.5; };
     function stack(group, type, n, h) {
         while (group.children.length) group.remove(group.children[0]);
@@ -267,7 +353,6 @@ CF.Stations = (() => {
     // target: { kind:'item', id } | { kind:'st', sid, part } | { kind:'cust', idx }
     S.promptFor = (target, held) => {
         const I = CF.Items, st = S.state, out = {};
-        const role = CF.Player.role;
         // F: tools
         if (held && held.def.tool === 'ext') out.f = { text: 'Hold F to spray', hold: 'spray' };
         if (held && (held.def.tool === 'salt' || held.def.tool === 'pepper') && target && target.kind === 'item') {
@@ -303,11 +388,20 @@ CF.Stations = (() => {
             else if (sid === 'sign') out.e = st.open ? { text: 'Restaurant is open', none: true } : { text: 'OPEN the restaurant!', run: () => act({ t: 'open' }) };
             else if (sid === 'trash') out.e = held ? { text: held.def.cont && !held.def.food ? 'Empty it into the trash' : 'Throw it away', run: () => act({ t: 'trashHeld' }) } : { text: 'Trash bin', none: true };
             else if (sid === 'dirty') out.e = { text: 'Dirty dishes come back here', none: true };
-            if (sid === 'sink' && role === 'waiter' && out.e && !out.e.none) out.e.text += ' (cook job)';
+            else if (sid === 'pantry') {
+                const t = target.part, def = CF.ITEMS[t], n = (st.stock || {})[t] || 0, name = def.name.toLowerCase();
+                out.info = `${def.icon} ${def.name} · ${n} / ${CF.PANTRY[t].cap} in the bin${st.incoming && st.incoming[t] ? ` · ${st.incoming[t]} on the way` : ''}`;
+                if (held && held.type === t) {
+                    if (!S.returnable(held)) out.e = { text: 'Only fresh, whole, clean ones go back', none: true };
+                    else if (n >= CF.PANTRY[t].cap) out.e = { text: 'This bin is full', none: true };
+                    else out.e = { text: `Put the ${name} back`, run: () => act({ t: 'pantryPut' }) };
+                } else if (held) out.e = { text: 'Your hands are full', none: true };
+                else if (n > 0) out.e = { text: `Take ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}`, run: () => S.takeFromPantry(t) };
+                else out.e = { text: `No ${CF.plural(t)} left: order more at the terminal`, none: true };
+            }
             return out;
         }
         const it = I.get(target.id); if (!it) return out;
-        if (it.type === 'crate') { out.e = { text: 'Open crate', run: () => act({ t: 'crate', id: it.id }) }; return out; }
         // food on a board → chop
         const b = boardOf(it);
         if (b >= 0 && (it.def.chop || it.def.flatten) && !it.container) { out.e = chopPrompt(it); return out; }

@@ -32,7 +32,10 @@ CF.Cook = (() => {
     C.fireAt = p => { const i = cellIdx(p.x, p.z); return i < 0 ? 0 : (Math.abs(C.cellY[i] - p.y) < 1.0 || p.y > C.cellY[i] ? C.cells[i] : 0); };
     C.ignite = (p, amt = 0.45) => {
         const i = cellIdx(p.x, p.z); if (i < 0) return;
-        if (C.cells[i] < 0.05) { CF.Sync.onFx('ignite', p, 'ignite'); }
+        if (C.cells[i] < 0.05) {
+            CF.Sync.onFx('ignite', p, 'ignite');
+            const st = CF.Orders.state.stats; if (st && CF.Orders.state.phase !== 'summary') st.fires++;
+        }
         C.cells[i] = Math.max(C.cells[i], amt);
     };
     C.fireCount = () => { let n = 0; for (let i = 0; i < C.cells.length; i++) if (C.cells[i] > 0.25) n++; return n; };

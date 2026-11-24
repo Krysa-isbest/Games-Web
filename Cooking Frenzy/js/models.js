@@ -99,6 +99,8 @@ CF.Models = (() => {
             return t;
         });
     }
+    M.pixTex = pixTex;                                   // world.js builds its tiles / wood / steel with these
+    M.noise = { hash, noise3, fbm, pnoise, pfbm, worley };
     const b255 = v => Math.round(clamp(v, 0, 1) * 255);
     const gray = (o, v) => { o[0] = o[1] = o[2] = b255(v); };
     const rgb = (o, r, g, b) => { o[0] = b255(r); o[1] = b255(g); o[2] = b255(b); };
@@ -1729,5 +1731,14 @@ CF.Models = (() => {
         s.renderOrder = 10;
         return s;
     };
+    // the Reflections setting (CF.World sets M.envIntensity): models built later get the same reflection strength
+    for (const k of ['item', 'chef', 'person', 'rat']) {
+        const build = M[k];
+        M[k] = (...a) => {
+            const g = build(...a);
+            if (M.envIntensity !== undefined) g.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { if ('envMapIntensity' in m) m.envMapIntensity = M.envIntensity; }); });
+            return g;
+        };
+    }
     return M;
 })();
