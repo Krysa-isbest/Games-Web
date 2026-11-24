@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="party.css">
 <link rel="stylesheet" href="files.css">
-<link rel="stylesheet" href="chat.css">
 <style>
 :root{
   --bg:#f3eee6; --paper:#fbf8f3; --ink:#1f1b16; --soft:#6b6257; --faint:#a39a8e;
@@ -32,10 +31,6 @@ h1 em{font-style:italic;color:var(--accent)}
 .chip:hover{color:var(--ink)}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
 .count{font-size:12px;opacity:.6;margin-left:4px}
-.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.sortbtn{font:500 14px var(--sans);color:var(--soft);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:12px 16px;cursor:pointer;transition:background .15s,color .15s}
-.sortbtn:hover{color:var(--ink)}
-.sortbtn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 
 /* grid */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:28px}
@@ -60,7 +55,6 @@ h1 em{font-style:italic;color:var(--accent)}
 .flag.big{color:#fff;background:rgba(184,80,47,.94)}
 .flag.vr{color:#fff;background:rgba(32,120,160,.94)}
 .flag.pt{color:#fff;background:rgba(46,140,80,.94)}
-.flag.upd{color:#fff;background:rgba(214,124,30,.95)}
 .flag{
   font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:rgba(251,248,243,.92);color:var(--live);border-radius:999px;padding:5px 10px;display:flex;align-items:center;gap:6px;
@@ -78,12 +72,8 @@ h1 em{font-style:italic;color:var(--accent)}
 .mode.mp{color:var(--accent)}
 .meta .sep{width:3px;height:3px;border-radius:50%;background:var(--faint)}
 
-.below{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
-.fav{background:none;border:0;cursor:pointer;font-size:19px;line-height:1;padding:2px 6px;color:var(--line);transition:color .15s,transform .15s}
-.fav:hover{color:var(--faint);transform:scale(1.15)}
-.fav[aria-pressed="true"]{color:#d6a21e}
 .logbtn{
-  margin:0 0 0 4px;font:500 13px var(--sans);color:var(--soft);
+  align-self:flex-start;margin:10px 0 0 4px;font:500 13px var(--sans);color:var(--soft);
   background:none;border:0;padding:4px 2px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
   border-bottom:1px solid transparent;transition:color .15s,border-color .15s;
 }
@@ -120,7 +110,7 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 @media (max-width:560px){
   .wrap{padding:40px 16px 60px}
   .grid{grid-template-columns:1fr}
-  .tools,.filters{width:100%}.chip{flex:1;padding:8px 6px}
+  .filters{width:100%}.chip{flex:1;padding:8px 6px}
   .play{opacity:1;transform:none}
 }
 </style>
@@ -133,13 +123,10 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
       <h1>Banger <em>Games</em></h1>
       <p class="tagline">A small collection of games that run right in your browser. Pick one and play — some are better with friends.</p>
     </div>
-    <div class="tools">
-      <div class="filters" role="group" aria-label="Filter games">
-        <button class="chip" data-f="all" aria-pressed="true">All</button>
-        <button class="chip" data-f="mp" aria-pressed="false">Multiplayer</button>
-        <button class="chip" data-f="solo" aria-pressed="false">Single player</button>
-      </div>
-      <button class="sortbtn" id="sortNew" aria-pressed="false" title="Games with the newest changelog first">Recently updated</button>
+    <div class="filters" role="group" aria-label="Filter games">
+      <button class="chip" data-f="all" aria-pressed="true">All</button>
+      <button class="chip" data-f="mp" aria-pressed="false">Multiplayer</button>
+      <button class="chip" data-f="solo" aria-pressed="false">Single player</button>
     </div>
   </header>
 
@@ -161,6 +148,25 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
    changelog entries look like: { version: '1.1', date: '2026-10-26', notes: ['Added X', 'Fixed Y'] }
    or use a title instead of a version: { title: 'New feature', date: '...', notes: [...] } — newest first */
 const GAMES = [
+  {
+    file: 'Cooking Frenzy/index.html', title: 'Cooking Frenzy', subtitle: 'Chop. Flip. Serve.', art: 'cooking',
+    desc: 'A first-person physics cooking game for up to 4 chefs. Chop, fry, bake and plate burgers, salads, steaks, soup and pizza, serve the guests before they walk out, and try not to burn the kitchen down. Play as a Cook or a Waiter, level up skills, and survive rush events like food critics, rat raids and blackouts.',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: 'Co-op cooking',
+    updating: true, changelog: [
+      { version: '1.1', date: '2026-11-24', notes: [
+        'All the models rebuilt by hand: food, dishes, pans, tools, the chef, the guests, the critic, the inspector and the rat.',
+        'Food looks the way it should: deep reds and golden browns instead of pale pastel colours.',
+        'Cooking shows on the food: cheese melts into a puddle, salami cups up in the oven, steaks get grill marks, patties get a sear on the side that was down, sesame seeds toast and pizza sauce darkens. Dropped food gets dirty specks.',
+        'Guests sit down, eat with a fork, drum their fingers and shake their heads when the food takes too long, and look angry when it is bad. They come with different hair, hats and glasses.',
+        'The rat runs off with the food it stole in its mouth.'
+      ] },
+      { version: '1.0', date: '2026-11-24', notes: [
+        'First playable version: solo or online co-op for up to 4 with a 5-letter room code.',
+        'Prep, then an 8-minute service: chop, fry, bake, stir, season and wash dishes, each with its own minigame.',
+        'Five dishes (two to start, three to unlock), upgrades, Cook and Waiter roles with skill trees, and rush events.'
+      ] }
+    ]
+  },
   {
     file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
     desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: The Ruins, a dense ruined desert city to explore and loot (being rebuilt step by step), with the five Prism robots patrolling it, real weapons and a drag-and-drop inventory. Many more Prism and better-balanced loot come next, then the raid rules (timer, extraction); online co-op for up to 4 comes later.',
@@ -707,6 +713,19 @@ const GAMES = [
 
 /* Atmospheric card art: gradient sky + layered silhouettes */
 const ART = {
+  cooking: `
+    <defs><linearGradient id="gcf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2ec4b6"/><stop offset="1" stop-color="#1d6f78"/></linearGradient>
+    <radialGradient id="gcff" cx=".5" cy=".7" r=".5"><stop offset="0" stop-color="#ffd166" stop-opacity=".95"/><stop offset="1" stop-color="#ff6b5b" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="200" fill="url(#gcf)"/>
+    <g fill="#fff" opacity=".12"><rect x="0" y="0" width="40" height="40"/><rect x="80" y="0" width="40" height="40"/><rect x="160" y="0" width="40" height="40"/><rect x="240" y="0" width="40" height="40"/><rect x="320" y="0" width="40" height="40"/><rect x="40" y="40" width="40" height="40"/><rect x="120" y="40" width="40" height="40"/><rect x="200" y="40" width="40" height="40"/><rect x="280" y="40" width="40" height="40"/><rect x="360" y="40" width="40" height="40"/></g>
+    <rect y="142" width="400" height="58" fill="#d5dbe0"/><rect y="142" width="400" height="6" fill="#eef1f3"/><rect y="160" width="400" height="40" fill="#ff6b5b"/>
+    <ellipse cx="128" cy="128" rx="56" ry="26" fill="url(#gcff)"/>
+    <g fill="#ffb02e"><path d="M96 140q-6-22 8-34q-2 16 8 22q2-14 12-20q-2 14 6 22q4-10 12-12q-4 12 2 22z"/></g>
+    <ellipse cx="128" cy="124" rx="50" ry="13" fill="#23272b"/><ellipse cx="128" cy="121" rx="42" ry="9" fill="#3a3f45"/><path d="M176 122l58-10" stroke="#1d1f22" stroke-width="9" stroke-linecap="round"/>
+    <ellipse cx="128" cy="118" rx="22" ry="6" fill="#7a3f22"/><ellipse cx="128" cy="116" rx="20" ry="4.5" fill="#9a5530"/>
+    <g fill="#fff" opacity=".55"><circle cx="120" cy="96" r="6"/><circle cx="132" cy="82" r="8"/><circle cx="122" cy="66" r="6"/></g>
+    <g transform="translate(300 104)"><path d="M-30 30h60l-4 8h-52z" fill="#fbfaf6"/><path d="M-26 24q26-6 52 0v6h-52z" fill="#d59a52"/><rect x="-27" y="17" width="54" height="7" rx="3" fill="#6b3a22"/><path d="M-28 15l56 0-4 4h-48z" fill="#ffd34a"/><path d="M-27 13q8-4 14 0t14 0 14 0 12 0v2h-54z" fill="#7fcf4a"/><path d="M-26 12q26-36 52 0z" fill="#e0a85a"/><g fill="#fff3d6"><ellipse cx="-8" cy="-4" rx="2" ry="1"/><ellipse cx="6" cy="-8" rx="2" ry="1"/><ellipse cx="14" cy="0" rx="2" ry="1"/><ellipse cx="-16" cy="4" rx="2" ry="1"/></g></g>
+    <g transform="translate(236 44)"><rect x="-17" y="10" width="34" height="12" rx="3" fill="#ff6b5b"/><path d="M-20 12q-8-18 6-22q4-12 14-6q10-8 18 4q14 2 6 24z" fill="#fbfaf6"/></g>`,
   prism: `
     <defs><linearGradient id="gpp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#140c24"/><stop offset=".65" stop-color="#3a2558"/><stop offset="1" stop-color="#6b4a3a"/></linearGradient>
     <radialGradient id="gppg" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#c49bff" stop-opacity=".95"/><stop offset="1" stop-color="#a36bff" stop-opacity="0"/></radialGradient></defs>
@@ -863,30 +882,8 @@ const ICON_PLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#1f1b16
 
 const grid = document.getElementById('grid');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const ls = {
-  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
-};
-
-/* "Updated" / "New" badges: compare each game's newest changelog entry with what this browser saw last visit.
-   The old list is kept for this browser tab (sessionStorage), so the badges survive a refresh. */
-const topKey = g => { const c = (g.changelog || [])[0]; return c ? (c.version || c.title || '') + '|' + (c.date || '') : '-'; };
-const nowSeen = Object.fromEntries(GAMES.map(g => [g.title, topKey(g)]));
-let seenBefore = null;
-try { seenBefore = JSON.parse(sessionStorage.getItem('hub_prev')); } catch (e) { }
-if (!seenBefore) {
-  seenBefore = ls.get('hub_seen', null) || nowSeen; // first visit ever: nothing is marked
-  try { sessionStorage.setItem('hub_prev', JSON.stringify(seenBefore)); } catch (e) { }
-}
-ls.set('hub_seen', nowSeen);
-const badgeOf = g => !(g.title in seenBefore) ? 'New' : seenBefore[g.title] !== nowSeen[g.title] ? 'Updated' : '';
-
-const favs = new Set(ls.get('hub_favs', []));
-let sortNew = ls.get('hub_sort_new', false);
-const newestDate = g => ((g.changelog || [])[0] || {}).date || '';
 
 GAMES.forEach((g, i) => {
-  const badge = badgeOf(g);
   const item = document.createElement('div');
   item.className = 'item';
   item.dataset.mp = g.mp ? 'mp' : 'solo';
@@ -895,7 +892,7 @@ GAMES.forEach((g, i) => {
     <a class="card" href="${encodeURI(g.file)}">
       <div class="art">
         <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${ART[g.art] || ''}</svg>
-        ${badge || g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${badge ? `<span class="flag upd">✦ ${badge}</span>` : ''}${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag pt">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
+        ${g.big || g.updating || g.vrtest || g.playtest ? `<div class="flags">${g.big ? '<span class="flag big">★ Big project</span>' : ''}${g.playtest ? '<span class="flag pt">Playtesting</span>' : ''}${g.vrtest ? '<span class="flag vr">🥽 VR test</span>' : ''}${g.updating ? '<span class="flag"><i></i>In development</span>' : ''}</div>` : ''}
         <span class="play">${ICON_PLAY}</span>
       </div>
       <div class="body">
@@ -908,35 +905,9 @@ GAMES.forEach((g, i) => {
         </div>
       </div>
     </a>
-    <div class="below"><button class="logbtn${g.updating ? ' live' : ''}" data-i="${i}"><span class="dot"></span>Changelog</button><button class="fav" data-fav="${i}" aria-pressed="${favs.has(g.title)}" aria-label="Favourite" title="Favourite: keeps it at the top">★</button></div>`;
+    <button class="logbtn${g.updating ? ' live' : ''}" data-i="${i}"><span class="dot"></span>Changelog</button>`;
   grid.appendChild(item);
 });
-
-// order: favourites first, then (if chosen) the most recently updated, then the list's own order
-function arrange() {
-  const items = [...grid.children];
-  items.sort((a, b) => {
-    const ga = GAMES[a.dataset.idx], gb = GAMES[b.dataset.idx];
-    const fa = favs.has(ga.title), fb = favs.has(gb.title);
-    if (fa !== fb) return fa ? -1 : 1;
-    if (sortNew) { const d = newestDate(gb).localeCompare(newestDate(ga)); if (d) return d; }
-    return a.dataset.idx - b.dataset.idx;
-  });
-  items.forEach(it => grid.appendChild(it));
-}
-const sortBtn = document.getElementById('sortNew');
-sortBtn.setAttribute('aria-pressed', sortNew);
-sortBtn.onclick = () => { sortNew = !sortNew; ls.set('hub_sort_new', sortNew); sortBtn.setAttribute('aria-pressed', sortNew); arrange(); };
-grid.addEventListener('click', e => {
-  const b = e.target.closest('.fav');
-  if (!b) return;
-  const t = GAMES[b.dataset.fav].title;
-  favs.has(t) ? favs.delete(t) : favs.add(t);
-  ls.set('hub_favs', [...favs]);
-  b.setAttribute('aria-pressed', favs.has(t));
-  arrange();
-});
-arrange();
 
 // filter counts
 const nMp = GAMES.filter(g => g.mp).length;
@@ -985,7 +956,5 @@ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 <script src="party.js"></script>
 <!-- File share (left panel): sends files over the party connection, see files.js -->
 <script src="files.js"></script>
-<!-- Global chat (bottom corner): everyone on the site, live, through ntfy.sh, see chat.js -->
-<script src="chat.js"></script>
 </body>
 </html>

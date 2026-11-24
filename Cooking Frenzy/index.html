@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cooking Frenzy</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍳</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <canvas id="mg" class="hidden"></canvas>
+
+    <!-- ================= HUD ================= -->
+    <div id="hud" class="hidden">
+        <div id="fire-vignette"></div>
+        <div id="hud-top">
+            <div id="hud-day" class="pill">Day 1</div>
+            <div id="hud-phase" class="pill phase prep">PREP</div>
+            <div id="hud-time" class="pill time">0:00</div>
+            <div id="hud-money" class="pill money">$0</div>
+        </div>
+        <div id="hud-sub"></div>
+        <div id="hud-event" class="hidden"></div>
+        <div id="fire-warn" class="hidden"></div>
+        <div id="tickets"></div>
+        <div id="hud-role"><div id="role-badge"></div><div id="xp"><div id="xp-fill"></div></div></div>
+        <div id="crosshair"></div>
+        <div id="hold-ring" class="hidden"><svg viewBox="0 0 48 48"><circle class="bg" cx="24" cy="24" r="20"/><circle id="hold-arc" cx="24" cy="24" r="20"/></svg></div>
+        <div id="prompt"></div>
+        <div id="charge" class="hidden"><div id="charge-fill"></div><span>THROW</span></div>
+        <div id="held"></div>
+        <div id="served" class="hidden"></div>
+        <div id="hud-hint"><b>Tab</b> recipes · <b>Enter</b> chat · <b>Esc</b> pause</div>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="chat"><div id="chat-log"></div><input id="chat-input" class="hidden" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Say something… (Enter to send)"></div>
+    <div id="book" class="hidden"></div>
+
+    <!-- ================= Main menu ================= -->
+    <div id="menu">
+        <div class="menu-left">
+            <h1 class="title"><span class="t1">COOKING</span><span class="t2">FRENZY</span></h1>
+            <p class="tagline">Chop it. Flip it. Serve it. Try not to burn the place down.</p>
+            <div class="menu-buttons">
+                <button id="btn-continue" class="btn big go hidden">▶ Continue</button>
+                <button id="btn-solo" class="btn big">🍳 Play Solo</button>
+                <div class="row">
+                    <button id="btn-host" class="btn">🏠 Host Co-op</button>
+                    <button id="btn-join" class="btn">🔗 Join Co-op</button>
+                </div>
+                <div class="row">
+                    <button id="btn-skills" class="btn small">⭐ Skills</button>
+                    <button id="btn-settings" class="btn small">⚙️ Settings</button>
+                    <button id="btn-howto" class="btn small">❓ How to play</button>
+                </div>
+            </div>
+        </div>
+        <div class="menu-right card">
+            <h3>Your chef</h3>
+            <label class="field"><span>Name</span><input id="chef-name" maxlength="14" autocomplete="off" spellcheck="false"></label>
+            <div class="field"><span>Hat colour</span><div id="hat-colors" class="swatches"></div></div>
+            <div class="field"><span>Role</span><div id="role-pick" class="role-pick"></div></div>
+            <div id="menu-level"></div>
+        </div>
+        <div class="version">Cooking Frenzy v1.0 · 1 to 4 chefs</div>
+    </div>
+
+    <!-- ================= Join ================= -->
+    <div id="join" class="modal hidden">
+        <div class="card narrow">
+            <h2>🔗 Join a kitchen</h2>
+            <p>Type the 5-character room code your friend sees in their lobby.</p>
+            <input id="join-code" class="code-input" maxlength="5" autocomplete="off" spellcheck="false" placeholder="ABCDE">
+            <p id="join-status" class="status"></p>
+            <div class="row end"><button class="btn small" data-close="join">Back</button><button id="btn-join-go" class="btn go">Join</button></div>
+        </div>
+    </div>
+
+    <!-- ================= Lobby ================= -->
+    <div id="lobby" class="modal hidden">
+        <div class="card">
+            <h2>🏠 Kitchen lobby</h2>
+            <div class="code-box"><span>Room code</span><b id="lobby-code">-----</b><button id="btn-copy" class="btn small">Copy</button></div>
+            <ul id="lobby-list"></ul>
+            <div class="field"><span>Your role</span><div id="lobby-role" class="role-pick small"></div></div>
+            <div id="lobby-host">
+                <label id="lobby-save-row" class="check hidden"><input id="lobby-save" type="checkbox" checked> <span id="lobby-save-label">Continue my saved restaurant</span></label>
+                <button id="btn-start" class="btn go big wide">Start the shift ▶</button>
+            </div>
+            <p id="lobby-wait" class="wait hidden">Waiting for the host to start the shift…</p>
+            <div class="row end"><button id="btn-lobby-leave" class="btn small">Leave</button></div>
+        </div>
+    </div>
+
+    <!-- ================= Loading ================= -->
+    <div id="loading" class="modal hidden">
+        <div class="card narrow center"><div class="spinner">🍳</div><p id="loading-text">Loading…</p></div>
+    </div>
+
+    <!-- ================= Pause ================= -->
+    <div id="pause" class="modal hidden">
+        <div class="card narrow center">
+            <h2 id="pause-title">Paused</h2>
+            <p id="pause-sub" class="muted"></p>
+            <button id="btn-resume" class="btn go big wide">Resume</button>
+            <div class="row center">
+                <button id="btn-p-settings" class="btn small">⚙️ Settings</button>
+                <button id="btn-p-howto" class="btn small">❓ How to play</button>
+                <button id="btn-p-quit" class="btn small">🚪 Quit</button>
+            </div>
+            <p class="muted tiny">WASD move · mouse look · LMB grab · E use · F tool · Tab recipes</p>
+        </div>
+    </div>
+
+    <!-- ================= Settings ================= -->
+    <div id="settings" class="modal over hidden">
+        <div class="card narrow">
+            <h2>⚙️ Settings</h2>
+            <div id="settings-body"></div>
+            <div class="row end"><button class="btn" data-close="settings">Done</button></div>
+        </div>
+    </div>
+
+    <!-- ================= How to play ================= -->
+    <div id="howto" class="modal over hidden">
+        <div class="card wide howto">
+            <h2>❓ How to play</h2>
+            <div class="howto-grid">
+                <section>
+                    <h3>🎮 Controls</h3>
+                    <ul class="keys">
+                        <li><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump</li>
+                        <li><b>Mouse</b> look · <b>LMB</b> grab / drop</li>
+                        <li><b>RMB</b> hold, then let go to throw</li>
+                        <li><b>Wheel</b> hold closer / further · <b>R</b> rotate what you hold</li>
+                        <li><b>E</b> use what you look at (hold <b>E</b> to flatten dough)</li>
+                        <li><b>F</b> use your tool: salt, pepper, extinguisher (hold)</li>
+                        <li><b>Tab</b> recipe book · <b>Enter</b> chat · <b>Esc</b> pause</li>
+                    </ul>
+                </section>
+                <section>
+                    <h3>☀️ A day in the kitchen</h3>
+                    <p>Prep first: cut things, stock up, plan. Flip the <b>OPEN</b> sign by the pass when you are ready (it opens by itself after 90 seconds). Service lasts 8 minutes, then there is one last round to finish the orders.</p>
+                    <p>Money carries over. At the end of each day you can buy upgrades and new dishes, and spend your skill points.</p>
+                </section>
+                <section>
+                    <h3>🔪 Cooking</h3>
+                    <p>Put food on a <b>cutting board</b> and press E to cut it. Fry in a <b>pan</b> on a burner (E on the knob sets the heat), then press E on the pan to <b>flip</b>. Fries go in the <b>fryer basket</b>, pizza in the <b>oven with the door closed</b>. Soup: fill a pot at the sink, add 3 tomatoes and an onion, boil, stir and salt it.</p>
+                    <p>Drop food onto a plate or into a bowl to plate it. The order you stack a burger in matters!</p>
+                </section>
+                <section>
+                    <h3>🛎️ Serving</h3>
+                    <p>Put finished dishes on the <b>pass</b> and ring the <b>bell</b>: the runner takes them to the right table. Waiters can carry plates out themselves (E on the guest) for bigger tips, and greet guests so they wait longer.</p>
+                    <p>Dirty dishes come back to the red tray by the sink. Wash them (E at the sink) or buy more. Order food at the <b>terminal</b> by the back door, then press E on the crate.</p>
+                </section>
+                <section>
+                    <h3>🔥 Chaos</h3>
+                    <p>Anything that touches the <b>floor is dirty</b>. Plates break when you throw them. Burnt food <b>catches fire</b> and fire spreads: grab a red extinguisher and hold F. A big fire that burns too long gets the kitchen shut down.</p>
+                </section>
+                <section>
+                    <h3>🎲 Rush events</h3>
+                    <p>🎩 Food critic (triple pay at 4★) · 🏃 Lunch rush · 🐀 Rat raid (throw things at it!) · 📋 Health inspector · 🛢️ Grease spill · 🔦 Blackout.</p>
+                    <p>👨‍🍳 Cooks and 🤵 waiters earn EXP for their own jobs and level up to unlock skills.</p>
+                </section>
+            </div>
+            <div class="row end"><button class="btn" data-close="howto">Got it</button></div>
+        </div>
+    </div>
+
+    <!-- ================= Skills / Shop / End of day ================= -->
+    <div id="skills" class="modal over hidden">
+        <div class="card wide"><h2>⭐ Skills</h2><div id="skills-body"></div></div>
+    </div>
+    <div id="shop" class="modal hidden">
+        <div class="card wide"><div id="shop-body"></div></div>
+    </div>
+    <div id="summary" class="modal hidden">
+        <div class="card wide"><div id="summary-body"></div></div>
+    </div>
+
+    <!-- ================= Confirm ================= -->
+    <div id="confirm" class="modal top hidden">
+        <div class="card narrow center">
+            <p id="confirm-text"></p>
+            <div class="row center"><button id="confirm-cancel" class="btn small">Cancel</button><button id="confirm-ok" class="btn go">OK</button></div>
+        </div>
+    </div>
+
+    <div id="fatal" class="modal top hidden">
+        <div class="card narrow center"><h2>😵 No 3D here</h2><p>Cooking Frenzy needs WebGL. Try another browser or turn on hardware acceleration.</p></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script src="js/core.js"></script>
+    <script src="js/models.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/items.js"></script>
+    <script src="js/cooking.js"></script>
+    <script src="js/stations.js"></script>
+    <script src="js/orders.js"></script>
+    <script src="js/minigames.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/net.js"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
