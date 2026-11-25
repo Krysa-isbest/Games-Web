@@ -73,6 +73,21 @@ input { font-family: inherit; }
     animation: fadein .18s ease-out;
 }
 .modal.over { z-index: 55; }
+/* the stove panel: no dimming, off to the side so you still see the pan */
+.modal.side { background: none; backdrop-filter: none; justify-content: flex-start; padding-left: 6vw; pointer-events: none; }
+.modal.side > .card { pointer-events: auto; max-width: 400px; }
+.stove-card h3 { margin: 0 0 10px; color: var(--yellow); }
+.sv-heat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+.sv-heat .btn.on { background: #ff8a3a; border-color: #ffd166; color: #fff; }
+.sv-food { background: rgba(0, 0, 0, .25); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
+.sv-name { font-weight: 700; margin-bottom: 6px; }
+.sv-sides { display: flex; gap: 10px; }
+.sv-side { flex: 1; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto auto; column-gap: 8px; align-items: center; }
+.sv-side i { grid-row: span 3; width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); }
+.sv-side small { color: var(--muted); font-size: 11px; }
+.sv-side b { font-size: 18px; }
+.sv-side em { font-style: normal; font-size: 12px; color: #ffe8b0; }
+.t-need { display: flex; flex-direction: column; gap: 3px; background: rgba(14, 22, 38, .85); border: 2px solid var(--yellow); border-radius: 10px; padding: 5px 9px; font-size: 13px; font-weight: 600; }
 .modal.top { z-index: 70; }
 .modal > .card { animation: popin .22s cubic-bezier(.2, 1.4, .4, 1); }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }

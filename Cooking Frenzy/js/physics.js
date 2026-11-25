@@ -84,6 +84,16 @@ CF.Phys = (() => {
     };
 
     P.setOvenDoor = open => { if (ovenDoorBody) ovenDoorBody.collisionResponse = !open; };
+    // a pan / pot locked on a burner: nothing can knock it off until someone grabs it
+    P.setLocked = (item, on) => {
+        const b = item.body; if (!b) return;
+        b.type = on ? CANNON.Body.STATIC : CANNON.Body.DYNAMIC;
+        b.mass = on ? 0 : (item.def.mass || 0.1);
+        b.updateMassProperties();
+        b.velocity.set(0, 0, 0); b.angularVelocity.set(0, 0, 0);
+        b.aabbNeedsUpdate = true;
+        if (!on) b.wakeUp();
+    };
     P.isFloor = body => body === floorBody;
 
     // Kinematic box per chef, so players shove items around

@@ -5,7 +5,7 @@
 // CF.Player (local chef), CF.Net (PeerJS), CF.Sync (authority + replication), CF.UI (DOM), CF.Game (boot + loop).
 const CF = window.CF = {};
 
-CF.VERSION = '1.3';
+CF.VERSION = '1.4';
 CF.rand = (a, b) => a + Math.random() * (b - a);
 CF.randi = (a, b) => Math.floor(CF.rand(a, b + 1));
 CF.choice = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -41,7 +41,7 @@ CF.settings = (() => {
     try { saved = JSON.parse(localStorage.getItem('cf-settings')) || {}; } catch (e) {}
     const s = Object.assign({
         name: 'Chef ' + CF.randi(10, 99), color: CF.randi(0, 5), sens: 1, fov: 75, vol: 0.7, music: 0.4, invertY: false,
-        gfx: 'high', bright: 1, fps: false, bob: true, fpsCap: 0, musicSrc: 'builtin', myMusic: 0.6, tutorial: true
+        gfx: 'high', bright: 1, fps: false, bob: true, fpsCap: 0, musicSrc: 'mine', myMusic: 0.6, tutorial: true
     }, CF.GFX_PRESETS.high, saved);
     delete s.role;      // v1.3: no more Cook / Waiter roles
     // settings saved before v1.2.1: re-apply the chosen preset, or translate the old shadow levels of a custom setup
@@ -53,7 +53,9 @@ CF.settings = (() => {
             s.shadowQ = { ultra: 'high', high: 'medium', medium: 'medium', low: 'low', off: 'off' }[saved.shadowQ] || 'medium';
         }
     }
-    s.v = 2;
+    // v3: the songs in the music folder are the default music now (the built-in tunes play while there are none)
+    if ((saved.v || 0) < 3 && s.musicSrc === 'builtin') s.musicSrc = 'mine';
+    s.v = 3;
     delete s.shadows;
     return s;
 })();
@@ -97,7 +99,9 @@ CF.ITEMS = {
     salt:    { name: 'Salt Shaker',   icon: '🧂', tool: 'salt',   shape: { t: 'box', s: [0.05, 0.11, 0.05] }, mass: 0.15 },
     pepper:  { name: 'Pepper Shaker', icon: '🌶️', tool: 'pepper', shape: { t: 'box', s: [0.05, 0.11, 0.05] }, mass: 0.15 },
     ext:     { name: 'Fire Extinguisher', icon: '🧯', tool: 'ext', shape: { t: 'box', s: [0.16, 0.48, 0.16] }, mass: 3 },
-    crate:   { name: 'Delivery Crate', icon: '📦', shape: { t: 'box', s: [0.5, 0.34, 0.4] }, mass: 4 }
+    crate:   { name: 'Delivery Crate', icon: '📦', shape: { t: 'box', s: [0.5, 0.34, 0.4] }, mass: 4 },
+    // carries up to 4 plates / bowls (clean or dirty); E on a guest serves them the best match from it
+    tray:    { name: 'Serving Tray', icon: '🍱', shape: { t: 'box', s: [0.6, 0.03, 0.44] }, mass: 0.8, cont: { cap: 4, acc: ['plate', 'bowl'], layout: 'tray' } }
 };
 for (const k in CF.ITEMS) CF.ITEMS[k].key = k;
 // "tomatoes", "beef patties"... for messages
@@ -173,7 +177,7 @@ CF.SHOP = [
     { cat: 'Produce', items: [['tomato', 1], ['onion', 1], ['lettuce', 2], ['potato', 1], ['mushroom', 1.5]] },
     { cat: 'Butcher & Dairy', items: [['patty', 3], ['steak', 8], ['salami', 4], ['cheese', 4]] },
     { cat: 'Bakery', items: [['bun', 1], ['dough', 2]] },
-    { cat: 'Kitchenware', items: [['plate', 6], ['bowl', 5], ['pan', 25], ['pot', 30], ['basket', 20], ['salt', 4], ['pepper', 4], ['ext', 40]] }
+    { cat: 'Kitchenware', items: [['plate', 6], ['bowl', 5], ['tray', 8], ['pan', 25], ['pot', 30], ['basket', 20], ['salt', 4], ['pepper', 4], ['ext', 40]] }
 ];
 CF.PRICE = {};
 CF.SHOP.forEach(c => c.items.forEach(([k, p]) => { CF.PRICE[k] = p; }));
@@ -203,8 +207,11 @@ CF.UPGRADES = [
     { id: 'express',  icon: '🚚', name: 'Express Delivery', price: 100, desc: 'Orders arrive in 4 seconds instead of 12.' },
     { id: 'sprinkler',icon: '💦', name: 'Ceiling Sprinklers', price: 160, desc: 'Fire spreads half as fast and dies out on its own.' },
     { id: 'marketing',icon: '📣', name: 'Neon Billboard',   price: 120, desc: '+20% tips and slightly more customers.' },
-    { id: 'patience', icon: '🪑', name: 'Comfy Chairs',     price: 90,  desc: 'Customers wait 25% longer.' }
+    { id: 'patience', icon: '🪑', name: 'Comfy Chairs',     price: 90,  desc: 'Customers wait 25% longer.' },
+    { id: 'prepbowls', icon: '🥣', name: 'Prep Bowls',      price: 90,  desc: 'Six fixed bowls by the cutting boards: drop cut ingredients in, take them out later. They keep overnight.' }
 ];
+// what a prep bowl takes: cut pieces (and bun halves)
+CF.CUTS = ['tomato_slice', 'onion_ring', 'lettuce_leaf', 'fries', 'cheese_slice', 'salami_slice', 'mushroom_slice', 'bun_bottom', 'bun_top'];
 
 // ---------- Rush events (the Frenzy) ----------
 CF.EVENTS = {
@@ -280,7 +287,22 @@ CF.Audio = {
             this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
             const d = this.noiseBuf.getChannelData(0);
             for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+            // real recordings from music/SFX replace the synthesized loops (the noise stays as the fallback)
+            const sizzle = this.loadSample('music/SFX/Sizzling.mp3');
+            this.sampleFor = { sizzle: [sizzle, 1, 1.15], fry: [sizzle, 0.82, 1.0] };     // [buffer promise, playback rate, gain]
         } catch (e) { this.ctx = null; }
+    },
+    samples: {}, sampleFor: {},
+    loadSample(url) {
+        if (this.samples[url]) return this.samples[url];
+        const p = this.samples[url] = { buf: null };
+        fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(a => new Promise((res, rej) => this.ctx.decodeAudioData(a, res, rej)))
+            .then(buf => {
+                p.buf = buf;
+                // loops already running on the noise switch to the recording
+                for (const k in this.sampleFor) if (this.sampleFor[k][0] === p && this.loops[k]) { this.loops[k].stop(); delete this.loops[k]; }
+            }).catch(() => {});
+        return p;
     },
     setVolume(v) { if (this.master) this.master.gain.value = v; },
 
@@ -361,6 +383,16 @@ CF.Audio = {
     loop(name, vol) {
         if (!this.ctx) return;
         let L = this.loops[name];
+        const smp = this.sampleFor[name];
+        if (!L && smp && smp[0].buf) {
+            // a recorded loop (e.g. the sizzle of meat in a pan)
+            if (vol <= 0.001) return;
+            const ctx = this.ctx, src = ctx.createBufferSource(), g = ctx.createGain();
+            src.buffer = smp[0].buf; src.loop = true; src.playbackRate.value = smp[1];
+            g.gain.value = 0; src.connect(g); g.connect(this.master);
+            src.start(0, Math.random() * Math.max(0, smp[0].buf.duration - 0.1));
+            L = this.loops[name] = { g, cur: 0, k: smp[2], stop() { try { src.stop(); } catch (e) {} g.disconnect(); } };
+        }
         if (!L) {
             if (vol <= 0.001) return;
             const ctx = this.ctx;
@@ -376,9 +408,9 @@ CF.Audio = {
             const mod = ctx.createGain(); mod.gain.value = 1;
             lfo.connect(lg); lg.connect(mod.gain); lfo.start();
             g.disconnect(); g.connect(mod); mod.connect(this.master);
-            L = this.loops[name] = { g, cur: 0 };
+            L = this.loops[name] = { g, cur: 0, k: 1, stop() { try { src.stop(); lfo.stop(); } catch (e) {} mod.disconnect(); } };
         }
-        const target = CF.clamp(vol, 0, 1) * 0.35;
+        const target = CF.clamp(vol, 0, 1) * 0.35 * (L.k || 1);
         L.cur = target;
         L.g.gain.setTargetAtTime(target, this.ctx.currentTime, 0.12);
     },

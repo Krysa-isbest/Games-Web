@@ -139,6 +139,8 @@ CF.Player = (() => {
         } else if (tg.kind === 'st' && tg.sid === 'pantry') {
             // grab one straight out of its crate / basket
             CF.Stations.takeFromPantry(tg.part);
+        } else if (tg.kind === 'st' && tg.sid === 'prep') {
+            CF.Sync.act({ t: 'prepTake', i: +tg.part });
         }
     }
     function drop() {
@@ -259,7 +261,7 @@ CF.Player = (() => {
         P.pos.y += P.vel.y * dt;
         let ground = 0;
         for (const c of CF.World.colliders) {
-            if (c.floor || !CF.World.solid(c)) continue;
+            if (c.floor || c.noPlayer || !CF.World.solid(c)) continue;
             const top = c.max[1];
             if (top > prevY + stepH || top <= ground) continue;
             if (overlap(c, R * 0.7)) ground = top;
@@ -273,7 +275,7 @@ CF.Player = (() => {
     }
     function collide(stepH) {
         for (const c of CF.World.colliders) {
-            if (c.floor || !CF.World.solid(c)) continue;
+            if (c.floor || c.noPlayer || !CF.World.solid(c)) continue;
             if (c.max[1] <= P.pos.y + stepH || c.min[1] >= P.pos.y + HEIGHT) continue;
             pushOut(c);
         }
@@ -323,18 +325,24 @@ CF.Player = (() => {
         ray.camera = cam;
         ray.near = 0.05; ray.far = REACH;
         const hits = ray.intersectObjects(CF.World.pickables, true);
+        let found = null, foundAt = 0;
         for (const h of hits) {
             const pk = h.object.userData.pick;
             if (!pk) continue;
+            if (found && h.distance - foundAt > 0.25) break;
             if (pk.kind === 'item') {
                 const it = CF.Items.get(pk.id);
                 if (!it) continue;
                 // skip what we carry (and what sits on it), and what someone else carries
                 if (rootOf(it).heldBy !== null) continue;
+                return pk;          // a pan on a burner wins over the burner under it: you target the pan and the patty
             }
+            if (pk.kind === 'st' && pk.sid === 'prep' && !CF.Orders.has('prepbowls')) continue;
+            if (found) continue;
+            if (pk.kind === 'st' && pk.part === 'top') { found = pk; foundAt = h.distance; continue; }   // look a little further
             return pk;
         }
-        return null;
+        return found;
     }
 
     return P;

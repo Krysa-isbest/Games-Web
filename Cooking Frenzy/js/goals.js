@@ -28,8 +28,10 @@ CF.Goals = (() => {
         if (pan) for (const b of B) { const d = Math.hypot(b.x - pan.mesh.position.x, b.z - pan.mesh.position.z); if (d < bd) { bd = d; best = b; } }
         return best.knob.position.clone().add(v3(0, 0.2, 0.06));
     }
+    const seated = ph => CF.Orders.customers.find(x => x.st === 'wait' && x.ph === ph);
+    const over = c => c ? v3(c.x, 2.15, c.z) : null;
     function guest() {
-        const c = CF.Orders.customers.find(x => x.st === 'wait' && x.r === 'burger') || CF.Orders.customers.find(x => x.st === 'wait');
+        const c = CF.Orders.customers.find(x => x.st === 'wait' && x.ph === 'ok' && x.r === 'burger') || CF.Orders.customers.find(x => x.st === 'wait');
         if (c) return v3(c.x, 2.15, c.z);
         const z = CF.World.zones.pass;
         return v3((z.min[0] + z.max[0]) / 2, 1.45, 0);
@@ -56,7 +58,11 @@ CF.Goals = (() => {
           at: () => above(all().find(it => it.type === 'plate' && it.contents.length) || find('plate'), 0.3), done: burgerBuilt },
         { text: 'Flip the sign next to the pass to OPEN the restaurant.',
           at: () => CF.World.signMesh.getWorldPosition(v3()).add(v3(-0.15, 0.4, 0)), done: () => CF.Orders.state.phase !== 'prep' },
-        { text: 'A guest wants your burger! Carry the plate to them and press E on them (bigger tip), or put it on the pass and ring the bell.',
+        { text: 'Your first guest is sitting down in the dining room. Hand them a menu: press E on them.',
+          at: () => over(seated('menu') || CF.Orders.customers[0]), done: () => CF.Orders.customers.some(c => c.ph && c.ph !== 'menu') || ((CF.Orders.state.stats || {}).served || 0) > 0 },
+        { text: 'They read the menu, then raise a hand ✋. Take their order: press E on them.',
+          at: () => over(seated('order') || seated('read')), done: () => CF.Orders.customers.some(c => c.ph === 'ok') || ((CF.Orders.state.stats || {}).served || 0) > 0 },
+        { text: 'They want your burger! Carry the plate to them and press E on them (bigger tip), or put it on the pass and ring the bell.',
           at: guest, done: () => ((CF.Orders.state.stats || {}).served || 0) > 0 }
     ];
     G.TUT_STEPS = TUT.length;
@@ -71,7 +77,7 @@ CF.Goals = (() => {
         earn:    { text: n => `Earn $${n} from meals and tips`, n: d => 60 + 25 * Math.min(d, 8), val: s => Math.floor(s.earned + s.tips), reward: 30 },
         good:    { text: n => `Serve ${n} dishes rated 4★ or better`, n: d => Math.min(8, 2 + Math.floor(d / 2)), val: s => okLog(s).filter(l => l.stars >= 4).length, reward: 30 },
         perfect: { text: () => 'Serve a perfect 5★ dish', n: () => 1, val: s => okLog(s).filter(l => l.stars >= 5).length, reward: 35 },
-        greet:   { text: n => `Greet ${n} guests`, n: d => Math.min(6, 2 + Math.floor(d / 2)), val: s => s.greets, reward: 15 },
+        greet:   { text: n => `Hand out ${n} menus`, n: d => Math.min(6, 2 + Math.floor(d / 2)), val: s => s.greets, reward: 15 },
         hand:    { text: n => `Carry ${n} dishes to the tables yourselves`, n: d => Math.min(6, 2 + Math.floor(d / 2)), val: s => s.hand, reward: 20 },
         wash:    { text: n => `Wash ${n} dirty dishes`, n: d => Math.min(6, 2 + Math.floor(d / 3)), val: s => s.washed, reward: 15 },
         clear:   { text: n => `Clear ${n} tables before the busser does`, n: d => Math.min(6, 2 + Math.floor(d / 2)), val: s => s.cleared, reward: 15 },

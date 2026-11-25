@@ -15,9 +15,10 @@ CF.UI = (() => {
     const cash = v => (v < 0 ? '−$' : '$') + Math.abs(Math.round(v || 0));
     const price = v => '$' + (Math.round(v * 100) / 100);
     const inPlay = () => CF.Game.mode === 'play';
-    const MODALS = ['join', 'lobby', 'loading', 'pause', 'settings', 'howto', 'skills', 'shop', 'summary', 'confirm'];
-    const BLOCKING = ['loading', 'pause', 'settings', 'howto', 'skills', 'shop', 'summary', 'confirm'];
-    const NEED_MOUSE = ['shop', 'summary', 'settings', 'howto', 'skills', 'confirm', 'loading'];
+    const MODALS = ['join', 'lobby', 'loading', 'pause', 'settings', 'howto', 'skills', 'shop', 'summary', 'confirm', 'stove'];
+    const BLOCKING = ['loading', 'pause', 'settings', 'howto', 'skills', 'shop', 'summary', 'confirm', 'stove'];
+    const NEED_MOUSE = ['shop', 'summary', 'settings', 'howto', 'skills', 'confirm', 'loading', 'stove'];
+    const ordered = c => c.st === 'wait' && (!c.ph || c.ph === 'ok');
     U.blocking = () => BLOCKING.some(isOpen);
 
     function starsHTML(v) {
@@ -141,7 +142,7 @@ CF.UI = (() => {
     }
     function updateRail() {
         const O = CF.Orders;
-        const list = O.customers.filter(c => c.st === 'wait').sort((a, b) => a.id - b.id).slice(0, 7);
+        const list = O.customers.filter(ordered).sort((a, b) => a.id - b.id).slice(0, 7);
         list.forEach((c, i) => {
             const r = spriteSlot(rail, i, 128, 160, 0.24, 0.3, CF.World.ticketRail), g = r.cvs.getContext('2d');
             const o = O.orderText(c), seat = CF.World.seats[c.seat], f = CF.clamp(c.pat / c.max, 0, 1);
@@ -167,7 +168,7 @@ CF.UI = (() => {
         let n = 0;
         for (const d of dishes) {
             let best = null, bs = 2.9;
-            for (const c of O.customers) if (c.st === 'wait') { const sc = O.score(d, c).stars; if (sc > bs) { bs = sc; best = c; } }
+            for (const c of O.customers) if (ordered(c)) { const sc = O.score(d, c).stars; if (sc > bs) { bs = sc; best = c; } }
             if (!best) continue;
             const tg = spriteSlot(tags, n++, 96, 96, 0.22, 0.22, CF.World.scene), g = tg.cvs.getContext('2d');
             const seat = CF.World.seats[best.seat];
@@ -205,11 +206,13 @@ CF.UI = (() => {
         setText('#hud-phase', label);
         const el = $('#hud-phase');
         if (cache.phaseCls !== ph) { cache.phaseCls = ph; el.className = 'pill phase ' + ph; }
-        const time = ph === 'prep' ? s.prep : ph === 'open' ? s.time : ph === 'closing' ? s.closeT : 0;
+        // last orders: the clock shows how long the most patient guest still waits
+        const left = O => O.customers.filter(c => c.st === 'wait' || c.st === 'walk');
+        const time = ph === 'prep' ? s.prep : ph === 'open' ? s.time : ph === 'closing' ? left(CF.Orders).reduce((m, c) => Math.max(m, c.pat || 0), 0) : 0;
         setText('#hud-time', ph === 'summary' || (ph === 'prep' && CF.Goals.holdPrep()) ? '--:--' : CF.fmtTime(time));
         setText('#hud-money', cash(s.money));
         $('#hud-money').classList.toggle('neg', s.money < 0);
-        setText('#hud-sub', ph === 'prep' ? (CF.Goals.holdPrep() ? 'Prep time: the restaurant opens when you flip the OPEN sign by the pass' : 'Prep time: flip the OPEN sign by the pass when you are ready') : ph === 'closing' ? 'Kitchen closing: finish the last orders!' : '');
+        setText('#hud-sub', ph === 'prep' ? (CF.Goals.holdPrep() ? 'Prep time: the restaurant opens when you flip the OPEN sign by the pass' : 'Prep time: flip the OPEN sign by the pass when you are ready') : ph === 'closing' ? `Last orders: no new guests. ${left(CF.Orders).length} still here, serve them before their patience runs out` : '');
         const ev = s.event;
         if (ev && CF.EVENTS[ev.k]) {
             const E = CF.EVENTS[ev.k];
@@ -223,13 +226,15 @@ CF.UI = (() => {
         if (ticketT > 0) return;
         ticketT = 0.2;
         const O = CF.Orders, box = $('#tickets');
-        const list = O.customers.filter(c => c.st === 'wait').sort((a, b) => (a.pat / a.max) - (b.pat / b.max)).slice(0, 8);
-        const key = list.map(c => c.id + ':' + (c.greeted ? 1 : 0)).join(',');
+        const list = O.customers.filter(ordered).sort((a, b) => (a.pat / a.max) - (b.pat / b.max)).slice(0, 8);
+        // guests who still need a menu / are ready to order
+        const menus = O.customers.filter(c => c.st === 'wait' && c.ph === 'menu').length, hands = O.customers.filter(c => c.st === 'wait' && c.ph === 'order').length;
+        const key = list.map(c => c.id).join(',') + '|' + menus + '|' + hands;
         if (key !== ticketKey) {
             ticketKey = key;
-            box.innerHTML = list.map(c => {
+            box.innerHTML = (menus || hands ? `<div class="t-need">${menus ? `<span>📋 ${menus} want${menus === 1 ? 's' : ''} a menu</span>` : ''}${hands ? `<span>✋ ${hands} ready to order</span>` : ''}</div>` : '') + list.map(c => {
                 const o = O.orderText(c), seat = CF.World.seats[c.seat];
-                return `<div class="ticket ${c.critic ? 'critic' : ''}" data-c="${c.id}"><div class="t-top"><span class="t-table">T${seat ? seat.table + 1 : '?'}</span>${c.critic ? '<span class="t-crit">🎩 CRITIC</span>' : ''}${!c.greeted ? '<span class="t-wave" title="Not greeted yet: greet them (E) and they wait longer">👋</span>' : ''}</div>`
+                return `<div class="ticket ${c.critic ? 'critic' : ''}" data-c="${c.id}"><div class="t-top"><span class="t-table">T${seat ? seat.table + 1 : '?'}</span>${c.critic ? '<span class="t-crit">🎩 CRITIC</span>' : ''}</div>`
                     + `<div class="t-dish"><span>${o.rec.icon}</span><b>${esc(o.rec.name)}</b></div>${o.label ? `<div class="t-var">${esc(o.label)}</div>` : ''}<div class="t-bar"><i></i></div></div>`;
             }).join('');
         }
@@ -312,6 +317,7 @@ CF.UI = (() => {
         updateRole(dt);
         updatePrompt();
         updateFire();
+        updateStove(dt);
         CF.Goals.updateHud();
         if (servedT > 0) { servedT -= dt; if (servedT <= 0) show('#served', false); }
         railT -= dt;
@@ -331,7 +337,10 @@ CF.UI = (() => {
             : 'The kitchen is paused';
         show('#pause', true);
     }
-    U.onLock = () => show('#pause', false);
+    U.onLock = () => {
+        show('#pause', false);
+        if (pendingFlip) { const id = pendingFlip; pendingFlip = 0; CF.MG.start('flip', { id }); }
+    };
     U.onUnlock = () => {
         if (!inPlay() || NEED_MOUSE.some(isOpen)) return;
         if (U.typing) closeChat();
@@ -476,6 +485,61 @@ CF.UI = (() => {
             show('#shop', false);
             backToGame();
         }
+    }
+
+    // ---------- stove panel (E on a pan on a burner): heat, flip, how done each side is ----------
+    let stovePan = 0, stoveT = 0, pendingFlip = 0, stoveOpened = 0;
+    const HEAT = ['Off', 'Low', 'Med', 'High'];
+    U.openStove = id => {
+        if (!inPlay() || !CF.Items.get(id)) return;
+        stovePan = id; stoveT = 0; stoveOpened = performance.now();
+        renderStove();
+        show('#stove', true);
+        CF.Player.unlock();
+    };
+    function closeStove(back) { stovePan = 0; show('#stove', false); if (back) backToGame(); }
+    const sideChip = (def, c, label) => {
+        const col = '#' + CF.Items.cookColorHex(def, c);
+        return `<span class="sv-side"><i style="background:${col}"></i><small>${label}</small><b>${Math.round(c * 100)}%</b><em>${esc(CF.doneLabel(c, def))}</em></span>`;
+    };
+    function renderStove() {
+        const pan = CF.Items.get(stovePan);
+        const bi = pan ? CF.Stations.burnerOf(pan) : -1;
+        if (!pan || bi < 0 || pan.heldBy !== null) { closeStove(true); return; }
+        const lv = CF.Stations.state.burners[bi], foods = pan.contents.map(id => CF.Items.get(id)).filter(Boolean);
+        let h = `<h3>🍳 Pan on burner ${bi + 1}</h3><div class="sv-heat">${HEAT.map((t, i) => `<button class="btn small ${lv === i ? 'on' : ''}" data-stove="heat" data-v="${i}">${t}</button>`).join('')}</div>`;
+        if (!foods.length) h += '<p class="note">The pan is empty. Drop food into it.</p>';
+        for (const f of foods) {
+            const d = f.def;
+            h += `<div class="sv-food"><div class="sv-name">${d.icon} ${esc(d.name)}${f.s.salt > 0.05 ? ' 🧂' : ''}${f.s.pepper > 0.05 ? ' 🌶️' : ''}</div>`;
+            if (d.cook && d.sides) h += `<div class="sv-sides">${sideChip(d, f.s.c[1 - f.s.up], 'Bottom (on the pan)')}${sideChip(d, f.s.c[f.s.up], 'Top')}</div>`;
+            else if (d.cook) h += `<div class="sv-sides">${sideChip(d, CF.Items.cook(f), 'Cooked')}</div>`;
+            h += '</div>';
+        }
+        const canFlip = foods.some(f => f.def.sides);
+        h += `<div class="row end"><button class="btn small" data-stove="close">Close (E)</button>${canFlip ? '<button class="btn go" data-stove="flip">Flip it! 🥞</button>' : ''}</div>`;
+        $('#stove-body').innerHTML = h;
+    }
+    function stoveClick(e) {
+        const b = e.target.closest('[data-stove]');
+        if (!b) return;
+        const a = b.dataset.stove, pan = CF.Items.get(stovePan);
+        if (a === 'close') { closeStove(true); return; }
+        if (!pan) { closeStove(true); return; }
+        if (a === 'heat') { CF.Sync.act({ t: 'knob', i: CF.Stations.burnerOf(pan), set: +b.dataset.v }); stoveT = -0.15; }
+        else if (a === 'flip') {
+            // the flip minigame needs the mouse locked again: start it once the lock is back
+            pendingFlip = pan.id;
+            closeStove(false);
+            CF.Player.lock();
+        }
+    }
+    function updateStove(dt) {
+        if (!isOpen('stove')) return;
+        stoveT -= dt;
+        if (stoveT > 0) return;
+        stoveT = 0.15;
+        renderStove();
     }
 
     // ---------- end of day ----------
@@ -735,13 +799,16 @@ CF.UI = (() => {
         on('#confirm-cancel', () => { show('#confirm', false); confirmCb = null; backToGame(); });
         // panels
         $('#shop').addEventListener('click', shopClick);
+        $('#stove').addEventListener('click', stoveClick);
+        // E closes the stove panel again (the player's E is off while a panel has the mouse)
+        addEventListener('keydown', e => { if (e.code === 'KeyE' && !e.repeat && isOpen('stove') && !U.typing && performance.now() - stoveOpened > 200) closeStove(true); });
         $('#summary').addEventListener('click', summaryClick);
         $('#skills').addEventListener('click', skillsClick);
         buildSettings();
         // Esc closes the top panel (in the game, Esc first frees the mouse and opens the pause screen)
         addEventListener('keydown', e => {
             if (e.key !== 'Escape' || U.typing) return;
-            for (const id of ['confirm', 'settings', 'howto', 'skills', 'join']) {
+            for (const id of ['confirm', 'settings', 'howto', 'skills', 'join', 'stove']) {
                 if (isOpen(id)) { show('#' + id, false); if (id === 'confirm') confirmCb = null; backToGame(); return; }
             }
             if (isOpen('book')) show('#book', false);

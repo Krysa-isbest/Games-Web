@@ -7,7 +7,8 @@ CF.Items = (() => {
     const tmpV = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), upV = new THREE.Vector3();
     const STACKERS = new Set(['bun_bottom', 'patty', 'cheese_slice', 'lettuce_leaf', 'tomato_slice', 'onion_ring', 'bun_top', 'salami_slice', 'mushroom_slice']);
     // container mouth: radius, local y range where falling food gets caught
-    const MOUTH = { plate: [0.12, -0.03, 0.14], bowl: [0.085, -0.05, 0.14], pan: [0.115, -0.04, 0.12], pot: [0.125, -0.12, 0.24], basket: [0.1, -0.06, 0.14], pizza_base: [0.115, -0.02, 0.1] };
+    const MOUTH = { plate: [0.12, -0.03, 0.14], bowl: [0.085, -0.05, 0.14], pan: [0.115, -0.04, 0.12], pot: [0.125, -0.12, 0.24], basket: [0.1, -0.06, 0.14], pizza_base: [0.115, -0.02, 0.1], tray: [0.27, -0.02, 0.16] };
+    const TRAY_SLOTS = [[-0.145, -0.1], [0.145, -0.1], [-0.145, 0.1], [0.145, 0.1]];
 
     const isHost = () => CF.Sync.isHost;
     I.get = id => I.map.get(id);
@@ -143,6 +144,11 @@ CF.Items = (() => {
                 const a = k * 2.4, r = k === 0 ? 0 : 0.035 + (k % 3) * 0.022;
                 place(it, Math.cos(a) * r, top + 0.003 + k * 0.0015, Math.sin(a) * r);
             });
+        } else if (kind === 'tray') {
+            items.forEach((it, k) => {
+                const s = TRAY_SLOTS[k % 4], sh = it.def.shape, half = sh.t === 'sphere' ? sh.r : sh.s[1] / 2;
+                place(it, s[0], top + half + 0.002 + k * 0.006, s[1]);
+            });
         } else if (kind === 'pot') {
             const lvl = cont.s.water ? 0.04 : top;
             items.forEach((it, k) => { const a = k * 2.1; place(it, Math.cos(a) * 0.055, Math.max(lvl, top + 0.02) + k * 0.01, Math.sin(a) * 0.055); });
@@ -164,6 +170,9 @@ CF.Items = (() => {
         return out.convertSRGBToLinear();      // the palette is sRGB hex; materials work in linear
     }
     I.cook = it => it.def.sides ? (it.s.c[0] + it.s.c[1]) / 2 : it.s.c[0];
+    // the doneness colour as an sRGB hex string (the stove panel's side chips)
+    const hexCol = new THREE.Color();
+    I.cookColorHex = (def, c) => cookColor(def, c, 0, hexCol).convertLinearToSRGB().getHexString();
     I.refresh = (it) => {
         const u = it.mesh.userData, s = it.s;
         if (it.def.cook) {
@@ -212,6 +221,7 @@ CF.Items = (() => {
         if (it.type === 'pot' && !s.soup && s.water) { const n = I.deep(it).length; out.push(n ? n + ' ingredient' + (n > 1 ? 's' : '') : 'add 3 tomato + 1 onion'); }
         if (d.cont && it.contents.length && it.type !== 'pot') out.push(it.contents.length + ' on it');
         if (CF.PANTRY[it.type] && !it.container && CF.Stations.returnable(it)) out.push('↩ can go back in its bin');
+        if (it.s.locked) out.push('🔒 locked on the burner (grab to take it off)');
         return out.join(' · ');
     };
 
@@ -301,6 +311,7 @@ CF.Items = (() => {
         for (const o of I.map.values()) if (o.heldBy === pid && o !== it) I.release(o, null);
         if (it.container) I.detach(it);
         if (!it.body) CF.Phys.add(it, it.mesh.position, it.mesh.quaternion);
+        if (it.s.locked) { CF.Phys.setLocked(it, false); delete it.s.locked; }       // a pan locked on a burner comes free
         it.heldBy = pid;
         CF.Phys.setHeld(it, true);
         I.touch(it);
@@ -324,11 +335,13 @@ CF.Items = (() => {
         const conts = [], foods = [];
         for (const it of I.map.values()) {
             if (it.def.cont) conts.push(it);
-            if (!it.container && it.heldBy === null && it.body && (it.def.food || it.type === 'tomato')) foods.push(it);
+            // falling food lands in containers; falling plates / bowls only on trays (see accepts)
+            if (!it.container && it.heldBy === null && it.body && (it.def.food || it.def.dish)) foods.push(it);
         }
         for (const c of conts) {
             const up = I.up(c);
-            if (c.contents.length && up < 0.3 && !c.container) {
+            // tipped over: everything falls out, water and soup spill (a pot with only water / soup too)
+            if ((c.contents.length || (c.type === 'pot' && (c.s.water || c.s.soup))) && up < 0.3 && !c.container) {
                 const v = c.body ? [c.body.velocity.x, c.body.velocity.y, c.body.velocity.z] : [0, 0, 0];
                 for (const id of c.contents.slice()) { const f = I.get(id); if (!f) continue; if (f.def.liquid) { I.remove(id); continue; } I.detach(f, { x: v[0] + CF.rand(-0.6, 0.6), y: v[1] + 0.8, z: v[2] + CF.rand(-0.6, 0.6) }); }
                 if (c.type === 'pot' && (c.s.water || c.s.soup)) { c.s.water = 0; c.s.soup = 0; c.s.sc = 0; I.touch(c); I.refresh(c); CF.Sync.onFx('splash', I.worldPos(c), 'splash'); }

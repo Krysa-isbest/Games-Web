@@ -5,7 +5,9 @@
 CF.Stations = (() => {
     const S = {};
     // stock = what is in the pantry bins, incoming = bought and still on the truck
-    S.state = { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, plates: 6, bowls: 4, open: false, stock: {}, incoming: {} };
+    // prep = the 6 prep bowls (upgrade): [{ t: cut type | null, n, q (average cut quality) }]
+    S.state = { burners: [0, 0, 0, 0], ovenOn: false, ovenOpen: false, fryerOn: false, plates: 6, bowls: 4, open: false, stock: {}, incoming: {}, prep: [] };
+    const PREP_CAP = 12;
     const deliveries = [];   // host: { t, items }
     const tmp = new THREE.Vector3();
     const act = a => CF.Sync.act(a);
@@ -55,6 +57,46 @@ CF.Stations = (() => {
         return n;
     };
 
+    // ---------- prep bowls (host) ----------
+    S.initPrep = saved => {
+        S.state.prep = [];
+        for (let i = 0; i < 6; i++) {
+            const p = saved && saved[i];
+            S.state.prep.push(p && CF.CUTS.includes(p.t) && p.n > 0 ? { t: p.t, n: Math.min(PREP_CAP, p.n | 0), q: CF.clamp(+p.q || 1, 0, 1) } : { t: null, n: 0, q: 1 });
+        }
+        changed();
+    };
+    const prepOk = it => !!(it && CF.CUTS.includes(it.type) && !it.s.dirty && !it.contents.length && CF.Items.cook(it) < 0.06);
+    function prepStore(i, it) {
+        const b = S.state.prep[i];
+        if (!b || !CF.Orders.has('prepbowls') || !prepOk(it) || (b.t && b.t !== it.type) || b.n >= PREP_CAP) return false;
+        b.q = (b.q * b.n + (it.s.q === undefined ? 1 : it.s.q)) / (b.n + 1);
+        b.t = it.type; b.n++;
+        CF.Items.remove(it.id);
+        changed();
+        return true;
+    }
+    // ---------- pans / pots on burners ----------
+    // which burner something sits on (-1 = none)
+    S.burnerOf = it => {
+        const p = CF.Items.worldPos(it), CH = CF.World.CH, B = CF.World.zones.burners;
+        if (p.y < CH - 0.02 || p.y > CH + 0.3) return -1;
+        for (let i = 0; i < B.length; i++) if (Math.hypot(p.x - B[i].x, p.z - B[i].z) < 0.14) return i;
+        return -1;
+    };
+    const lockQ = new THREE.Quaternion(), lockE = new THREE.Euler(), UP = new THREE.Vector3(0, 1, 0);
+    function lockOn(it, i) {
+        const b = CF.World.zones.burners[i], half = it.def.shape.s[1] / 2, body = it.body;
+        lockE.setFromQuaternion(it.mesh.quaternion, 'YXZ');
+        lockQ.setFromAxisAngle(UP, lockE.y);
+        body.position.set(b.x, CF.World.CH + 0.012 + half, b.z);
+        body.quaternion.set(lockQ.x, lockQ.y, lockQ.z, lockQ.w);
+        CF.Phys.setLocked(it, true);
+        it.s.locked = i + 1;
+        CF.Items.touch(it);
+        CF.Sync.onFx('lock', { x: b.x, y: CF.World.CH, z: b.z }, 'click');
+    }
+
     // Starting kitchen (host): cookware, spices, extinguishers; the pantry gets its morning delivery
     S.setupKitchen = () => {
         const Z = CF.World.zones, CH = CF.World.CH, I = CF.Items, W = Z.ware;
@@ -69,6 +111,9 @@ CF.Stations = (() => {
         I.spawn('salt', { x: 0.9, y: CH + 0.07, z: 0.9 });
         I.spawn('pepper', { x: 1.1, y: CH + 0.07, z: 0.9 });
         for (const p of Z.extSpots) I.spawn('ext', { x: p.x, y: p.y + 0.02, z: p.z });
+        // two serving trays on the counter by the pass
+        I.spawn('tray', { x: 6.67, y: CH + 0.05, z: -2.4 }, { yaw: Math.PI / 2 });
+        I.spawn('tray', { x: 6.67, y: CH + 0.05, z: -3.2 }, { yaw: Math.PI / 2 });
         wareIdx = 2;
         if (skipTopUp) skipTopUp = false;
         else {
@@ -84,7 +129,8 @@ CF.Stations = (() => {
         switch (a.t) {
             case 'knob': {
                 const i = a.i | 0; if (i < 0 || i > 3) return true;
-                st.burners[i] = (st.burners[i] + (a.dir < 0 ? 3 : 1)) % 4; changed();
+                // the stove panel sets a level directly, the knob turns one step
+                st.burners[i] = a.set !== undefined ? CF.clamp(a.set | 0, 0, 3) : (st.burners[i] + (a.dir < 0 ? 3 : 1)) % 4; changed();
                 CF.Sync.onFx('knob', CF.World.zones.burners[i].knob.position, 'knob');
                 return true;
             }
@@ -121,6 +167,26 @@ CF.Stations = (() => {
                 const it = I.spawn(t, p, { yaw: Math.random() * 6 });
                 I.grab(pid, it.id);
                 CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'grab');
+                return true;
+            }
+            case 'prepTake': {
+                const b = st.prep[a.i | 0];
+                if (!b || !b.n || held || !CF.Orders.has('prepbowls')) return true;
+                const B = CF.World.prepBowls[a.i | 0];
+                const p = P.hold ? { x: P.hold[0], y: P.hold[1], z: P.hold[2] } : { x: B.x, y: B.y + 0.2, z: B.z };
+                const it = I.spawn(b.t, p, { s: { q: b.q, c: [0, 0] }, yaw: Math.random() * 6 });
+                I.grab(pid, it.id);
+                b.n--; if (!b.n) { b.t = null; b.q = 1; }
+                changed();
+                CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'grab');
+                return true;
+            }
+            case 'prepPut': {
+                const i = a.i | 0, b = st.prep[i];
+                if (!held || !b) return true;
+                if (!prepStore(i, held)) { CF.Sync.toastTo(pid, prepOk(held) ? 'That bowl is full or holds something else.' : 'Only fresh, clean cut ingredients go into a prep bowl.', 'bad'); return true; }
+                const B = CF.World.prepBowls[i];
+                CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'drop');
                 return true;
             }
             case 'pantryPut': {
@@ -301,6 +367,17 @@ CF.Stations = (() => {
                 CF.Sync.onFx('pantry', { x: B.x, y: B.y + 0.1, z: B.z }, 'drop');
                 continue;
             }
+            // cut pieces dropped into a prep bowl
+            if (CF.World.prepBowls.length && CF.CUTS.includes(it.type) && it.age > 0.6 && CF.Orders.has('prepbowls')) {
+                const k = CF.World.prepBowls.findIndex(b => CF.World.inZone(b.zone, p));
+                if (k >= 0 && prepStore(k, it)) continue;
+            }
+            // a pan or pot set down on a burner locks in place
+            if ((it.type === 'pan' || it.type === 'pot') && it.body && !it.s.locked && it.age > 0.5
+                && it.body.velocity.lengthSquared() < 0.05 && CF.Items.up(it) > 0.9) {
+                const bi = S.burnerOf(it);
+                if (bi >= 0) lockOn(it, bi);
+            }
             if ((it.type === 'plate' || it.type === 'bowl') && !it.s.dirty && !it.contents.length && it.age > 1) {
                 const z = it.type === 'plate' ? Z.plates : Z.bowls;
                 const dx = p.x - z.x, dz = p.z - z.z;
@@ -334,8 +411,13 @@ CF.Stations = (() => {
             const n = stock[t] || 0;
             if (shownStock[t] !== n) { shownStock[t] = n; CF.World.drawPantryLabel(t, n); }
         }
+        // prep bowls (only with the upgrade)
+        const owned = CF.Game.mode === 'play' && CF.Orders.has('prepbowls');
+        CF.World.setPrepBowls(owned);
+        if (owned) (st.prep || []).forEach((b, i) => { const key = b.t + ':' + Math.min(3, b.n); if (shownPrep[i] !== key) { shownPrep[i] = key; CF.World.drawPrep(i, b.t, Math.min(3, b.n)); } });
+        CF.World.fryer.oil.material.emissiveIntensity = st.fryerOn ? 2.2 : 1;
     };
-    const shownStock = {};
+    const shownStock = {}, shownPrep = [];
     // local: take one ingredient out of its bin (click or E)
     S.takeFromPantry = t => { if (CF.PANTRY[t]) act({ t: 'pantryTake', k: t }); };
     S.runSink = t => { CF.World.sinkWater.visible = true; S._sinkT = t || 1.5; };
@@ -388,6 +470,17 @@ CF.Stations = (() => {
             else if (sid === 'sign') out.e = st.open ? { text: 'Restaurant is open', none: true } : { text: 'OPEN the restaurant!', run: () => act({ t: 'open' }) };
             else if (sid === 'trash') out.e = held ? { text: held.def.cont && !held.def.food ? 'Empty it into the trash' : 'Throw it away', run: () => act({ t: 'trashHeld' }) } : { text: 'Trash bin', none: true };
             else if (sid === 'dirty') out.e = { text: 'Dirty dishes come back here', none: true };
+            else if (sid === 'prep') {
+                const i = +target.part, b = (st.prep || [])[i] || { t: null, n: 0 };
+                out.info = b.n ? `🥣 Prep bowl · ${CF.ITEMS[b.t].icon} ${CF.ITEMS[b.t].name} ×${b.n}` : '🥣 Prep bowl · empty';
+                if (held) {
+                    if (!CF.CUTS.includes(held.type)) out.e = { text: 'Only cut ingredients go in here', none: true };
+                    else if (b.t && b.t !== held.type) out.e = { text: `This bowl holds ${CF.plural(b.t)}`, none: true };
+                    else if (b.n >= PREP_CAP) out.e = { text: 'This bowl is full', none: true };
+                    else out.e = { text: `Put the ${held.def.name.toLowerCase()} in`, run: () => act({ t: 'prepPut', i }) };
+                } else if (b.n) out.e = { text: `Take a ${CF.ITEMS[b.t].name.toLowerCase()}`, run: () => act({ t: 'prepTake', i }) };
+                else out.e = { text: 'Empty: drop cut ingredients in to keep them', none: true };
+            }
             else if (sid === 'pantry') {
                 const t = target.part, def = CF.ITEMS[t], n = (st.stock || {})[t] || 0, name = def.name.toLowerCase();
                 out.info = `${def.icon} ${def.name} · ${n} / ${CF.PANTRY[t].cap} in the bin${st.incoming && st.incoming[t] ? ` · ${st.incoming[t]} on the way` : ''}`;
@@ -407,6 +500,8 @@ CF.Stations = (() => {
         if (b >= 0 && (it.def.chop || it.def.flatten) && !it.container) { out.e = chopPrompt(it); return out; }
         const cont = it.container ? I.get(it.container) : null;
         const pan = it.type === 'pan' ? it : (cont && cont.type === 'pan' ? cont : null);
+        // a pan on a burner: E opens the stove panel (heat, flip, how done each side is)
+        if (pan && S.burnerOf(pan) >= 0) { out.e = { text: 'Pan controls: heat, flip, doneness', run: () => CF.UI.openStove(pan.id) }; return out; }
         if (pan && pan.contents.some(id => { const f = I.get(id); return f && f.def.sides; })) { out.e = { text: 'Flip!', run: () => CF.MG.start('flip', { id: pan.id }) }; return out; }
         const pot = it.type === 'pot' ? it : (cont && cont.type === 'pot' ? cont : null);
         if (pot) {

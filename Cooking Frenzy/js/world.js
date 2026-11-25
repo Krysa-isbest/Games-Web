@@ -365,6 +365,8 @@ CF.World = (() => {
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 10), MAT.floor);
         floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
         W.colliders.push({ min: [-20, -1, -20], max: [20, 0, 20], floor: true, id: 'floor' });
+        // the ceiling over the kitchen and dining room: thrown things bounce off it (only physics uses it, never the player)
+        W.colliders.push({ min: [-20, 3.2, -20], max: [20, 3.8, 20], id: 'ceiling', noPlayer: true });
         const ceil = new THREE.Mesh(new THREE.PlaneGeometry(14, 10), MAT.ceiling);
         ceil.rotation.x = Math.PI / 2; ceil.position.y = 3.2; scene.add(ceil);
         const wall = (w, h, d, x, y, z) => box(w, h, d, MAT.wall, x, y, z, { cast: false, uv: [1.2, 0.6] });
@@ -450,7 +452,8 @@ CF.World = (() => {
             { min: [fx0, 0, -5], max: [fx1, CH, -4.93] }, { min: [fx0, 0, -4.45], max: [fx1, CH, -4.35] });
         box(0.8, 0.03, 0.08, MAT.steel, 1.15, CH - 0.015, -4.39, { col: false }); box(0.8, 0.03, 0.08, MAT.steel, 1.15, CH - 0.015, -4.96, { col: false });
         box(0.12, 0.03, D, MAT.steel, fx0 + 0.06, CH - 0.015, -4.675, { col: false }); box(0.12, 0.03, D, MAT.steel, fx1 - 0.06, CH - 0.015, -4.675, { col: false });
-        const oil = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.48), std(0xd9a12a, { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.85 }));
+        // golden oil (it looked grey: metallic + see-through over the dark vat); glows a little warmer when the fryer is on
+        const oil = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.48), std(0xe6a72c, { roughness: 0.16, metalness: 0, transparent: true, opacity: 0.96, emissive: lin(0x3a2200) }));
         oil.rotation.x = -Math.PI / 2; oil.position.set(1.15, CH - 0.09, -4.69); scene.add(oil);
         const fswitch = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.03), std(0x29d37a, { emissive: 0x000000 }));
         fswitch.position.set(1.15, CH - 0.12, -4.33); scene.add(fswitch); part(fswitch, 'fryer', 'switch');
@@ -498,6 +501,7 @@ CF.World = (() => {
             knife.position.set(x + (i === 2 ? 0.25 : 0.05), CH + 0.035, z + (i === 2 ? 0 : 0.24)); knife.rotation.y = i === 2 ? Math.PI / 2 : 0.2;
             knife.traverse(c => { c.castShadow = true; }); scene.add(knife);
         });
+        buildPrepBowls();
         // spice shelf
         box(0.25, 0.03, 1.2, MAT.wood, -6.85, 1.45, 2.4, { col: true, cast: false });
         W.zones.spices = [new THREE.Vector3(-6.85, 1.53, 2.15), new THREE.Vector3(-6.85, 1.53, 2.45), new THREE.Vector3(-6.85, 1.53, 2.75)];
@@ -690,6 +694,41 @@ CF.World = (() => {
         sign('PANTRY', 'LMB or E: take one · E: put it back', '#2e8b57', 1.4, 2.2, 1.2);
         sign('DELI', 'meat & cheese', '#1d6fa3', 5.5, 2.42, 0.9);
     }
+    // Prep Bowls (upgrade): fixed steel bowls by the cutting boards that store cut pieces of one kind.
+    // W.prepBowls[i] = { x, y (floor), z, group, models, type, zone }; shown with W.setPrepBowls(on).
+    W.prepBowls = [];
+    function buildPrepBowls() {
+        const geo = new THREE.LatheGeometry([[0.001, 0], [0.07, 0], [0.092, 0.025], [0.104, 0.068], [0.098, 0.072]].map(p => new THREE.Vector2(p[0], p[1])), 28);
+        const mat = std(0xd9dee2, { metalness: 0.85, roughness: 0.28, side: THREE.DoubleSide });
+        const spots = [[-1.33, 0.02], [-1.33, 0.47], [-1.33, 0.92], [-6.6, 0.12], [-6.6, 0.42], [-6.6, 0.72]];
+        spots.forEach(([x, z], i) => {
+            const g = new THREE.Group(); g.position.set(x, CH, z); g.visible = false; scene.add(g);
+            const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; g.add(m);
+            const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.16, 12), new THREE.MeshBasicMaterial({ visible: false }));
+            hit.position.set(x, CH + 0.08, z); scene.add(hit);
+            part(hit, 'prep', String(i));
+            W.prepBowls.push({ x, y: CH + 0.006, z, group: g, models: [], type: null, zone: zoneBox(x - 0.11, CH - 0.02, z - 0.11, x + 0.11, CH + 0.28, z + 0.11) });
+        });
+    }
+    let prepShown = false;
+    W.setPrepBowls = on => { if (on === prepShown) return; prepShown = on; for (const b of W.prepBowls) b.group.visible = on; };
+    // show up to 3 pieces of what a bowl holds
+    W.drawPrep = (i, type, n) => {
+        const B = W.prepBowls[i]; if (!B) return;
+        if (B.type !== type) {
+            for (const m of B.models) B.group.remove(m);
+            B.models = []; B.type = type;
+            if (type) for (let k = 0; k < 3; k++) {
+                const m = CF.Models.item(type), sh = CF.ITEMS[type].shape, half = sh.t === 'sphere' ? sh.r : sh.s[1] / 2;
+                m.position.set(Math.cos(k * 2.1) * 0.03 * (k ? 1 : 0), 0.008 + half + k * 0.012, Math.sin(k * 2.1) * 0.03 * (k ? 1 : 0));
+                m.rotation.y = k * 1.7;
+                m.traverse(o => { if (o.isMesh) o.castShadow = false; });
+                B.group.add(m); B.models.push(m);
+            }
+        }
+        B.models.forEach((m, k) => { m.visible = k < n; });
+    };
+
     // the count label on a bin's shelf edge
     W.drawPantryLabel = (type, n) => {
         const P = W.pantry[type], def = CF.ITEMS[type], cap = CF.PANTRY[type].cap;

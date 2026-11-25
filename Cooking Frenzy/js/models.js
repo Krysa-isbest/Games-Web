@@ -1148,6 +1148,21 @@ CF.Models = (() => {
         c.fillStyle = 'rgba(34,64,52,0.85)'; c.font = 'bold 30px Bungee, Fredoka, Arial'; c.textAlign = 'left'; c.textBaseline = 'middle';
         c.fillText('FRESH', 76, 34); c.font = 'bold 22px Fredoka, Arial'; c.fillText('MARKET · FARM DIRECT', 78, 68);
     }));
+    // serving tray: a wooden board with a low rim and two hand cut-outs at the ends
+    BUILD.tray = (g, u) => {
+        const W = 0.6, D = 0.44;
+        const wood = shared('trayWood', () => std(0xb07a4a, { map: T.plank(), roughness: 0.5 }));
+        const rim = shared('trayRim', () => std(0x5e3a1e, { roughness: 0.45 }));
+        const k = new Kit();
+        k.add(roundBox(W - 0.02, 0.012, D - 0.02, 0.004, 4), wood, mtx(0, -0.009, 0));
+        for (const s of [-1, 1]) {
+            k.add(roundBox(W, 0.03, 0.018, 0.007, 4), rim, mtx(0, -0.0, s * (D / 2 - 0.009)));
+            k.add(roundBox(0.018, 0.03, D - 0.03, 0.007, 4), rim, mtx(s * (W / 2 - 0.009), -0.0, 0));
+            k.add(roundBox(0.012, 0.012, 0.09, 0.005, 3), shared('trayHole', () => std(0x2a1a0e, { roughness: 0.6 })), mtx(s * (W / 2 - 0.009), 0.004, 0, 0, 0, 0, 1.4, 1, 1));
+        }
+        k.build(g);
+        u.top = -0.003;
+    };
     BUILD.crate = (g, u) => {
         const W = 0.5, H = 0.34, D = 0.4;
         const wood = shared('crateWood', () => std(0xffffff, { map: T.plank(), roughness: 0.82, vertexColors: true }));
