@@ -25,6 +25,9 @@ import { rng } from '../../core/util.js';
 
 export const BRAINS = { fink, fly, swatter, scatter, roach };
 const BOOM = { fink: 0.7, fly: 0.7, swatter: 1.3, scatter: 0.5, roach: 2.4 };
+// how far away each kind is still drawn on a big map (the scene's drawRange is the most): a Fly 170 m away is a dot
+// a few pixels big in the haze, a Scatter on the ground is behind a wall long before that (step 5d: many more robots)
+const SEEN = { fink: 200, fly: 170, scatter: 130, swatter: 240, roach: 240 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 export class PrismDirector {
@@ -62,16 +65,22 @@ export class PrismDirector {
   }
 
   // ---------- robots ----------
-  // route: patrol waypoints [{ x, z, y? }] (a loop, or back and forth with routeBack); routeOff spreads a group
-  spawn(type, pos, { yaw = 0, hostile = false, group = null, target = null, route = null, routeBack = false, routeOff = null, routeAlt = null } = {}) {
+  // route: patrol waypoints [{ x, z, y?, wait? }] (a loop, or back and forth with routeBack; wait: a lookout, seconds);
+  // routeOff spreads a group; hover { r, alt }: a guard without a route circles its home that wide and that high
+  spawn(type, pos, { yaw = 0, hostile = false, group = null, target = null, route = null, routeBack = false, routeOff = null, routeAlt = null, hover = null } = {}) {
     const r = makeRobot(this.nextId++, type, pos, yaw, this.rnd);
     r.group = group;
     if (route && route.length) {
-      r.route = route.map(w => w.y === undefined ? { x: w.x, z: w.z } : { x: w.x, y: w.y, z: w.z });
+      r.route = route.map(w => {
+        const q = w.y === undefined ? { x: w.x, z: w.z } : { x: w.x, y: w.y, z: w.z };
+        if (w.wait) q.wait = w.wait;
+        return q;
+      });
       r.routeBack = !!routeBack;
       if (routeOff) r.routeOff = { x: routeOff.x, z: routeOff.z };
       if (routeAlt !== null) r.routeAlt = routeAlt;
     }
+    if (hover) r.hover = { r: hover.r, alt: hover.alt };
     BRAINS[type].init(r, this.ctx);
     attachRobotBody(r, this.phys);
     this.robots.push(r);
@@ -577,12 +586,12 @@ export class PrismDirector {
   frame(dt, alpha) {
     this.fx.update(dt);
     const p = this.player, far = this.drawRange;
-    const away = pos => p && far < Infinity && Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > far;
-    for (const w of this.wrecks) { const hide = away(w.pos); if (w.view.root.visible === hide) w.view.root.visible = !hide; }
+    const away = (pos, type) => p && far < Infinity && Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > Math.min(far, SEEN[type] || far);
+    for (const w of this.wrecks) { const hide = away(w.pos, w.type); if (w.view.root.visible === hide) w.view.root.visible = !hide; }
     for (const r of this.robots) {
       const v = this.views.get(r.id);
       if (!v) continue;
-      const hide = away(r.pos);
+      const hide = away(r.pos, r.type);
       if (v.root.visible === hide) v.root.visible = !hide;
       if (hide) { v.hum?.set(0, 0); continue; }
       BRAINS[r.type].animate(v, r, dt, alpha, this);

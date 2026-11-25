@@ -16,7 +16,11 @@ import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
 import { wallPieces } from '../../core/physics.js';
 
-const CHUNK = 100, FAR = 340, NEAR = 150;                // chunks whose nearest edge is further than FAR are hidden; detail beyond NEAR
+// chunks whose nearest edge is further than FAR are hidden; detail (in smaller chunks) beyond NEAR, and it casts
+// shadows only within SHADOW_NEAR; beyond LOD a solid chunk draws only its bigger boxes (the small ones are last in
+// its mesh). Step 5d (v0.5.4) added the last three.
+const CHUNK = 100, DCHUNK = 50, FAR = 340, NEAR = 150, LOD = 150, SHADOW_NEAR = 45;
+const tiny = b => Math.max(b.w * b.h, b.w * b.d, b.h * b.d) < 0.5;       // a box with no face over half a square metre
 const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
 const FACES = [
   { n: [1, 0, 0], c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], shade: 0.9 },
@@ -195,15 +199,16 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
 
   // ---------- every box: its collider, and its faces into its chunk's mesh ----------
   const batches = new Map();
-  const chunkOf = (x, z) => [Math.floor((x + 2000) / CHUNK), Math.floor((z + 2000) / CHUNK)];
+  const chunkOf = (x, z, s = CHUNK) => [Math.floor((x + 2000) / s), Math.floor((z + 2000) / s)];
   const batchFor = (x, z, kind) => {
-    const [i, j] = chunkOf(x, z), key = `${i},${j},${kind}`;
+    const s = kind === 'detail' ? DCHUNK : CHUNK, [i, j] = chunkOf(x, z, s), key = `${i},${j},${kind}`;
     let b = batches.get(key);
-    if (!b) { b = new Batch(); b.ci = i; b.cj = j; batches.set(key, b); }
+    if (!b) { b = new Batch(); b.ci = i; b.cj = j; b.size = s; batches.set(key, b); }
     return b;
   };
   const vr = rng(seed ^ 0x9e37);
   const solids = new Map();                              // per chunk: the solid boxes as one triangle mesh
+  const small = [];
   let colliders = 0;
   for (const b of L.boxes) {
     if (b.col) {
@@ -214,8 +219,13 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       colliders++;
     }
     if (b.hide) continue;
-    emitBox(batchFor(b.x, b.z, b.k === K.GLOW ? 'glow' : b.k === K.DETAIL ? 'detail' : 'solid'), b, vr);
+    const kind = b.k === K.GLOW ? 'glow' : b.k === K.DETAIL ? 'detail' : 'solid';
+    if (kind === 'solid' && tiny(b)) { small.push(b); continue; }
+    emitBox(batchFor(b.x, b.z, kind), b, vr);
   }
+  // the small solid boxes go last in each chunk's mesh: from further than LOD only the part before them is drawn
+  for (const bt of batches.values()) bt.bigI = bt.i;
+  for (const b of small) emitBox(batchFor(b.x, b.z, 'solid'), b, vr);
   for (const w of L.wedges) {                            // the stairs you walk on (the steps you see are only drawn)
     const run = w.n * w.tread, cx = w.axis === 'x' ? w.x + w.dir * run / 2 : w.x, cz = w.axis === 'z' ? w.z + w.dir * run / 2 : w.z;
     const [i, j] = chunkOf(cx, cz), key = i + ',' + j;
@@ -237,46 +247,37 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     group.add(mesh);
     verts += batch.v;
     if (kind === 'detail') detailVerts += batch.v;
-    const x0 = batch.ci * CHUNK - 2000, z0 = batch.cj * CHUNK - 2000;
-    chunks.push({ mesh, x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK, far: kind === 'detail' ? NEAR : FAR });
+    const x0 = batch.ci * batch.size - 2000, z0 = batch.cj * batch.size - 2000;
+    chunks.push({ mesh, kind, x0, z0, x1: x0 + batch.size, z1: z0 + batch.size, far: kind === 'detail' ? NEAR : FAR, bigI: batch.bigI ?? 0, lod: false });
   }
 
-  // ---------- fires: flames that flicker, and smoke drifting up from them (sprites with the glow texture) ----------
-  const fires = [];
-  if (glow) L.fires.forEach((f, i) => {
-    const g = new THREE.Group();
-    g.position.set(f.x, f.y, f.z);
-    const flames = [0xff7a2a, 0xffc060].map((c, k) => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
-      s.position.set((k - 0.5) * 0.4 * f.s, 0.3 * k * f.s, 0);
-      g.add(s);
-      return s;
-    });
-    const smoke = Array.from({ length: 6 }, (_, k) => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0x2e2a27, transparent: true, opacity: 0, depthWrite: false }));
-      g.add(s);
-      return { s, phase: k / 6 };
-    });
-    group.add(g);
-    fires.push({ g, flames, smoke, s: f.s, seed: i * 1.7, x: f.x, z: f.z });
-  });
+  // ---------- fires: flames that flicker, and smoke drifting up from them. Every fire's flames are in one mesh and
+  // its smoke in another (camera-facing quads with the glow texture): two draw calls for all of them (v0.5.3 drew
+  // each of the 88 sprites on its own) ----------
+  const FL = 2, SM = 6, fires = [];
+  const flames = glow && L.fires.length ? spriteBatch(L.fires.length * FL, glow, true) : null;
+  const smokes = flames ? spriteBatch(L.fires.length * SM, glow, false) : null;
+  if (flames) {
+    group.add(smokes.mesh, flames.mesh);
+    L.fires.forEach((f, i) => fires.push({ x: f.x, y: f.y, z: f.z, s: f.s, seed: i * 1.7, on: true }));
+  }
+  const FLAME_C = [new THREE.Color(0xff7a2a), new THREE.Color(0xffc060)], SMOKE_C = new THREE.Color(0x2e2a27);
   let fireT = 0;
   const animateFires = dt => {
+    if (!flames) return;
     fireT += dt;
-    for (const f of fires) {
-      if (!f.g.visible) continue;
-      f.flames.forEach((s, k) => {
-        const t = fireT * (7 + k * 2.3) + f.seed, a = (1.3 + 0.35 * Math.sin(t) + 0.2 * Math.sin(t * 2.7)) * f.s;
-        s.scale.set(a * 1.1, a * 1.6, 1);
-        s.material.opacity = 0.6 + 0.25 * Math.sin(t * 1.9);
-      });
-      for (const p of f.smoke) {
-        const age = (fireT * 0.07 + p.phase) % 1, sc = (2.0 + age * 11) * f.s;
-        p.s.position.set(age * 7 * f.s + Math.sin(age * 6 + f.seed) * 0.8, 1 + age * 26 * f.s, Math.cos(age * 5 + f.seed) * 0.6);
-        p.s.scale.set(sc, sc, 1);
-        p.s.material.opacity = Math.sin(Math.min(1, age * 1.3) * Math.PI) * 0.45;
+    fires.forEach((f, i) => {
+      for (let k = 0; k < FL; k++) {
+        const t = fireT * (7 + k * 2.3) + f.seed, a = f.on ? (1.3 + 0.35 * Math.sin(t) + 0.2 * Math.sin(t * 2.7)) * f.s : 0;
+        flames.set(i * FL + k, f.x + (k - 0.5) * 0.4 * f.s, f.y + 0.3 * k * f.s, f.z, a * 1.1, a * 1.6, FLAME_C[k], 0.6 + 0.25 * Math.sin(t * 1.9));
       }
-    }
+      for (let k = 0; k < SM; k++) {
+        const age = (fireT * 0.07 + k / SM) % 1, sc = f.on ? (2.0 + age * 11) * f.s : 0;
+        smokes.set(i * SM + k, f.x + age * 7 * f.s + Math.sin(age * 6 + f.seed) * 0.8, f.y + 1 + age * 26 * f.s, f.z + Math.cos(age * 5 + f.seed) * 0.6,
+          sc, sc, SMOKE_C, Math.sin(Math.min(1, age * 1.3) * Math.PI) * 0.45);
+      }
+    });
+    flames.done(); smokes.done();
   };
   animateFires(0);
 
@@ -404,22 +405,84 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       return z ? `The Ruins · ${z.name} · ${z.kind} zone` : 'The Ruins · Outskirts';
     },
     step() {},
-    // the fires burn; chunks far from you are hidden, their detail sooner (checked again whenever you have moved 10 m)
+    // the fires burn; chunks far from you are hidden, their detail sooner; beyond LOD a chunk draws only its bigger
+    // boxes; only the detail near you casts shadows (checked again whenever you have moved 10 m)
     frame(dt, a, p) {
       animateFires(dt);
       if (!p || (cullAt && Math.hypot(p.pos.x - cullAt.x, p.pos.z - cullAt.z) < 10)) return;
       cullAt = { x: p.pos.x, z: p.pos.z };
       for (const c of chunks) {
-        const dx = Math.max(c.x0 - p.pos.x, 0, p.pos.x - c.x1), dz = Math.max(c.z0 - p.pos.z, 0, p.pos.z - c.z1);
-        c.mesh.visible = dx * dx + dz * dz < c.far * c.far;
+        const dx = Math.max(c.x0 - p.pos.x, 0, p.pos.x - c.x1), dz = Math.max(c.z0 - p.pos.z, 0, p.pos.z - c.z1), d2 = dx * dx + dz * dz;
+        c.mesh.visible = d2 < c.far * c.far;
+        if (!c.mesh.visible) continue;
+        if (c.kind === 'solid') {
+          const lod = d2 > LOD * LOD;
+          if (lod !== c.lod) { c.lod = lod; c.mesh.geometry.setDrawRange(0, lod ? c.bigI : Infinity); }
+        } else if (c.kind === 'detail') c.mesh.castShadow = d2 < SHADOW_NEAR * SHADOW_NEAR;
       }
-      for (const f of fires) f.g.visible = Math.hypot(f.x - p.pos.x, f.z - p.pos.z) < 300;
+      for (const f of fires) f.on = Math.hypot(f.x - p.pos.x, f.z - p.pos.z) < 300;
     },
     dispose() {
       scene.remove(group);
       disposeTree(group);
       for (const m of Object.values(mats)) { m.map?.dispose(); m.userData?.detail?.dispose(); m.userData?.textures?.forEach(t => t?.dispose()); m.dispose(); }
     },
+  };
+}
+
+// Many camera-facing quads in one draw call, like sprites (the fires' flames and smoke). Each one has its own
+// place, size, colour and opacity (set(i, ...) every frame, then done()); a size of 0 hides it. Fog, tone mapping and
+// the output colour space work as they do for three's sprites.
+const SPRITE_VS = `
+attribute vec3 iPos;
+attribute vec2 iSize;
+attribute vec4 iCol;
+varying vec2 vUv;
+varying vec4 vCol;
+#include <fog_pars_vertex>
+void main() {
+  vUv = position.xy + 0.5;
+  vCol = iCol;
+  vec4 mvPosition = modelViewMatrix * vec4(iPos, 1.0);
+  mvPosition.xy += position.xy * iSize;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+const SPRITE_FS = `
+uniform sampler2D map;
+varying vec2 vUv;
+varying vec4 vCol;
+#include <fog_pars_fragment>
+void main() {
+  vec4 c = texture2D(map, vUv) * vCol;
+  if (c.a < 0.004) discard;
+  gl_FragColor = c;
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`;
+function spriteBatch(n, map, additive) {
+  const quad = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry();
+  g.setIndex(quad.index);
+  g.setAttribute('position', quad.attributes.position);
+  const P = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3), S = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2);
+  const C = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+  for (const a of [P, S, C]) a.setUsage(THREE.DynamicDrawUsage);
+  g.setAttribute('iPos', P); g.setAttribute('iSize', S); g.setAttribute('iCol', C);
+  g.instanceCount = n;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null } }]),
+    vertexShader: SPRITE_VS, fragmentShader: SPRITE_FS,
+    transparent: true, depthWrite: false, fog: true, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+  });
+  mat.uniforms.map.value = map;                          // (after the merge, which would copy the texture)
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.frustumCulled = false;                            // (its bounds are the one quad's, not where the fires are)
+  mesh.renderOrder = additive ? 2 : 1;                   // the smoke first, the flames over it
+  return {
+    mesh,
+    set(i, x, y, z, sx, sy, c, a) { P.setXYZ(i, x, y, z); S.setXY(i, sx, sy); C.setXYZW(i, c.r, c.g, c.b, a); },
+    done() { P.needsUpdate = true; S.needsUpdate = true; C.needsUpdate = true; },
   };
 }
 

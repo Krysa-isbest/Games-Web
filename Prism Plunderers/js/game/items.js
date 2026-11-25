@@ -87,24 +87,38 @@ export function rollLoot(type, rnd) {
 }
 
 // Containers in The Ruins: what each kind can hold, as [item, min, max, chance outside / in a yellow zone / in
-// the red zone]. hold = seconds to search it. Better zones roll better odds.
+// the red zone]. hold = seconds to search it. Better zones roll better odds. filler: what a container that rolled
+// nothing holds instead (60 % of the time; without one it can be quite empty).
+// Step 5d (v0.5.4): fewer heals and less ammo, more things to sell, and much better loot in the red zone; two new
+// kinds, the safe (offices and shops downtown: watches, data drives, phones) and the military crate (checkpoints,
+// the army convoy, the base: grenades, shield tools, shields, now and then a carbine).
 export const CONTAINERS = {
-  crate:   { name: 'supply crate', hold: 1.4, size: 8, loot: [['light_ammo', 15, 40, .6, .6, .5], ['pulse_cell', 20, 45, .3, .45, .5], ['medkit', 1, 1, .2, .35, .45], ['stim', 1, 2, .4, .4, .35],
-    ['frag_grenade', 1, 2, .1, .25, .35], ['shield_cell', 1, 1, .05, .25, .35], ['repair_kit', 1, 1, .2, .25, .25], ['shield_light', 1, 1, .06, .04, 0], ['shield_medium', 1, 1, 0, .07, .1], ['shield_heavy', 1, 1, 0, 0, .05]] },
-  locker:  { name: 'locker', hold: 1.0, size: 6, loot: [['scrap_metal', 1, 4, .6, .5, .4], ['wires', 1, 3, .4, .4, .35], ['battery', 1, 2, .2, .3, .3], ['old_phone', 1, 1, .15, .2, .25],
-    ['gold_watch', 1, 1, .03, .07, .12], ['light_ammo', 10, 25, .3, .25, .2], ['stim', 1, 1, .15, .15, .15]] },
-  medcab:  { name: 'medical cabinet', hold: 1.0, size: 4, loot: [['stim', 1, 2, .6, .6, .6], ['medkit', 1, 1, .25, .4, .55], ['medkit', 1, 1, 0, .1, .25]] },
-  toolbox: { name: 'workbench', hold: 1.2, size: 4, loot: [['scrap_metal', 2, 5, .7, .6, .5], ['wires', 1, 3, .5, .5, .4], ['electronics', 1, 2, .15, .3, .4], ['battery', 1, 1, .2, .25, .3], ['repair_kit', 1, 1, .2, .3, .3]] },
-  case:    { name: 'weapon case', hold: 2.0, size: 4, loot: [['scrap_pistol', 1, 1, .5, .3, .15], ['pulse_carbine', 1, 1, .1, .35, .55], ['light_ammo', 20, 48, .6, .5, .4], ['pulse_cell', 30, 60, .2, .45, .6],
-    ['frag_grenade', 1, 2, .15, .3, .4], ['data_drive', 1, 1, .02, .06, .15]] },
-  cache:   { name: 'Prism cache', hold: 2.5, size: 6, loot: [['prism_alloy', 2, 4, 1, 1, 1], ['prism_circuit', 1, 2, .5, .6, .7], ['prism_optic', 1, 1, .2, .3, .4], ['prism_shard', 1, 1, .05, .15, .3], ['thruster_coil', 1, 2, .3, .35, .4]] },
-  car:     { name: 'car wreck', hold: 1.2, size: 4, loot: [['scrap_metal', 1, 3, .6, .5, .5], ['wires', 1, 2, .3, .3, .3], ['battery', 1, 1, .3, .3, .3], ['light_ammo', 8, 20, .2, .2, .2], ['old_phone', 1, 1, .08, .1, .12], ['stim', 1, 1, .08, .08, .08]] },
+  crate:   { name: 'supply crate', hold: 1.4, size: 8, filler: ['light_ammo', 12], loot: [['light_ammo', 15, 40, .4, .35, .25], ['pulse_cell', 20, 45, .12, .3, .35],
+    ['stim', 1, 1, .2, .18, .15], ['medkit', 1, 1, .08, .1, .12], ['frag_grenade', 1, 2, .08, .18, .25], ['shield_cell', 1, 1, .04, .12, .2], ['repair_kit', 1, 1, .1, .12, .12],
+    ['shield_light', 1, 1, .04, .04, 0], ['shield_medium', 1, 1, 0, .06, .1], ['shield_heavy', 1, 1, 0, 0, .05], ['battery', 1, 1, .08, .15, .15], ['electronics', 1, 1, .03, .2, .3],
+    ['data_drive', 1, 1, 0, .04, .12], ['scrap_metal', 1, 3, .25, .12, 0]] },
+  locker:  { name: 'locker', hold: 1.0, size: 6, filler: ['scrap_metal', 1], loot: [['scrap_metal', 1, 3, .5, .35, .15], ['wires', 1, 2, .35, .3, .15], ['battery', 1, 1, .12, .25, .3],
+    ['old_phone', 1, 1, .12, .4, .5], ['gold_watch', 1, 1, .015, .18, .35], ['light_ammo', 10, 25, .2, .15, .1], ['stim', 1, 1, .08, .08, .08], ['data_drive', 1, 1, 0, .07, .15]] },
+  medcab:  { name: 'medical cabinet', hold: 1.0, size: 4, filler: null, loot: [['stim', 1, 2, .6, .6, .6], ['medkit', 1, 1, .3, .4, .55], ['medkit', 1, 1, 0, .1, .2]] },
+  toolbox: { name: 'workbench', hold: 1.2, size: 4, filler: ['scrap_metal', 2], loot: [['scrap_metal', 2, 5, .7, .55, .4], ['wires', 1, 3, .5, .45, .35], ['electronics', 1, 2, .1, .45, .5],
+    ['battery', 1, 1, .2, .3, .35], ['repair_kit', 1, 1, .12, .2, .2], ['gold_watch', 1, 1, 0, .04, .08]] },
+  case:    { name: 'weapon case', hold: 2.0, size: 4, filler: ['light_ammo', 20], loot: [['scrap_pistol', 1, 1, .45, .3, .15], ['pulse_carbine', 1, 1, .1, .3, .5], ['light_ammo', 20, 48, .5, .4, .3],
+    ['pulse_cell', 30, 60, .2, .4, .55], ['frag_grenade', 1, 2, .15, .3, .4], ['data_drive', 1, 1, .02, .06, .2]] },
+  cache:   { name: 'Prism cache', hold: 2.5, size: 6, filler: null, loot: [['prism_alloy', 2, 4, 1, 1, 1], ['prism_circuit', 1, 2, .5, .6, .7], ['prism_optic', 1, 1, .2, .3, .4], ['prism_shard', 1, 1, .05, .15, .3],
+    ['thruster_coil', 1, 2, .3, .35, .4]] },
+  car:     { name: 'car wreck', hold: 1.2, size: 4, filler: null, loot: [['scrap_metal', 1, 3, .6, .5, .5], ['wires', 1, 2, .3, .3, .3], ['battery', 1, 1, .25, .25, .25], ['light_ammo', 8, 20, .15, .15, .15],
+    ['old_phone', 1, 1, .08, .1, .12], ['stim', 1, 1, .05, .05, .05]] },
+  safe:    { name: 'safe', hold: 3.0, size: 4, filler: ['old_phone', 1], loot: [['gold_watch', 1, 2, .35, .45, .55], ['data_drive', 1, 1, .2, .3, .45], ['old_phone', 1, 2, .5, .5, .45],
+    ['electronics', 1, 2, .2, .25, .3], ['prism_shard', 1, 1, 0, .02, .05]] },
+  military: { name: 'military crate', hold: 2.0, size: 6, filler: ['light_ammo', 20], loot: [['frag_grenade', 1, 2, .5, .55, .6], ['shield_cell', 1, 2, .3, .35, .4], ['repair_kit', 1, 1, .3, .3, .25],
+    ['shield_light', 1, 1, .15, .1, .05], ['shield_medium', 1, 1, .08, .15, .2], ['shield_heavy', 1, 1, 0, .03, .08], ['pulse_carbine', 1, 1, .06, .1, .15], ['pulse_cell', 30, 60, .4, .45, .5],
+    ['light_ammo', 20, 48, .4, .35, .3], ['medkit', 1, 1, .12, .15, .18]] },
 };
 const ZONE_COLUMN = { outer: 3, yellow: 4, red: 5 };
 // what a container holds, rolled with a seeded random function the first time it is searched
 export function rollContainer(type, zone, rnd) {
   const def = CONTAINERS[type], k = ZONE_COLUMN[zone] || 3, out = [];
   for (const e of def.loot) if (rnd() < e[k]) out.push({ id: e[0], n: e[1] + Math.floor(rnd() * (e[2] - e[1] + 1)) });
-  if (!out.length && type !== 'car' && rnd() < 0.6) { const e = def.loot[0]; out.push({ id: e[0], n: e[1] }); }   // rarely quite empty
+  if (!out.length && def.filler && rnd() < 0.6) out.push({ id: def.filler[0], n: def.filler[1] });   // rarely quite empty
   return out;
 }

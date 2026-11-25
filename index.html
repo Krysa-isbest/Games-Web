@@ -206,9 +206,19 @@ const GAMES = [
   },
   {
     file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
-    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: The Ruins, a dense ruined desert city to explore and loot (being rebuilt step by step), with the five Prism robots patrolling it, real weapons and a drag-and-drop inventory. Many more Prism and better-balanced loot come next, then the raid rules (timer, extraction); online co-op for up to 4 comes later.',
+    desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: The Ruins, a dense ruined desert city to explore and loot, with about 125 Prism robots of five kinds patrolling and guarding it, real weapons and a drag-and-drop inventory. The raid rules (timer, extraction) come next; online co-op for up to 4 comes later.',
     mp: null, lang: 'English', genre: 'Extraction shooter · PvE',
     updating: true, changelog: [
+      { version: '0.5.4', date: '2026-11-25', notes: [
+        'The Ruins rebuilt, part 4 of 4: the Prism move in, the loot is rebalanced, and it all runs lighter.',
+        'Many more Prism: about 125 robots instead of 67. Fink scouts fly long rounds across the districts and stop at lookouts; Flies patrol the blocks and guard every checkpoint, some of the small squares, the tower\'s summit and the army convoy; Swatters fly over the highway, two avenues and the crater\'s pod; Scatters wait in buildings, alleys and the old market\'s bazaars.',
+        'Fair: no robot comes within 80 m of a drop zone or an extraction point, so you can land and leave without a fight at the door.',
+        'At most 30 robots are awake at a time, the nearest first, so even the busy red zone stays smooth.',
+        'Loot: about 480 containers instead of 890. Many buildings have been looted already; others hold one container or a stash of two or three. Fewer heals, more things worth selling, and much better loot in the dangerous zones.',
+        'Two new containers: safes in offices and shops downtown (watches, data drives, phones) and military crates at the checkpoints, the convoy and the base (grenades, shield tools, shields, sometimes a carbine).',
+        'Performance: the robots are much cheaper to draw, the city leaves out its smallest pieces far away, small things cast shadows only near you, and all the fires are drawn at once.',
+        'Next: the raid rules: a timer, extraction, the drop pod in and the pick-up out.'
+      ] },
       { version: '0.5.3', date: '2026-11-23', notes: [
         'The Ruins rebuilt, part 3 of 4: the landmarks, sharp roads, and your legs fixed.',
         'Your legs no longer sink into the road. The real cause: the ground\'s physics let you sink about 20 cm into the street while running. Now you stay on top of it, and your feet stand on what is under them: on slopes, on the highway and on every step of the stairs.',

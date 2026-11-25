@@ -27,7 +27,7 @@ export const STYLES = {
 
 export function addLoot(L, kit, type, x, y, z, ry, zone) { containerLook(kit, type, x, y, z, ry); L.containers.push({ type, x, y, z, ry, zone }); }
 // a wrecked car, burnt out now and then (scorch under it), its boot sometimes worth searching
-export function carLoot(L, kit, x, z, yaw, zone, { y = 0, chance = 0.35, kinds = ['sedan', 'sedan', 'hatch', 'van', 'pickup'] } = {}) {
+export function carLoot(L, kit, x, z, yaw, zone, { y = 0, chance = 0.25, kinds = ['sedan', 'sedan', 'hatch', 'van', 'pickup'] } = {}) {
   const R = kit.R, burnt = R() < 0.3, flipped = !burnt && R() < 0.12;
   const boot = P.car(kit, x, z, yaw, { kind: kit.pick(kinds), burnt, flipped, y });
   if (burnt && y < 0.5) L.decals.push({ kind: 'scorch', x, z, r: kit.range(2, 3) });
@@ -481,6 +481,13 @@ function inside(L, kit, b, g) {
   const cellOf = (x, z) => [Math.min(nx - 1, Math.max(0, Math.floor((x - b.x0) / bw))), Math.min(nz - 1, Math.max(0, Math.floor((z - b.z0) / bd)))];
   const floorAt = (f, x, z) => { const [i, j] = cellOf(x, z); return alive[f][i][j] && (f === 0 || !floorGone.has(key(f, i, j))); };
   const alongX = nx >= nz, cut = Math.floor((alongX ? nx : nz) / 2);
+  // what is left to search (step 5d: about 500 containers in the city, not 900): the building was looted already, or
+  // there is one container somewhere in it, or a stash of two or three on one floor. The red zone is hardly picked
+  // over: most of its buildings hold a stash (there are only about twenty you can enter there).
+  const r0 = R(), stash = r0 < (b.rich ? 0.5 : 0.1), none = !stash && r0 > (b.rich ? 0.95 : 0.55);
+  const want = Array(Math.max(1, OPEN)).fill(0);
+  if (stash) want[Math.floor(R() * OPEN)] = 2 + (R() < 0.5 ? 1 : 0);
+  else if (!none) want[Math.floor(R() * OPEN)] = 1;
   for (let f = 0; f < OPEN; f++) {
     const y0 = f * H;
     // what is already taken on this floor (a box, or the place you search it from), as rectangles
@@ -519,7 +526,7 @@ function inside(L, kit, b, g) {
       }
     }
     for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
-    const loot = Math.min(spots.length, (R() < 0.55 ? 1 : 0) + (R() < 0.2 ? 1 : 0) + (b.rich && R() < 0.6 ? 1 : 0));
+    const loot = Math.min(spots.length, want[f]);
     let placed = 0;
     for (let i = 0; i < spots.length; i++) {
       const s = spots[i], wide = s.side === 'n' || s.side === 's';
@@ -561,13 +568,20 @@ function inside(L, kit, b, g) {
   L.interiors.push({ x0: b.x0 + WALL + 0.5, z0: b.z0 + WALL + 0.5, x1: b.x1 - WALL - 0.5, z1: b.z1 - WALL - 0.5, y0: 0, y1: OPEN * H });
 }
 
-// what kind of container a building holds, by what it was
+// what kind of container a building holds, by what it was. Safes (step 5d) stand in offices and shops downtown,
+// a few in the yellow zones.
 function lootType(kit, b) {
-  const r = kit.R();
-  if (b.shop) return r < 0.4 ? 'locker' : r < 0.7 ? 'medcab' : r < 0.9 ? 'crate' : 'toolbox';
-  if (b.style === 'downtown') return r < 0.45 ? 'locker' : r < 0.65 ? 'medcab' : r < 0.85 ? 'case' : 'crate';
+  const r = kit.R(), z = b.zone;
+  if (b.shop) {                                  // a shop: the till's safe, lockers in the back, medicine, stock
+    const safe = z === 'red' ? 0.25 : z === 'yellow' ? 0.08 : 0;
+    return r < safe ? 'safe' : r < safe + 0.3 ? 'locker' : r < safe + 0.55 ? 'medcab' : r < safe + 0.8 ? 'crate' : 'toolbox';
+  }
+  if (b.style === 'downtown') {                  // offices: the boss's safe, lockers, a first-aid cabinet, a guard's weapon case
+    const safe = z === 'red' ? 0.3 : 0.08;
+    return r < safe ? 'safe' : r < safe + 0.35 ? 'locker' : r < safe + 0.53 ? 'medcab' : r < safe + 0.68 ? 'case' : 'crate';
+  }
   if (b.style === 'industrial') return r < 0.4 ? 'toolbox' : r < 0.75 ? 'crate' : 'locker';
-  return r < 0.38 ? 'locker' : r < 0.62 ? 'medcab' : r < 0.84 ? 'toolbox' : 'crate';
+  return r < 0.4 ? 'locker' : r < 0.62 ? 'medcab' : r < 0.84 ? 'toolbox' : 'crate';
 }
 
 // ---------- other kinds of buildings ----------
@@ -604,9 +618,9 @@ export function warehouse(L, kit, b) {
     const cz = z - len / 2 + 1;
     if (R() < 0.6 && clear(x + 1.4, cz)) { kit.box(x + 1.4, 0, cz, 1.2, 1.2, 1.2, kit.pick(COL.rust), { k: K.DETAIL }); crates.push({ x: x + 1.4, z: cz }); }
     const lz = z + kit.range(-0.3, 0.3) * len;                           // loot in the aisle, searched from further along it
-    if (R() < 0.5 && clear(x + 1.4, lz) && clear(x + 2.6, lz)) addLoot(L, kit, R() < 0.5 ? 'crate' : 'toolbox', x + 1.4, 0, lz, Math.PI / 2, b.zone);
+    if (R() < 0.4 && clear(x + 1.4, lz) && clear(x + 2.6, lz)) addLoot(L, kit, R() < 0.5 ? 'crate' : 'toolbox', x + 1.4, 0, lz, Math.PI / 2, b.zone);
   }
-  if (R() < 0.5 && clear(ix1 - 1.7, iz1 - 1.5)) addLoot(L, kit, 'locker', ix1 - 0.5, 0, iz1 - 1.5, -Math.PI / 2, b.zone);
+  if (R() < 0.4 && clear(ix1 - 1.7, iz1 - 1.5)) addLoot(L, kit, 'locker', ix1 - 0.5, 0, iz1 - 1.5, -Math.PI / 2, b.zone);
   if (b.nest) L.nestSpots.push({ x: b.x1 - 3, y: 0.1, z: (b.z0 + b.z1) / 2 + kit.range(-0.25, 0.25) * D, zone: b.zone });
   L.floorSpots.push({ x: b.x1 - 3.5, y: 0, z: iz0 + 2.5, zone: b.zone });
   L.footprints.push({ x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1, h: H, open: true, floor: 0x77706a });

@@ -182,7 +182,7 @@ function checkpoint(S, s, t, dir, big) {
     const face = along ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : (side > 0 ? Math.PI : 0);
     const st = { x: p.x + Math.sin(face) * 1.2, z: p.z + Math.cos(face) * 1.2 };
     if (!T.claim({ x0: Math.min(p.x, st.x) - 0.9, x1: Math.max(p.x, st.x) + 0.9, z0: Math.min(p.z, st.z) - 0.9, z1: Math.max(p.z, st.z) + 0.9 }, 0, 2)) continue;
-    addLoot(L, kit, big || R() < 0.5 ? 'case' : 'crate', p.x, 0, p.z, face, S.zone(p.x, p.z));
+    addLoot(L, kit, big || R() < 0.5 ? 'military' : 'case', p.x, 0, p.z, face, S.zone(p.x, p.z));
     break;
   }
   if (big) {                                             // at the plaza: a wrecked armoured car, an army lorry, a floodlight
@@ -245,7 +245,7 @@ function parked(S, s, a, side, zone) {
   L.props.push({ t: 'car', x: p.x, z: p.z });
   if (burnt) L.decals.push({ kind: 'scorch', x: p.x, z: p.z, r: kit.range(1.8, 3) });
   else if (R() < 0.3) L.decals.push({ kind: 'oil', x: p.x, z: p.z, r: kit.range(0.6, 1.4) });
-  if (boot && !burnt && R() < 0.08) L.containers.push({ type: 'car', x: boot.x, y: 0, z: boot.z, ry: yaw, zone });
+  if (boot && !burnt && R() < 0.06) L.containers.push({ type: 'car', x: boot.x, y: 0, z: boot.z, ry: yaw, zone });
   return spec.len;
 }
 // a car left anywhere, at any angle

@@ -37,7 +37,7 @@ export const COL = {
   glass: [0x1c1a19, 0x1f2326, 0x181715], boarded: 0x6b5236,
   palm: 0x6b5843, frond: 0x6f6942, furniture: [0x6b5a46, 0x5d4c3c, 0x4f4a44],
   sandbag: 0xa8946c, barrier: 0xb3aa98, rebar: 0x3d3a37,
-  crate: 0x4f5a37, locker: 0x5f666e, medcab: 0xd8d6cf, toolbox: 0xa8352b, case: 0x2a2c31, cache: 0x1c1328,
+  crate: 0x4f5a37, locker: 0x5f666e, medcab: 0xd8d6cf, toolbox: 0xa8352b, case: 0x2a2c31, cache: 0x1c1328, safe: 0x3b3f45, military: 0x4a5634,
   lamp: 0xffc777, green: 0x5dff9b, prism: 0xa36bff, red: 0xff5a4d, amber: 0xffb224,
 };
 
@@ -206,7 +206,21 @@ export function containerLook(kit, type, x, y, z, ry) {
     kit.cbox(x, y + 1.0, z, 1.17, 0.06, 0.5, COL.amber, { ry, k: K.GLOW, col: false });
   } else if (type === 'cache') {
     kit.cbox(x, y + 0.32, z, 0.9, 0.64, 0.9, COL.cache, { ry: ry + 0.785 });
+  } else if (type === 'safe') {
+    // a heavy steel box on the floor: a door in its front, a brass dial and a handle on it
+    kit.cbox(x, y + 0.48, z, 0.76, 0.96, 0.6, COL.safe, { ry, k: D });
+    const f = off(0.305), h = off(0.32, -0.18);
+    kit.cbox(f.x, y + 0.5, f.z, 0.6, 0.78, 0.02, 0x4b5058, { ry, col: false, k: D });
+    kit.cbox(h.x, y + 0.58, h.z, 0.13, 0.13, 0.03, 0xb8923a, { ry, col: false, k: D });
+    kit.cbox(f.x, y + 0.4, f.z, 0.04, 0.16, 0.05, 0x2b2c2e, { ry, col: false, k: D });
+  } else if (type === 'military') {
+    // a long olive crate with a darker lid, a pale stencilled band and two latches on its front
+    kit.cbox(x, y + 0.3, z, 1.25, 0.6, 0.62, COL.military, { ry, k: D });
+    kit.cbox(x, y + 0.62, z, 1.28, 0.05, 0.65, 0x3a4429, { ry, col: false, k: D });
+    const f = off(0.315);
+    kit.cbox(f.x, y + 0.36, f.z, 0.7, 0.09, 0.02, 0xd4cba8, { ry, col: false, k: D });
+    for (const r of [-0.42, 0.42]) { const l = off(0.32, r); kit.cbox(l.x, y + 0.5, l.z, 0.08, 0.13, 0.04, 0x2b2c2e, { ry, col: false, k: D }); }
   }
 }
-export const CONTAINER_H = { crate: 0.8, locker: 1.9, medcab: 1.8, toolbox: 1.2, case: 1.2, cache: 0.7, car: 1.3 };
+export const CONTAINER_H = { crate: 0.8, locker: 1.9, medcab: 1.8, toolbox: 1.2, case: 1.2, cache: 0.7, car: 1.3, safe: 1.0, military: 0.7 };
 export { DEG };

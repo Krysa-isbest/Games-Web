@@ -16,28 +16,44 @@ export function groundY(r, ctx) {
   return r.gy;
 }
 
-// not yet hostile: fly its patrol route if it has one, otherwise hover around home in a slow circle
+// not yet hostile: fly its patrol route if it has one, otherwise hover around home in a slow circle (a guard,
+// r.hover { r, alt }, circles as wide and as high as it was told; the ground under its home is measured once)
 export function patrol(r, ctx, dt, radius, alt, speed) {
   if (r.route && r.route.length) { followRoute(r, ctx, dt, alt, speed); return; }
-  r.patrolA = (r.patrolA ?? r.phase) + dt * speed / Math.max(radius, 1);
-  const gy = groundBelow(ctx.phys, r.home.x, r.home.y + 1, r.home.z);
-  const tx = r.home.x + Math.cos(r.patrolA) * radius, tz = r.home.z + Math.sin(r.patrolA) * radius;
-  flyToward(r, tx, gy + alt + Math.sin(ctx.time * 0.7 + r.phase) * 0.25, tz, speed, 3, dt);
+  const rad = r.hover ? r.hover.r : radius, h = r.hover ? r.hover.alt : alt;
+  r.patrolA = (r.patrolA ?? r.phase) + dt * speed / Math.max(rad, 1);
+  if (r.homeGy === undefined || r.homeAt !== r.home.x + ':' + r.home.z) {
+    r.homeGy = groundBelow(ctx.phys, r.home.x, r.home.y + 1, r.home.z);
+    r.homeAt = r.home.x + ':' + r.home.z;
+  }
+  const tx = r.home.x + Math.cos(r.patrolA) * rad, tz = r.home.z + Math.sin(r.patrolA) * rad;
+  flyToward(r, tx, r.homeGy + h + Math.sin(ctx.time * 0.7 + r.phase) * 0.25, tz, speed, 3, dt);
   if (Math.hypot(r.vel.x, r.vel.z) > 0.3) turnToward(r, yawOf(r.vel.x, r.vel.z), 1.5, dt);
 }
 
-// A patrol route: waypoints { x, z } (and y when it should fly over something, like a roof), flown in a loop
-// (or back and forth). It keeps `alt` above the ground under it; r.routeOff spreads a group into a loose
-// formation. Its home moves with it, so dodging and searching start from where it is.
+// A patrol route: waypoints { x, z } (and y when it should fly over something, like a roof or the highway's
+// broken deck), flown in a loop (or back and forth). It keeps `alt` above the ground under it; r.routeOff spreads a
+// group into a loose formation. At a lookout (a waypoint with `wait`) it holds there for about that many seconds,
+// looking slowly round, before it flies on (step 5d; the Roach has always stopped at its points). Its home moves
+// with it, so dodging and searching start from where it is.
 export function followRoute(r, ctx, dt, alt, speed) {
   const R = r.route;
-  if (r.routeI === undefined || r.routeI === null || r.routeI >= R.length) r.routeI = routeStart(r);
+  if (r.routeI === undefined || r.routeI === null || r.routeI >= R.length) { r.routeI = routeStart(r); r.wait = 0; }
   const wp = R[r.routeI], ox = r.routeOff ? r.routeOff.x : 0, oz = r.routeOff ? r.routeOff.z : 0;
   const gy = groundY(r, ctx);
   const ty = Math.max(gy, wp.y ?? gy) + (r.routeAlt ?? alt);
   flyToward(r, wp.x + ox, ty, wp.z + oz, speed, 3, dt);
-  if (Math.hypot(wp.x + ox - r.pos.x, wp.z + oz - r.pos.z) < 3.5) r.routeI = routeNext(r);
-  if (Math.hypot(r.vel.x, r.vel.z) > 0.3) turnToward(r, yawOf(r.vel.x, r.vel.z), 1.5, dt);
+  if (r.wait > 0) {
+    r.wait -= dt;
+    turnToward(r, r.lookYaw + Math.sin(r.wait * 0.9 + r.phase) * 1.3, 1.2, dt);
+    if (r.wait <= 0) { r.wait = 0; r.routeI = routeNext(r); }
+  } else {
+    if (Math.hypot(wp.x + ox - r.pos.x, wp.z + oz - r.pos.z) < 3.5) {
+      if (wp.wait) { r.wait = wp.wait * (0.8 + 0.4 * ctx.rnd()); r.lookYaw = r.yaw; }
+      else r.routeI = routeNext(r);
+    }
+    if (Math.hypot(r.vel.x, r.vel.z) > 0.3) turnToward(r, yawOf(r.vel.x, r.vel.z), 1.5, dt);
+  }
   r.home.x = r.pos.x; r.home.y = r.pos.y; r.home.z = r.pos.z;
 }
 
@@ -114,13 +130,15 @@ export function animateFlyer(view, r, dt, alpha, dir) {
   const wobble = r.unstable ? Math.sin(t * 7 + r.phase) * 0.25 : 0;
   view.body.rotation.set(view.tilt.x, 0, view.tilt.z + wobble);
   view.body.position.y = r.dead || r.falling ? 0 : Math.sin(t * 2.1 + r.phase) * 0.04;
+  // the thruster flames and glows are a few pixels from 70 m on: they are left out there (four draw calls fewer a Fly)
+  const p = dir.player, far = !!p && Math.hypot(r.pos.x - p.pos.x, r.pos.z - p.pos.z) > 70;
   for (const f of view.flames) {
     const on = !r.broken[f.part] && !r.dead && !r.falling;
-    f.mesh.visible = on;
-    if (on) { const fl = 0.8 + Math.sin(t * 37 + r.phase) * 0.12 + Math.sin(t * 23) * 0.1; f.mesh.scale.set(1, fl, 1); }
+    f.mesh.visible = on && !far;
+    if (on && !far) { const fl = 0.8 + Math.sin(t * 37 + r.phase) * 0.12 + Math.sin(t * 23) * 0.1; f.mesh.scale.set(1, fl, 1); }
   }
-  if (view.glows) view.glows.forEach((g, i) => { g.visible = !r.dead && !r.broken[i ? 'thrusterR' : 'thrusterL']; });
-  if (view.halo) view.halo.visible = !r.dead && !r.broken.thruster;
+  if (view.glows) view.glows.forEach((g, i) => { g.visible = !far && !r.dead && !r.broken[i ? 'thrusterR' : 'thrusterL']; });
+  if (view.halo) view.halo.visible = !far && !r.dead && !r.broken.thruster;
   // smoke from broken thrusters
   view.smokeT = (view.smokeT || 0) - dt;
   if (view.smokeT <= 0 && !view.wrecked) {

@@ -13,9 +13,10 @@
 //   The highway runs east-west south of downtown on pillars, broken in the middle, jammed with wrecks.
 //   The city's edge: sand, wrecks, a few shacks; three extraction points and six drop zones.
 import { Kit, K, COL, FLOOR, WALL } from './kit.js';
-import { building, warehouse, containerStack, stall, addLoot, carLoot, crystalsAround } from './buildings.js';
+import { building, warehouse, containerStack, stall, addLoot, carLoot } from './buildings.js';
 import * as P from './props.js';
 import { streetLife } from './streetlife.js';
+import { prismGroups } from './prism.js';
 import { HALF, XS, ZS, WX, WZ, WALK, STREET_END, PLAZA, ZONES, zoneAt, zoneKind, onStreet } from './plan.js';
 import { TOWER, HWY, BUNKER, CRATER, BX, BZ, plaza, highway, bunker, baseYard, crater } from './landmarks.js';
 export { HALF, XS, ZS, WX, WZ, WALK, STREET_END, PLAZA, ZONES, zoneAt, zoneKind, onStreet, TOWER, HWY, BUNKER, CRATER };
@@ -54,9 +55,10 @@ export function makeRuins(seed = 3000) {
   crater(L, kit);
   edges(L, kit);
   streetLife(L, kit);
-  prismGroups(L, kit);
+  const G = solidGrid(L);                                 // (everything solid is placed by now; finalChecks only hides loose bits)
+  prismGroups(L, kit, (x, y, z) => G.hits(x, y, z).length > 0);
   looseItems(L, kit);
-  finalChecks(L);
+  finalChecks(L, G);
   L.landmarks.push(
     { name: 'Collapsed Tower', short: 'Tower', x: 0, z: -24, kind: 'landmark' },
     { name: 'Underground Base', short: 'Base', x: BX, z: BZ, kind: 'landmark' },
@@ -141,7 +143,7 @@ function square(L, kit, In, kind) {
   kit.box(cx, 0.9, cz, 1.4, 3.2, 1.4, COL.stone[0]);
   kit.cbox(cx + 0.2, 4.6, cz, 0.9, 1.4, 0.7, COL.stone[3], { rz: 0.25, col: false });
   kit.rubble(cx + 3.5, cz + 2, 1.6, 3);
-  if (R() < 0.5) { addLoot(L, kit, 'crate', cx - 3, 0, cz, -Math.PI / 2, zone); taken.push({ x: cx - 3.8, z: cz, m: 1.8 }); }   // against the monument
+  if (R() < 0.4) { addLoot(L, kit, 'crate', cx - 3, 0, cz, -Math.PI / 2, zone); taken.push({ x: cx - 3.8, z: cz, m: 1.8 }); }   // against the monument
   for (let x = S.x0 + 5; x < S.x1 - 3; x += 9) for (const z of [S.z0 + 4, S.z1 - 4]) {
     const px = ns ? x : z, pz = ns ? z : x;
     if (R() < 0.75 && clear(px, pz, 1)) { kit.palm(px, pz, kit.range(6, 10)); taken.push({ x: px, z: pz, m: 0.6 }); }
@@ -275,7 +277,7 @@ function frontYard(kit, lot) {
 // a building that came down: heaps of rubble, a piece of its front wall, sometimes something worth searching
 function ruinLot(L, kit, lot, zone) {
   const W = lot.x1 - lot.x0, D = lot.z1 - lot.z0, cx = (lot.x0 + lot.x1) / 2, cz = (lot.z0 + lot.z1) / 2;
-  const loot = kit.R() < 0.35 && W > 7 && D > 7 && L.heaps.every(h => Math.hypot(h.x - cx, h.z - cz) > h.r + 2.4);
+  const loot = kit.R() < 0.25 && W > 7 && D > 7 && L.heaps.every(h => Math.hypot(h.x - cx, h.z - cz) > h.r + 2.4);
   if (loot) addLoot(L, kit, 'crate', cx, 0, cz, kit.R() * Math.PI * 2, zone);
   // heaps that stay inside the lot (a heap of size s reaches about 1.1 s from its middle) and off the crate
   for (let k = 0, t = 0, n = 2 + Math.floor(kit.R() * 2); k < n && t < 12; t++) {
@@ -329,7 +331,7 @@ function courtyard(L, kit, Y, kind, zone) {
   }
   for (let k = 0, n = 1 + Math.floor(R() * 2); k < n; k++) { const p = place(2, 2); if (p) kit.palm(p.x, p.z, kit.range(6, 10)); }
   if (R() < 0.45) { const p = place(4, 5); if (p) carLoot(L, kit, p.x, p.z, R() * Math.PI, zone); }
-  if (R() < 0.45) { const p = place(2.5, 3); if (p) addLoot(L, kit, 'crate', p.x, 0, p.z, R() * Math.PI * 2, zone); }
+  if (R() < 0.3) { const p = place(2.5, 3); if (p) addLoot(L, kit, 'crate', p.x, 0, p.z, R() * Math.PI * 2, zone); }
   if (R() < 0.4) { const p = place(3, 4); if (p) kit.rubble(p.x, p.z, kit.range(2.5, 4), 4); }
   if (R() < 0.25) { const p = place(4, 4); if (p) sandbags(kit, p.x, p.z, R() * Math.PI); }
 }
@@ -360,12 +362,12 @@ function industrial(L, kit, In) {
       const mid = cx + kit.range(-4, 4);
       warehouse(L, kit, { x0: In.x0, x1: mid - 3, z0: In.z0 + 2, z1: In.z1 - 2, doors: ['n', 's', 'e'], damage, zone, nest: R() < 0.25 });
       warehouse(L, kit, { x0: mid + 3, x1: In.x1, z0: In.z0 + 2, z1: In.z1 - 2, doors: ['n', 's', 'w'], damage, zone, nest: R() < 0.25 });
-      for (let k = 0; k < 2; k++) if (R() < 0.6) addLoot(L, kit, 'crate', mid + kit.range(-1.2, 1.2), 0, kit.range(In.z0 + 8, In.z1 - 8), R() * Math.PI, zone);
+      for (let k = 0; k < 2; k++) if (R() < 0.45) addLoot(L, kit, 'crate', mid + kit.range(-1.2, 1.2), 0, kit.range(In.z0 + 8, In.z1 - 8), R() * Math.PI, zone);
     } else {
       const mid = cz + kit.range(-4, 4);
       warehouse(L, kit, { x0: In.x0 + 2, x1: In.x1 - 2, z0: In.z0, z1: mid - 3, doors: ['e', 'w', 's'], damage, zone, nest: R() < 0.25 });
       warehouse(L, kit, { x0: In.x0 + 2, x1: In.x1 - 2, z0: mid + 3, z1: In.z1, doors: ['e', 'w', 'n'], damage, zone, nest: R() < 0.25 });
-      for (let k = 0; k < 2; k++) if (R() < 0.6) addLoot(L, kit, 'crate', kit.range(In.x0 + 8, In.x1 - 8), 0, mid + kit.range(-1.2, 1.2), R() * Math.PI, zone);
+      for (let k = 0; k < 2; k++) if (R() < 0.45) addLoot(L, kit, 'crate', kit.range(In.x0 + 8, In.x1 - 8), 0, mid + kit.range(-1.2, 1.2), R() * Math.PI, zone);
     }
   }
 }
@@ -389,7 +391,7 @@ function containerYard(L, kit, Y, zone, damage, street) {
   for (let k = 0, t = 0; k < 2 && t < 10; t++) {                 // crates in the lanes between the stacks
     const x = kit.range(Y.x0 + 2, Y.x1 - 3), z = kit.range(Y.z0 + 2, Y.z1 - 2);
     if (!clearOf(x, z, 1.0) || !clearOf(x + 1.2, z, 0.6)) continue;
-    if (R() < 0.6) addLoot(L, kit, R() < 0.6 ? 'crate' : 'toolbox', x, 0, z, Math.PI / 2, zone);
+    if (R() < 0.5) addLoot(L, kit, R() < 0.6 ? 'crate' : 'toolbox', x, 0, z, Math.PI / 2, zone);
     used.push({ x0: x - 0.8, z0: z - 0.8, x1: x + 0.8, z1: z + 0.8 });
     k++;
   }
@@ -445,59 +447,13 @@ function edges(L, kit) {
   }
 }
 
-// ---------- the Prism: who lives where, and the routes they patrol ----------
-function prismGroups(L, kit) {
-  const R = kit.R;
-  const P = (kind, members, pos, extra = {}) => L.prism.push({ id: 'g' + L.prism.length, kind, members, pos, zone: zoneKind(pos.x, pos.z), ...extra });
-  const pt = (i, j) => ({ x: XS[i], z: ZS[j] });
-  // a loop round a rectangle of blocks, along the streets, with a point at every crossing
-  // (no loop runs along the highway street, z = 140: its pillars and ramps stand there; none crosses the plaza)
-  const loop = (i0, j0, i1, j1) => {
-    const out = [];
-    for (let i = i0; i < i1; i++) out.push(pt(i, j0));
-    for (let j = j0; j < j1; j++) out.push(pt(i1, j));
-    for (let i = i1; i > i0; i--) out.push(pt(i, j1));
-    for (let j = j1; j > j0; j--) out.push(pt(i0, j));
-    return out;
-  };
-  const at = (route, alt) => ({ x: route[0].x, y: alt, z: route[0].z });
-  // Fink patrols: the scouts that call the drop pods
-  for (const [i0, j0, i1, j1] of [[1, 1, 3, 3], [7, 0, 9, 2], [0, 8, 2, 10], [7, 8, 9, 10], [3, 1, 7, 3], [3, 8, 7, 10], [0, 3, 2, 6], [8, 3, 10, 6]]) {
-    const route = loop(i0, j0, i1, j1);
-    P('patrol', ['fink'], at(route, 4.5), { route, alt: 4.5, speed: 2 });
-  }
-  // Fly groups patrolling round a few blocks
-  for (const [i0, j0, i1, j1, n] of [[3, 3, 7, 4, 3], [7, 1, 9, 3, 3], [1, 8, 3, 10, 3], [0, 1, 1, 3, 2], [7, 4, 9, 6, 2], [4, 8, 6, 10, 2], [2, 4, 4, 6, 2]]) {
-    const route = loop(i0, j0, i1, j1);
-    P('patrol', Array(n).fill('fly'), at(route, 3.5), { route, alt: 3.5, speed: 1.6 });
-  }
-  // the plaza: Flies over the north of it (between the tower and the burning bus, clear of the fallen pieces),
-  // a Swatter with two Flies round the whole of it
-  P('patrol', ['fly', 'fly', 'fly'], { x: -44, y: 9, z: -50 }, { route: [{ x: -44, z: -50 }, { x: 26, z: -50 }, { x: 26, z: -42 }, { x: -44, z: -42 }], alt: 9, speed: 1.6 });
-  P('patrol', ['swatter', 'fly', 'fly'], { x: XS[4], y: 10, z: ZS[4] }, { route: loop(4, 4, 6, 6), alt: 10, speed: 1.8 });
-  // a Swatter flies up and down the highway
-  P('patrol', ['swatter'], { x: -280, y: HWY.y + 6, z: HWY.z }, { route: [{ x: -280, z: HWY.z }, { x: -120, z: HWY.z }, { x: 120, z: HWY.z }, { x: 280, z: HWY.z }], routeBack: true, alt: 6, speed: 1.8 });
-  // Flies circling the crashed pod
-  const C = CRATER, ring = [];
-  for (let k = 0; k < 6; k++) ring.push({ x: C.x + Math.cos(k / 6 * Math.PI * 2) * 30, z: C.z + Math.sin(k / 6 * Math.PI * 2) * 30 });
-  P('patrol', ['fly', 'fly', 'fly', 'fly'], { x: ring[0].x, y: 5, z: ring[0].z }, { route: ring, alt: 5, speed: 1.6 });
-  // the Roach: one, in the red zone, walking the open south-west of the plaza
-  P('roach', ['roach'], { x: -46, y: 0.1, z: 18 }, { route: [{ x: -46, z: 18 }, { x: -15, z: 48 }, { x: -44, z: 50 }], noRespawn: true, radius: 190 });
-  // Scatter nests: in the base, and in some buildings (at most eight)
-  const spots = L.nestSpots.filter(s => !s.bunker);
-  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
-  for (const s of [...L.nestSpots.filter(q => q.bunker), ...spots.slice(0, 8)]) {
-    P('nest', Array(2 + (R() < 0.5 ? 1 : 0)).fill('scatter'), { x: s.x, y: s.y, z: s.z }, { radius: s.bunker ? 70 : 90 });
-    crystalsAround(L, kit, s.x, s.y - 0.1, s.z, 1.8, 6);
-  }
-}
+// (the Prism: who lives where, and the routes they patrol, are in prism.js since step 5d)
 
 // ---------- the last check: a container nobody could stand in front of stays as scenery ----------
 // (with this many random pieces something sometimes lands right in front of one). The test is the raider's
 // capsule (0.3 m round, 1.8 m tall) 1.0 and 1.4 m in front, against every solid box near it. Before that, loose
 // rubble and palms standing right outside a door you can use are cleared away (hidden, no longer solid).
-function finalChecks(L) {
-  const G = solidGrid(L);
+function finalChecks(L, G = solidGrid(L)) {
   for (const d of L.doors) {
     if (!d.open) continue;
     for (const dist of [1.2, 2.0]) {

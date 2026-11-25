@@ -9,7 +9,7 @@ import * as P from './props.js';
 import { XS, ZS, WX, WZ } from './plan.js';
 
 const H = FLOOR, SW = 1.6, DET = K.DETAIL;
-const DEPTH = { crate: 0.78, locker: 0.5, medcab: 0.3, toolbox: 0.6, case: 0.62, cache: 0.66 };   // how far each container reaches out
+const DEPTH = { crate: 0.78, locker: 0.5, medcab: 0.3, toolbox: 0.6, case: 0.62, cache: 0.66, safe: 0.6, military: 0.62 };   // how far each container reaches out
 const shuffle = (a, R) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // ---------- turning boxes (Euler YXZ, the way three.js and the kit turn them) ----------
@@ -119,7 +119,7 @@ function tower(L, kit) {
     { x: CORE.x0, z: -26, nx: -1, nz: 0, cell: [1, 2] }, { x: CORE.x1, z: -22, nx: 1, nz: 0, cell: [4, 3] },
     { x: 2.5, z: CORE.z1, nx: 0, nz: 1, cell: [3, 4] }, { x: -2.5, z: CORE.z0, nx: 0, nz: -1, cell: [2, 1] },
   ];
-  const kinds = f => f === 0 ? ['locker'] : f <= 2 ? ['locker', 'medcab', 'locker'] : f <= 4 ? ['case', 'crate', 'locker', 'medcab'] : ['case', 'crate', 'case'];
+  const kinds = f => f === 0 ? ['locker'] : f <= 2 ? ['locker', 'medcab', 'locker'] : f <= 4 ? ['case', 'safe', 'locker', 'medcab'] : ['case', 'safe', 'military'];
   const loot = [];
   for (let f = 0; f < TOP; f++) {
     const n = f === 0 ? 1 : 1 + (R() < 0.45 ? 1 : 0);
@@ -403,7 +403,7 @@ export function highway(L, kit) {
   for (const dz of [-6.4, -3.6]) { P.jersey(kit, ARMY[1] - 1, z + dz, 0, y); used.push({ x0: ARMY[1] - 1.4, x1: ARMY[1] - 0.6, z0: z + dz - 1.6, z1: z + dz + 1.6 }); }
   P.sandbags(kit, 246, z + 3.6, Math.PI / 2, 4, 2, y); used.push({ x0: 245.4, x1: 246.6, z0: z + 1.8, z1: z + 5.4 });
   addLoot(L, kit, 'case', 258, y, z + 3.9, -Math.PI / 2, 'outer'); used.push({ x0: 256, x1: 259, z0: z + 2.6, z1: z + 5.2 });
-  addLoot(L, kit, 'crate', 232, y, z - 3.9, Math.PI / 2, 'outer'); used.push({ x0: 231, x1: 234, z0: z - 5.2, z1: z - 2.6 });
+  addLoot(L, kit, 'military', 232, y, z - 3.9, Math.PI / 2, 'outer'); used.push({ x0: 231, x1: 234, z0: z - 5.2, z1: z - 2.6 });
   for (const jx of [kit.range(-205, -178), kit.range(170, 205)]) {                    // (clear of the west off-ramp, which joins at x -228)
     kit.cbox(jx, y + 1.9, z + 4.4, 2.5, 3.0, 11, 0x6a6e73, { ry: Math.PI / 2 + 0.2 });            // the trailer
     kit.cbox(jx + 6.6, y + 1.4, z + 2.9, 2.4, 2.4, 3, kit.pick(COL.rust), { ry: Math.PI / 2 - 0.9 });   // its cab, turned in
@@ -534,7 +534,7 @@ export function bunker(L, kit) {
   P.booth(kit, ux(-7.6), vz(-26.4), 0, F);
   kit.box(ux(7.5), F, vz(-26.3), 1.6, 1.2, 1.6, 0x4d5157);
   kit.cbox(ux(7.5), F + 1.5, vz(-25.6), 0.18, 0.18, 2.2, 0x2b2a28, { rx: -0.2, col: false, k: DET });
-  lr('crate', 8.9, -22.3, E);
+  lr('military', 8.9, -22.3, E);
   // the vehicle bay: pillars, an armoured car and a lorry, crates to hide behind, a crane rail
   for (const [u, v] of [[-8, -34], [8, -34], [-8, -42], [8, -42]]) kit.box(ux(u), F, vz(v), 0.9, WH, 0.9, cw);
   P.apc(kit, ux(-4.2), vz(-40.5), 0.3, { burnt: false, y: F });
@@ -571,10 +571,10 @@ export function bunker(L, kit) {
   }
   kit.box(ux(-9), F, vz(-57), 3.4, 0.9, 2.2, 0x4f4a44, { k: DET });
   kit.box(ux(-9), F + 0.9, vz(-57), 3.2, 0.03, 2.0, 0x3f6a5a, { k: K.GLOW, col: false });
-  lr('case', -15.37, -56, W); lr('locker', -2.77, -58.5, E);
+  lr('case', -15.37, -56, W); lr('safe', -2.72, -58.5, E);
   // the armoury: racks, cases, a crate
   for (const u of [4.3, 13.6]) kit.box(ux(u), F, vz(-63.2), 2.4, 2.0, 0.5, 0x3a3d40, { k: DET });   // (clear of the doorway north, at u 9)
-  lr('case', 15.33, -56, E); lr('case', 15.33, -59.5, E); lr('crate', 2.9, -54.5, W);
+  lr('case', 15.33, -56, E); lr('case', 15.33, -59.5, E); lr('military', 2.9, -54.5, W);
   // the nest: the Prism took this room; crystals everywhere, two caches
   lr('cache', -6, -74.2, S); lr('cache', 7, -74.2, S);
   crystalsAround(L, kit, ux(0), F, vz(-70), 9, 40);
@@ -627,7 +627,15 @@ export function baseYard(L, kit, In) {
 // the street 6 m further out. Upturned slabs of the old streets stand round the rim (the streets still come in
 // where they were). The pod lies tilted at the bottom, sunk in, one face torn away: inside, its core glows over a
 // Prism cache. Crystals grow out from it in lines; pieces of its shell lie about; cars were thrown out past the rim.
-export const CRATER = { x: -215, z: -215, r: 55, depth: 7, lip: 1.5, lipW: 6 };
+// way: the way in that stays clear of the debris (5d: random walls and heaps had blocked it), from the street in the
+// north, down into the bowl, round the east of the pod and in at its torn face to the core
+export const CRATER = { x: -215, z: -215, r: 55, depth: 7, lip: 1.5, lipW: 6, way: [[-228, -290], [-228, -246], [-200, -236], [-196, -203], [-209, -207.5], [-213, -209.6]] };
+const onWay = (x, z, m) => CRATER.way.some((b, i) => {
+  if (!i) return false;
+  const a = CRATER.way[i - 1], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz;
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2));
+  return Math.hypot(a[0] + dx * t - x, a[1] + dz * t - z) < 2.5 + m;
+});
 // the height of the ground in and round the crater (0 further out)
 export function craterY(x, z) {
   const C = CRATER, r = Math.hypot(x - C.x, z - C.z);
@@ -670,25 +678,33 @@ export function crater(L, kit) {
     const a = k / 7 * Math.PI * 2 + kit.range(-0.2, 0.2);
     for (let r = 9; r < 46; r += kit.range(3, 5)) crystalsAround(L, kit, px + Math.cos(a) * r, craterY, pz + Math.sin(a) * r, 0.9, 2);
   }
+  // (none of it on the way in: CRATER.way)
   const shells = [];
   for (let k = 0; k < 12; k++) {
     const a = R() * Math.PI * 2, r = kit.range(11, 44), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r, s = kit.range(1.2, 4);
+    if (onWay(x, z, s * 0.75)) continue;
     kit.cbox(x, craterY(x, z) + s * 0.12, z, s, s * 0.35, s * kit.range(0.6, 1.2), 0x1b1328, { rx: kit.range(-0.6, 0.6), ry: R() * Math.PI, rz: kit.range(-0.6, 0.6), col: s > 2 });
     shells.push({ x, z, s });
   }
-  for (const sh of shells.filter(q => q.s > 2.4).slice(0, 2)) {                        // beside a big piece, facing down into the bowl
+  let caches = 0;
+  for (const sh of shells.filter(q => q.s > 2.4)) {                                    // beside a big piece, facing down into the bowl
     const toC = Math.atan2(C.x - sh.x, C.z - sh.z), x = sh.x + Math.sin(toC) * (sh.s * 0.8 + 1.0), z = sh.z + Math.cos(toC) * (sh.s * 0.8 + 1.0);
+    if (caches >= 2 || onWay(x, z, 0.8)) continue;
     addLoot(L, kit, 'cache', x, craterY(x, z), z, toC, 'yellow');
+    caches++;
   }
-  for (let k = 0; k < 8; k++) { const a = R() * Math.PI * 2, r = kit.range(14, 48), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r; kit.rubble(x, z, kit.range(2.5, 4.5), 4, craterY(x, z)); }
+  for (let k = 0; k < 8; k++) {
+    const a = R() * Math.PI * 2, r = kit.range(14, 48), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r, s = kit.range(2.5, 4.5);
+    if (!onWay(x, z, s * 1.1)) kit.rubble(x, z, s, 4, craterY(x, z));
+  }
   for (let k = 0; k < 5; k++) {
-    const a = R() * Math.PI * 2, r = kit.range(18, 40), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r;
-    kit.wall('x', z, x - 3, x + 3, craterY(x, z) - 0.4, kit.range(1.5, 3.5), [], kit.pick(COL.plaster), { jag: 0.8 });
+    const a = R() * Math.PI * 2, r = kit.range(18, 40), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r, h = kit.range(1.5, 3.5);
+    if (!onWay(x, z, 3.3)) kit.wall('x', z, x - 3, x + 3, craterY(x, z) - 0.4, h, [], kit.pick(COL.plaster), { jag: 0.8 });
   }
   // cars thrown out past the rim, on their roofs and burnt
   for (let k = 0, t = 0; k < 10 && t < 40; t++) {
     const a = R() * Math.PI * 2, r = kit.range(C.r + C.lipW + 1.5, C.r + 16), x = C.x + Math.cos(a) * r, z = C.z + Math.sin(a) * r;
-    if (L.footprints.some(f => x > f.x0 - 3 && x < f.x1 + 3 && z > f.z0 - 3 && z < f.z1 + 3)) continue;
+    if (onWay(x, z, 3) || L.footprints.some(f => x > f.x0 - 3 && x < f.x1 + 3 && z > f.z0 - 3 && z < f.z1 + 3)) continue;
     const burnt = R() < 0.5;
     P.car(kit, x, z, R() * Math.PI * 2, { kind: kit.pick(['sedan', 'hatch', 'van', 'pickup']), burnt, flipped: !burnt && R() < 0.6 });
     if (burnt) L.decals.push({ kind: 'scorch', x, z, r: kit.range(2, 3) });

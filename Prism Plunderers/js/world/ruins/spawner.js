@@ -1,16 +1,20 @@
-// Who is awake in The Ruins. The map holds about sixty robots in groups (Fink and Fly patrols, Swatters, the
-// Roach, Scatter nests), but only the groups near you are real robots: a group wakes up when you come within
-// its radius and goes back to sleep (its robots removed, the survivors remembered) when you are far away and none
-// of them is after you. While asleep, a patrol keeps moving along its route on paper, so it is somewhere else when
-// you come back. A group wiped out comes back after 10 minutes (DESIGN 11), except the Roach.
-// Robots that belong to no group (reinforcements from drop pods) are removed when far away and calm.
+// Who is awake in The Ruins. The map holds about 120 robots in groups (prism.js: Fink and Fly patrols, guards,
+// Swatters, the Roach, Scatter nests), but only the groups near you are real robots: a group wakes up when you come
+// within its radius and goes back to sleep (its robots removed, the survivors remembered) when you are far away and
+// none of them is after you. At most CAP robots are awake at a time (step 5d): the nearest groups wake first, and a
+// group close to you may send a calm one far from you to sleep to make room. A group after you always stays awake.
+// While asleep, a patrol keeps moving along its route on paper, so it is somewhere else when you come back. A group
+// wiped out comes back after 10 minutes (DESIGN 11), except the Roach.
+// Robots that belong to no group (reinforcements from drop pods) are removed when far away and calm; they are not
+// counted against the cap.
 import { PRISM } from '../../game/prism/defs.js';
 
-const WAKE = 170, SLEEP = 235, RESPAWN = 600;
+const WAKE = 150, SLEEP = 210, RESPAWN = 600, CAP = 30;
+const ROOM_NEAR = 110, ROOM_FAR = 130;     // a group nearer than ROOM_NEAR may put calm groups further than ROOM_FAR to sleep
 
 export class PrismSpawner {
-  constructor(director, groups, { wake = WAKE, sleep = SLEEP, respawn = RESPAWN } = {}) {
-    this.dir = director; this.wake = wake; this.sleep = sleep; this.respawn = respawn;
+  constructor(director, groups, { wake = WAKE, sleep = SLEEP, respawn = RESPAWN, cap = CAP } = {}) {
+    this.dir = director; this.wake = wake; this.sleep = sleep; this.respawn = respawn; this.cap = cap;
     this.time = 0;
     this.groups = groups.map(g => ({
       ...g, alive: g.members.length, active: false, robots: [], respawnAt: -1, s: 0,
@@ -19,7 +23,7 @@ export class PrismSpawner {
   }
   step(dt, p) {
     this.time += dt;
-    const owned = new Set();
+    const owned = new Set(), want = [];
     for (const g of this.groups) {
       if (g.alive <= 0) {
         if (g.respawnAt < 0 && !g.noRespawn) g.respawnAt = this.time + this.respawn;
@@ -28,8 +32,8 @@ export class PrismSpawner {
       if (!g.active) {
         if (g.route) g.s += dt * (g.speed || 1.5);                       // the patrol carries on, on paper
         if (g.alive > 0 && p && !p.dead) {
-          const at = this.anchor(g);
-          if (Math.hypot(at.x - p.pos.x, at.z - p.pos.z) < (g.radius || this.wake)) this.wakeUp(g, at);
+          const at = this.anchor(g), d = Math.hypot(at.x - p.pos.x, at.z - p.pos.z);
+          if (d < (g.radius || this.wake)) want.push({ g, at, d });
         }
         continue;
       }
@@ -43,11 +47,46 @@ export class PrismSpawner {
       const far = !p || Math.hypot(lead.pos.x - p.pos.x, lead.pos.z - p.pos.z) > Math.max(this.sleep, (g.radius || this.wake) + 60);
       if (far && !g.robots.some(r => r.hostile)) this.putToSleep(g);
     }
+    if (want.length) {
+      this.wakeNearest(want, p);
+      for (const g of this.groups) if (g.active) for (const r of g.robots) owned.add(r);
+    }
     // reinforcements nobody owns: gone once you are far away and they have calmed down
     for (const r of [...this.dir.robots]) {
       if (owned.has(r) || r.dead || r.hostile || !p) continue;
       if (Math.hypot(r.pos.x - p.pos.x, r.pos.z - p.pos.z) > this.sleep + 40) this.dir.remove(r);
     }
+  }
+  // robots awake in the groups (the cap counts these)
+  get robotsAwake() { let n = 0; for (const g of this.groups) if (g.active) n += g.robots.length; return n; }
+  // wakes the groups that want to, the nearest first, while the cap allows
+  wakeNearest(want, p) {
+    want.sort((a, b) => a.d - b.d);
+    let n = this.robotsAwake;
+    for (const w of want) {
+      const size = Math.min(w.g.alive, w.g.members.length);
+      if (n + size > this.cap && w.d < ROOM_NEAR) n -= this.makeRoom(p, n + size - this.cap);
+      if (n + size > this.cap) continue;
+      this.wakeUp(w.g, w.at);
+      n += w.g.robots.length;
+    }
+  }
+  // puts calm groups far from you to sleep, the furthest first, until `need` robots are freed; returns how many were
+  makeRoom(p, need) {
+    const far = [];
+    for (const g of this.groups) {
+      if (!g.active || !g.robots.length || g.robots.some(r => r.hostile)) continue;
+      const d = Math.hypot(g.robots[0].pos.x - p.pos.x, g.robots[0].pos.z - p.pos.z);
+      if (d > ROOM_FAR) far.push({ g, d });
+    }
+    far.sort((a, b) => b.d - a.d);
+    let freed = 0;
+    for (const q of far) {
+      if (freed >= need) break;
+      freed += q.g.robots.length;
+      this.putToSleep(q.g);
+    }
+    return freed;
   }
   // where a sleeping group is: its patrol position, or its home
   anchor(g) {
@@ -66,7 +105,7 @@ export class PrismSpawner {
       const pos = this.room({ x: at.x + off.x, y, z: at.z + off.z }, d.radius);
       const r = this.dir.spawn(type, pos, {
         yaw: (k * 1.3) % (Math.PI * 2), group: g.id,
-        route: g.route || null, routeBack: !!g.routeBack, routeOff: g.route && n > 1 ? off : null, routeAlt: g.alt ?? null,
+        route: g.route || null, routeBack: !!g.routeBack, routeOff: g.route && n > 1 ? off : null, routeAlt: g.alt ?? null, hover: g.hover || null,
       });
       g.robots.push(r);
     }
@@ -93,7 +132,7 @@ export class PrismSpawner {
   get awake() { return this.groups.filter(g => g.active).length; }
   debug() {
     const a = this.groups.filter(g => g.active);
-    return `the Ruins: ${a.length} of ${this.groups.length} Prism groups awake (${a.map(g => g.members[0] + 'x' + g.robots.length).join(' ')}), ` +
+    return `the Ruins: ${a.length} of ${this.groups.length} Prism groups awake, ${this.robotsAwake} of at most ${this.cap} robots (${a.map(g => g.members[0] + 'x' + g.robots.length).join(' ')}), ` +
       `${this.groups.filter(g => g.alive <= 0).length} wiped out`;
   }
 }

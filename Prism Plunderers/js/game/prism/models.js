@@ -30,6 +30,72 @@ function kit(view) {
   const group = (parent, x = 0, y = 0, z = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; };
   return { add, group };
 }
+// Fewer draw calls (step 5d: up to 30 robots awake): the armour pieces that never move against each other are
+// merged, one mesh per material. `movers` are the parts that move on their own (legs, the head, the gun's barrels,
+// the hatch, the scan cone's pivot); what hangs under one of them is merged inside it. The visor (its own glowing
+// material), the flames and the glow sprites stay as they are. A Fly went from 20 draw calls to 8.
+const _inv = new THREE.Matrix4(), _rel = new THREE.Matrix4();
+function bake(list, normals) {
+  const parts = list.map(o => {
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    g.applyMatrix4(_rel.multiplyMatrices(_inv, o.matrixWorld));
+    return g;
+  });
+  let n = 0;
+  for (const g of parts) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nor = normals ? new Float32Array(n * 3) : null;
+  let k = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array, k * 3);
+    if (nor) nor.set(g.attributes.normal.array, k * 3);
+    k += g.attributes.position.count;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  if (nor) out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.computeBoundingSphere();
+  return out;
+}
+function mergeStatic(view, movers = []) {
+  const stop = new Set(movers), armour = new Set(view.meshes);
+  view.root.updateMatrixWorld(true);
+  for (const node of [view.body, ...movers]) {
+    _inv.copy(node.matrixWorld).invert();
+    const meshes = new Map(), lines = new Map();
+    const walk = o => {
+      for (const c of o.children) {
+        if (stop.has(c)) continue;
+        if (c.isMesh && armour.has(c) && c !== view.visor) {
+          if (!meshes.has(c.userData.mat)) meshes.set(c.userData.mat, []);
+          meshes.get(c.userData.mat).push(c);
+        } else if (c.isLineSegments) {
+          if (!lines.has(c.material)) lines.set(c.material, []);
+          lines.get(c.material).push(c);
+        }
+        walk(c);
+      }
+    };
+    walk(node);
+    for (const [mat, list] of meshes) {
+      if (list.length < 2) continue;
+      const m = new THREE.Mesh(bake(list, true), mat);
+      m.castShadow = true;
+      m.userData.mat = mat;
+      node.add(m);
+      for (const o of list) { o.removeFromParent(); o.geometry.dispose(); armour.delete(o); }
+      armour.add(m);
+    }
+    for (const [mat, list] of lines) {
+      if (list.length < 2) continue;
+      node.add(new THREE.LineSegments(bake(list, false), mat));
+      for (const o of list) { o.removeFromParent(); o.geometry.dispose(); }
+    }
+  }
+  view.meshes = [...armour];
+  return view;
+}
+
 // a downward-pointing triangle facing +z (the Prism "eye")
 function visorGeo(size) {
   const s = new THREE.Shape();
@@ -74,7 +140,7 @@ export function makeFink(glowTex) {
   coneGeo.translate(0, -3, 0);
   view.scanMesh = new THREE.Mesh(coneGeo, MAT.cone.clone());
   pivot.add(view.scanMesh);
-  return view;
+  return mergeStatic(view, [view.scan]);
 }
 
 // ---------- Fly (Prism-7) and Swatter: armoured VTOL drones with twin thruster pods ----------
@@ -121,7 +187,7 @@ function makeDrone(size, glowTex, withGun) {
       body.add(sp); view.glows.push(sp);
     }
   }
-  return view;
+  return mergeStatic(view, withGun ? [view.barrels] : []);
 }
 export const makeFly = glowTex => makeDrone(1, glowTex, false);
 export const makeSwatter = glowTex => makeDrone(2, glowTex, true);
@@ -145,7 +211,7 @@ export function makeScatter() {
     lg.rotation.y = yaw;
     view.legs.push({ g: lg, yaw, side, i, tip: lg.children[1] });
   }
-  return view;
+  return mergeStatic(view, view.legs.map(l => l.g));
 }
 
 // ---------- Roach: a big armoured roach, 6 legs, antennae; wings and a mortar hatch for flight ----------
@@ -197,7 +263,7 @@ export function makeRoach() {
   const hinge = view.hatch = k.group(body, 0, 1.62, 0.28);
   k.add(hinge, new THREE.BoxGeometry(0.72, 0.08, 0.82), MAT.plate, 0, 0, -0.41);
   view.muzzle = k.group(body, 0, 1.75, -0.15);
-  return view;
+  return mergeStatic(view, [...view.legs.map(l => l.g), view.head, ...view.wings.map(w => w.g), view.hatch]);
 }
 
 export const BUILD = { fink: makeFink, fly: makeFly, swatter: makeSwatter, scatter: makeScatter, roach: makeRoach };
