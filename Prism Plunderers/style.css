@@ -670,3 +670,7 @@ body[data-mode="game"] #fps { top: 10px; }
 #inv.lobby { z-index: 44; }
 body.inv-open #s-main { visibility: hidden; }
 .inv-ghost { z-index: 46; } .inv-tip { z-index: 47; } .inv-menu { z-index: 48; }
+/* v0.8.2: the Raider and Trader tabs as a full-height panel that scrolls (they ran off the bottom of the screen) */
+#s-main[data-tab="raider"] .tabpage, #s-main[data-tab="trader"] .tabpage { top: 96px; bottom: 96px; left: auto; right: 28px; width: min(560px, calc(100% - 40px)); transform: none; overflow-y: auto; }
+#s-main[data-tab="trader"] .trade { max-height: none; }
+.tr-row .btn.small:not(:disabled) { color: var(--acc-ink); background: var(--acc); }

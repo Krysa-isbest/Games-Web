@@ -27,9 +27,9 @@ export const RAID = { time: 20 * 60, hold: 8, open: [150, 420], first: [45, 110]
 // what you go in with (DESIGN 19: "Scrap Pistol, Crowbar, 2 Medkits, 1 Repair Kit"; the light shield is what the
 // Repair Kit is for, and the rounds are what the pistol needs)
 export const START_KIT = {
-  equip: { weapon2: 'scrap_pistol', melee: 'crowbar', shield: 'shield_light' },
-  quick: [['medkit', 2], ['repair_kit', 1]],
-  bag: [['light_ammo', 48]],
+  equip: { weapon2: 'scrap_pistol' },                      // (v0.8.2, the user: "the pistol and a bit of ammo and 1 medkit")
+  quick: [['medkit', 1]],
+  bag: [['light_ammo', 36]],
 };
 export function giveStartKit(p) {
   const inv = p.inv;

@@ -11,7 +11,7 @@ import { uiSfx } from '../core/sound.js';
 import { $, esc } from '../core/util.js';
 import { ITEMS, RARITY } from '../game/items.js';
 import { STATIONS, stationLevel, upgradeStation, craft, missing, TRADER_STOCK, buyPrice, buyPack, buy, BAG, bagSlots, upgradeBag,
-  stashBox, saveStash, loadout, loadoutEmpty, chickenCollect, STASH_SLOTS } from '../game/economy.js';
+  stashBox, saveStash, loadout, loadoutEmpty, chickenCollect, STASH_SLOTS, freeKit } from '../game/economy.js';
 import { InventoryScreen } from './inventory.js';
 import { UI } from './screens.js';
 
@@ -39,6 +39,7 @@ function onAct(e) {
   else if (a === 'collect') { const got = chickenCollect(); ok = got.length > 0; msg = ok ? 'Pip found: ' + got.map(f => `${f.cr} cr` + (f.id ? ` and ${f.n} ${ITEMS[f.id].name}` : '')).join(', ') : 'Nothing yet: Pip scratches about while you are out on a raid'; }
   else if (a === 'buy') { ok = buy(arg); msg = ok ? `Bought ${buyPack(arg) > 1 ? buyPack(arg) + ' ' : ''}${ITEMS[arg].name} (in your stash)` : 'Not enough Scrap Credits'; }
   else if (a === 'bag') { ok = upgradeBag(); msg = ok ? `Backpack: ${bagSlots()} slots` : 'Not enough to pay for it'; }
+  else if (a === 'free') { ok = freeKit(); msg = ok ? 'Free starter loadout: the Scrap Pistol, 36 rounds, a medkit' : 'Only for an empty loadout'; }
   else if (a === 'loadout') { openLoadout(); return; }
   if (ok) uiSfx.ok(); else uiSfx.error();
   if (msg) UI.toast(msg, ok ? '' : 'bad');
@@ -94,11 +95,12 @@ export function renderWorkshop() {
 // the Raider tab: the loadout, the backpack, your record
 export function renderRaider() {
   const lv = P.workshop.bag | 0, next = BAG[lv + 1], L = loadout();
-  const what = loadoutEmpty() ? 'Empty: you take the free starting kit (Scrap Pistol, Crowbar, light shield, 2 medkits, a repair kit).'
+  const what = loadoutEmpty() ? 'Empty: you go in with the free starter loadout (the Scrap Pistol, 36 rounds, a medkit).'
     : Object.values(L.equip).filter(Boolean).map(it => ITEMS[it.id].name).join(', ') + ` · ${[...L.bag, ...L.quick, ...L.safe].filter(Boolean).length} more items`;
   const cell = (k, v) => `<div><small>${esc(k)}</small><b>${esc(String(v))}</b></div>`;
   $('tabpage').innerHTML = `<h2>Raider</h2><p>${esc(what)}</p>` +
     `<button class="btn primary wide" data-act="loadout"><kbd>Tab</kbd>Loadout and stash</button>` +
+    `<button class="btn wide" data-act="free"${loadoutEmpty() ? '' : ' disabled'}>Free starter loadout (pistol, ammo, medkit)</button>` +
     `<h4>Backpack · ${bagSlots()} slots</h4>` + (next ? `${costs(next.items, next.cr)}<button class="btn" data-act="bag"${missing(next.items, next.cr).length ? ' disabled' : ''}>Upgrade to ${next.slots} slots</button>` : '<p class="ws-max">The biggest backpack.</p>') +
     `<h4>Record</h4><div class="tp-grid">${cell('Raids', P.stats.raids)}${cell('Extracted', P.stats.extracted)}${cell('Deaths', P.stats.deaths)}${cell('Prism destroyed', P.stats.kills)}${cell('Stash', `${P.stash.length} / ${STASH_SLOTS}`)}</div>`;
 }

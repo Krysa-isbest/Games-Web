@@ -135,6 +135,16 @@ export function takeLoadout(p) {
   P.loadout = emptyLoadout();
   saveProfile();
 }
+// the free starter loadout (an empty loadout only): the pistol, a bit of ammo, a medkit
+export function freeKit() {
+  if (!loadoutEmpty()) return false;
+  const L = loadout();
+  L.equip.weapon2 = makeItem('scrap_pistol');
+  L.quick[0] = makeItem('medkit', 1);
+  L.bag[0] = makeItem('light_ammo', 36);
+  saveProfile();
+  return true;
+}
 // buys the next backpack size
 export function upgradeBag() {
   const next = BAG[(P.workshop.bag | 0) + 1];
