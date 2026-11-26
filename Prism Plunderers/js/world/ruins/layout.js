@@ -414,7 +414,7 @@ function edges(L, kit) {
     sandbags(kit, e.x - 7.5, e.z, Math.PI / 2); sandbags(kit, e.x + 7.5, e.z, Math.PI / 2);
     addLoot(L, kit, 'crate', e.x - 4, 0.3, e.z + 4.5, 0, 'outer');
     L.extracts.push({ ...e, kind: 'extract', short: e.name });
-    L.signs.push({ title: 'Extraction', sub: `${e.name}\nOpens with the raid rules`, x: e.x - 3, y: 2.3, z: e.z - 6.5, ry: Math.atan2(-e.x, -e.z) + Math.PI });
+    L.signs.push({ title: 'Extraction', sub: `${e.name}\nHold E here for the pick-up`, x: e.x - 3, y: 2.3, z: e.z - 6.5, ry: Math.atan2(-e.x, -e.z) + Math.PI });
   }
   for (const [x, z] of DROPS) L.spawns.push({ x, y: 0.05, z, yaw: Math.atan2(x, z) });
   // the strip of sand outside the ring road: ruined corners, rubble, wrecks, dead palms, a shack now and then

@@ -6,6 +6,7 @@ import { UI } from '../ui/screens.js';
 import { rng, damp } from '../core/util.js';
 import { Raider } from '../game/raider.js';
 import { glowTexture } from '../world/sky.js';
+import { showRaidSummary } from '../game/raid.js';
 
 const glow = (tex, color, scale, opacity = 1) => {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
@@ -213,10 +214,11 @@ export default function createMenu() {
 
   return {
     scene, camera,
-    enter() {
+    enter(params = {}) {
       addEventListener('pointermove', onMove);
       document.body.dataset.mode = 'menu';
       UI.reset('main');
+      if (params.raid) showRaidSummary(params.raid, UI);    // back from a raid: what you brought out, what you lost
     },
     exit() {
       removeEventListener('pointermove', onMove);

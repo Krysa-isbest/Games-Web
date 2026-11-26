@@ -205,6 +205,28 @@
   </div>
 </section>
 
+<!-- after a raid (js/game/raid.js showRaidSummary) -->
+<section id="s-raid" class="screen hidden">
+  <div class="board">
+    <header class="p-head">
+      <div class="p-title"><small>Raid over</small><h2 id="rs-title">Extracted</h2></div>
+      <span class="p-sub" id="rs-sub"></span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
+    </header>
+    <div class="p-body">
+      <div class="stats" id="rs-stats"></div>
+      <h3 class="sect">Into your stash</h3>
+      <ul class="rs-list" id="rs-kept"></ul>
+      <h3 class="sect" id="rs-lost-h">Lost</h3>
+      <ul class="rs-list lost" id="rs-lost"></ul>
+    </div>
+    <footer class="p-foot">
+      <span class="note">You sell what you brought out to the Trader, and take gear from your stash into the next raid, once the lobby update is in.</span>
+      <button class="btn primary" data-back>Back to the lobby</button>
+    </footer>
+  </div>
+</section>
+
 <!-- save data -->
 <section id="s-save" class="screen hidden">
   <div class="board">
@@ -274,6 +296,7 @@
   </div>
   <div class="hud-top"><span class="tag-label" id="hud-place">Test range</span><span id="hud-hint"></span></div>
   <div class="compass hidden" id="hud-compass"><div class="cmp-strip" id="cmp-strip"></div></div>
+  <div class="raid hidden" id="hud-raid"></div>
   <div class="chips" id="hud-chips"></div>
   <div id="map" class="hidden"></div>
 </div>
@@ -287,7 +310,7 @@
 </div>
 <div id="pause" class="hidden">
   <div class="pz">
-    <small>Test range</small>
+    <small id="pz-tag">Test range</small>
     <h2>Paused</h2>
     <button class="btn primary" id="pz-resume">Resume</button>
     <button class="btn" id="pz-controls">Controls</button>

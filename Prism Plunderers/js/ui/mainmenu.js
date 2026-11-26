@@ -9,7 +9,7 @@ import { UI } from './screens.js';
 const TABS = ['play', 'workshop', 'raider', 'skills', 'trader'];
 // the build order (NEXT-CHAT.md). DONE = how many parts are finished.
 const PARTS = ['Foundation', 'Player', 'Prism enemies', 'Weapons and items', 'The Ruins', 'Raid rules', 'Performance', 'Lobby and workshop', 'Skill tree', 'Menus and settings', 'Difficulty', 'Multiplayer'];
-const DONE = 5;
+const DONE = 6;
 const LINES = ['2999. They landed. We shot first.', '3000. They came back. All of them.'];
 const SOON = 'Co-op comes with the multiplayer update.';
 
@@ -27,14 +27,14 @@ export function initMainMenu({ play }) {
   $('btn-play').onclick = () => onPlay();
   $('bb-settings').onclick = () => UI.go('controls');
   $('tb-me').onclick = () => UI.go('save');
-  // where Play takes you: The Ruins (free roam until the raid rules exist) or the test range
+  // where Play takes you: a raid in The Ruins, or the test range (free play, the full kit)
   const renderDest = () => { $('dest-name').textContent = P.dest === 'test' ? 'Test range' : 'The Ruins'; };
   renderDest();
   $('dest').onclick = () => {
     P.dest = P.dest === 'test' ? 'ruins' : 'test';
     saveProfile();
     renderDest();
-    UI.toast(P.dest === 'test' ? 'Play now opens the test range.' : 'Play now drops you into The Ruins (free roam: the raid rules come next).');
+    UI.toast(P.dest === 'test' ? 'Play now opens the test range (free play, the full kit).' : 'Play now starts a raid in The Ruins: 20 minutes to get out with what you find.');
   };
   $('sq-invite').onclick = () => UI.toast(SOON);
   $('bb-chat').onclick = () => UI.toast('Chat comes with the multiplayer update.');

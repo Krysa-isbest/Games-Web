@@ -2,10 +2,14 @@
 // weapons, the inventory (Tab), the item wheel (Q), the map (M, where the world has one), the flashlight (F),
 // the HUD, the Prism, items on the ground, sounds, pausing and mouse capture, dying and coming back.
 //
-//   createPlayScene({ id, label, loading, sky, far, drawRange, build, setup })
+//   createPlayScene({ id, label, loading, sky, far, drawRange, build, setup, kit? })
 //     build(scene, phys, glow) -> the world: { items, spawn | spawnPoint(rnd), step, frame, dispose,
 //                                              hiss?(p), wind?, darkness?(pos), place?(p), markers?, layout? }
-//     setup(api) -> extras for this place: { step?(dt), frame?(dt), debug?(), dispose?() }
+//     kit(player): what you start with (the test range's full KIT by default)
+//     setup(api) -> extras for this place: { step?(dt), frame?(dt), debug?(), dispose?(),
+//       the raid rules (part 6) use these too: frozen?() (no control: the drop pod, the pick-up), camera?(camera, dt)
+//       (true: it placed the camera this frame), hideRaider?(), died?(dt) (instead of coming back after a death),
+//       deathText?(), quit?() (the pause menu's leave button) }
 import * as THREE from 'three';
 import { Engine, disposeTree, fitCamera, refreshMaterials } from '../core/engine.js';
 import { Input, ACTIONS, kn } from '../core/input.js';
@@ -321,7 +325,7 @@ export function createPlayScene(o) {
       const sp = spawnPoint();
       player = createPlayer({ name: P.name, spawn: sp });
       attachBody(player, phys);
-      giveKit(player);
+      (o.kit || giveKit)(player);
       raider = new Raider({ shadows: true });
       raider.setGear(gearKinds(player));
       scene.add(raider.root);
@@ -368,7 +372,8 @@ export function createPlayScene(o) {
       listen();
       $('pz-resume').onclick = () => grab(false);
       $('pz-controls').onclick = () => { showPause(false); UI.go('controls'); };
-      $('pz-quit').onclick = () => Scenes.go('menu');
+      $('pz-quit').onclick = () => extra.quit ? extra.quit() : Scenes.go('menu');
+      $('pz-tag').textContent = o.label || '';
       onLock(false);
       grab(true);                   // works while the click that opened it is still fresh; otherwise Resume does it
     },
@@ -402,10 +407,11 @@ export function createPlayScene(o) {
 
     fixed(dt) {
       if (!player || paused()) return;
-      if (!invOpen && !player.dead && Input.pressed('inventory')) openInventory(null);
-      if (map && !invOpen && !player.dead && Input.pressed('map')) map.toggle();
-      if (!invOpen && Input.pressed('flashlight')) { lampOn = !lampOn; Sfx.use(); }
-      const live = !player.dead && Input.locked;
+      const frozen = !!extra.frozen?.();
+      if (!invOpen && !player.dead && !frozen && Input.pressed('inventory')) openInventory(null);
+      if (map && !invOpen && !player.dead && !frozen && Input.pressed('map')) map.toggle();
+      if (!invOpen && !frozen && Input.pressed('flashlight')) { lampOn = !lampOn; Sfx.use(); }
+      const live = !player.dead && Input.locked && !frozen;
       const cmd = live ? readCommand(cam, { quick: pendingQuick, noFire: wheel.open || (map && map.open) }) : idleCommand(cam);
       pendingQuick = -1;
       stepPlayer(player, cmd, dt, ctx);
@@ -416,7 +422,8 @@ export function createPlayScene(o) {
       phys.step();
       if (player.dead) {
         deadT += dt;
-        if (deadT >= RESPAWN) {
+        if (extra.died) extra.died(dt);                   // a raid: no coming back
+        else if (deadT >= RESPAWN) {
           const sp = spawnPoint();
           respawnPlayer(player, sp);
           giveKit(player);
@@ -430,12 +437,13 @@ export function createPlayScene(o) {
       if (!player) return;
       const stop = paused(), p = player;
       // the item wheel: held open with its key, the mouse picks a slot instead of turning the camera
-      const wantWheel = Input.held('wheel') && !p.dead && !invOpen && !stop && !(map && map.open);
+      const frozen = !!extra.frozen?.();
+      const wantWheel = Input.held('wheel') && !p.dead && !invOpen && !stop && !frozen && !(map && map.open);
       if (wantWheel && !wheel.open) wheel.show();
       else if (!wantWheel && wheel.open) { const q = wheel.hide(); if (q >= 0) pendingQuick = q; }
       const look = Input.consumeLook(p.aiming ? S.aimSens : 1);
       if (wheel.open) { const k = 0.0022 * S.sens * (p.aiming ? S.aimSens : 1); wheel.steer(look.x / k, look.y / k * (S.invertY ? -1 : 1)); }
-      else if (!stop && !(map && map.open)) cam.look(look.x, look.y);
+      else if (!stop && !frozen && !(map && map.open)) cam.look(look.x, look.y);
       const a = stop ? 1 : alpha;
       const x = p.prev.x + (p.pos.x - p.prev.x) * a, z = p.prev.z + (p.pos.z - p.prev.z) * a;
       const y = p.prev.y + (p.pos.y - p.prev.y) * a - BODY.offset;
@@ -453,11 +461,13 @@ export function createPlayScene(o) {
       });
       if (step && !stop) Sfx.step(speed, p.crouch);
       raider.contact.position.set(x, y + 0.02, z);
-      raider.contact.visible = p.grounded || p.mode === 'dead';
+      const hidden = !!extra.hideRaider?.();                // (inside the drop pod, aboard the dropship)
+      raider.root.visible = !hidden;
+      raider.contact.visible = !hidden && (p.grounded || p.mode === 'dead');
       // the second half of a reload: the new magazine goes in
       if (reloadSound === 1 && p.wpn.reloadT > 0 && p.wpn.reloadT < p.wpn.reloadTime * 0.35) { Sfx.magIn(); reloadSound = 2; }
 
-      cam.update(dt, { x, y, z }, { eye: p.height * 0.86 + (p.mode === 'dead' ? 0.3 : 0), aim: p.aiming, sprint: p.sprinting && speed > 5, dead: p.dead });
+      if (!extra.camera?.(camera, stop ? 0 : dt)) cam.update(dt, { x, y, z }, { eye: p.height * 0.86 + (p.mode === 'dead' ? 0.3 : 0), aim: p.aiming, sprint: p.sprinting && speed > 5, dead: p.dead });
       aimLamp(p, x, y, z);
       if (world.darkness) shade(world.darkness(p.pos), stop ? 0 : dt);
       hud.update(dt, cam.yaw);
@@ -481,7 +491,7 @@ export function createPlayScene(o) {
       windLoop?.set(stop ? 0 : world.wind * (1 - dark), 0);
       beatT -= dt;
       if (!stop && !p.dead && p.health / p.maxHealth < 0.3 && beatT <= 0) { Sfx.heartbeat(); beatT = 0.85 + p.health / p.maxHealth * 1.5; }
-      if (p.dead) $('death-timer').textContent = `Back on your feet in ${Math.max(0, Math.ceil(RESPAWN - deadT))}`;
+      if (p.dead) $('death-timer').textContent = extra.deathText ? extra.deathText() : `Back on your feet in ${Math.max(0, Math.ceil(RESPAWN - deadT))}`;
     },
 
     resize(w, h) { fitCamera(camera, w, h); },
