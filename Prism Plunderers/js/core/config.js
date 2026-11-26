@@ -1,5 +1,5 @@
 // Constants every part of the game shares.
-export const VERSION = 'Prototype v0.8';
+export const VERSION = 'Prototype v0.8.1';
 export const BUILD = 'Lobby and workshop';
 
 // The simulation runs in fixed steps, so movement, AI and damage behave the same at 30 FPS and at 240 FPS.

@@ -665,3 +665,8 @@ body[data-mode="game"] #fps { top: 10px; }
 #inv.lobby { background: rgba(5, 6, 9, .9); }
 #inv.lobby .inv-box { order: -1; width: 340px; }
 #inv.lobby .inv-box .grid { max-height: calc(100vh - 250px); overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
+/* the loadout screen over the lobby (v0.8.1): above the menu screens (z 30), the lobby hidden behind it; the dragged
+   item, the tooltip and the right-click menu above the screen */
+#inv.lobby { z-index: 44; }
+body.inv-open #s-main { visibility: hidden; }
+.inv-ghost { z-index: 46; } .inv-tip { z-index: 47; } .inv-menu { z-index: 48; }
