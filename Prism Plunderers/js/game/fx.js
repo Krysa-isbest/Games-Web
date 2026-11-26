@@ -1,6 +1,8 @@
 // Visual effects: tracers, flashes, sparks, explosions, smoke, ground rings and beams. Everything comes from
-// pools and only lives in drawing (frame), never in the simulation.
+// pools and only lives in drawing (frame), never in the simulation. The Effects setting at Low (part 7) halves
+// the sparks and drops about half the smoke puffs.
 import * as THREE from 'three';
+import { S } from '../core/save.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const tmp = new THREE.Vector3();
@@ -52,6 +54,7 @@ export class Fx {
   }
   // small hot bits flying out of a hit
   sparks(pos, color = 0xffd08a, n = 6, speed = 4) {
+    if (S.effects === 'low') n = Math.ceil(n / 2);
     for (let i = 0; i < n; i++) {
       const s = this.take('sprite', () => new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
       s.material.color.setHex(color);
@@ -63,6 +66,7 @@ export class Fx {
   }
   // a puff of smoke that rises and spreads
   smoke(pos, size = 0.8, life = 1.6, color = 0x2a2628, rise = 0.8) {
+    if (S.effects === 'low' && Math.random() < 0.5) return null;
     const s = this.take('smoke', () => new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, transparent: true, depthWrite: false })));
     s.material.color.setHex(color);
     s.position.copy(pos);

@@ -6,12 +6,17 @@
 // The world keeps running while it is open.
 //
 // Every change goes through apply(op), one door, so a co-op host can check the same operations later.
+//
+// In the lobby (mode 'lobby', part 8) the same screen is the loadout: the "player" is the loadout for the next
+// raid, the container is your stash (on the left), and instead of dropping things you sell them to the Trader.
+// onChange(op) runs after every change there (to save the stash and the loadout).
 import { ITEMS, RARITY, CATEGORY } from '../game/items.js';
 import { getAt, move, split, removeAt, takeFrom, transfer, takeAll, equipSlotFor, syncShield, accepts, weight, MAX_WEIGHT,
   BAG_SLOTS, QUICK_SLOTS, SAFE_SLOTS, count } from '../game/inventory.js';
 import { startUse, cannotUse } from '../game/weapons.js';
 import { SHIELDS } from '../game/stats.js';
-import { P } from '../core/save.js';
+import { P, Credits } from '../core/save.js';
+import { sellPrice } from '../game/economy.js';
 import { bus } from '../core/events.js';
 import { kn, BINDS } from '../core/input.js';
 import { uiSfx } from '../core/sound.js';
@@ -26,8 +31,9 @@ const kg = v => v.toFixed(1);
 
 export class InventoryScreen {
   // world = { drop(p, item) } (the ground loot); onClose = called after the screen closes
-  constructor(player, world, { onClose = null } = {}) {
+  constructor(player, world, { onClose = null, mode = 'raid', onChange = null } = {}) {
     this.p = player; this.world = world; this.onClose = onClose;
+    this.lobby = mode === 'lobby'; this.onChange = onChange;
     this.open = false; this.box = null; this.sig = ''; this.drag = null; this.menuRef = null;
     this.root = $('inv');
     this.build();
@@ -44,15 +50,17 @@ export class InventoryScreen {
   build() {
     const r = this.root;
     r.innerHTML = '';
+    r.classList.toggle('lobby', this.lobby);
+    this.bagN = this.p.inv.bag.length;
     const head = el('header', 'inv-head', r);
     const t = el('div', 'inv-title', head);
-    t.innerHTML = '<small>Raider</small><h2>Inventory</h2>';
+    t.innerHTML = this.lobby ? '<small>Next raid</small><h2>Loadout</h2>' : '<small>Raider</small><h2>Inventory</h2>';
     const wt = this.wt = el('div', 'inv-weight', head);
     wt.innerHTML = '<span class="iw-label">Weight</span><b id="inv-wt">0.0</b><span>/ ' + kg(MAX_WEIGHT) + ' kg</span><i><s id="inv-wtbar"></s></i>';
     const cr = el('div', 'inv-cr', head);
     cr.innerHTML = '<svg><use href="#i-cr"/></svg><b id="inv-cr">0</b>';
     this.closeBtn = el('button', 'inv-close', head);
-    this.closeBtn.innerHTML = `<kbd>${esc(kn('inventory'))}</kbd>Close`;
+    this.closeBtn.innerHTML = this.lobby ? '<kbd>Esc</kbd>Done' : `<kbd>${esc(kn('inventory'))}</kbd>Close`;
     this.closeBtn.addEventListener('click', () => this.close());
 
     const cols = this.cols = el('div', 'inv-cols', r);
@@ -70,7 +78,7 @@ export class InventoryScreen {
     const bag = el('section', 'inv-col inv-bag', cols);
     this.hBag = el('h4', '', bag);
     const g1 = el('div', 'grid', bag);
-    for (let i = 0; i < BAG_SLOTS; i++) mk(g1, 'bag', i);
+    for (let i = 0; i < this.bagN; i++) mk(g1, 'bag', i);
     this.hQuick = el('h4', '', bag);
     const g2 = el('div', 'grid quick', bag);
     for (let i = 0; i < QUICK_SLOTS; i++) mk(g2, 'quick', i);
@@ -87,9 +95,12 @@ export class InventoryScreen {
     this.boxGrid = el('div', 'grid', box);
     this.boxSlots = [];
     // the line of hints along the bottom
+    if (this.lobby) this.takeAllBtn.classList.add('hidden');
     const foot = el('footer', 'inv-foot', r);
-    foot.innerHTML = '<span><b>Drag</b> move</span><span><b>Right-click</b> options</span><span><b>Shift-click</b> move across</span>' +
-      '<span><b>Double-click</b> use / equip</span><span><b>Drag outside</b> drop on the ground</span>';
+    foot.innerHTML = this.lobby
+      ? '<span><b>Drag</b> move</span><span><b>Right-click</b> options and selling</span><span><b>Shift-click</b> between the stash and the loadout</span><span><b>Double-click</b> equip</span><span>An empty loadout takes the free starting kit</span>'
+      : '<span><b>Drag</b> move</span><span><b>Right-click</b> options</span><span><b>Shift-click</b> move across</span>' +
+        '<span><b>Double-click</b> use / equip</span><span><b>Drag outside</b> drop on the ground</span>';
     // tooltip, menu, the item being dragged
     this.tip = $('inv-tip'); this.menu = $('inv-menu'); this.ghost = $('inv-ghost');
 
@@ -111,6 +122,7 @@ export class InventoryScreen {
 
   // ---------- opening and closing ----------
   show(box = null) {
+    if (this.p.inv.bag.length !== this.bagN) this.build();        // a bigger backpack
     this.box = box || null;
     if (box && box.revealed === undefined) { box.revealed = 0; box.revealT = 0; }
     this.open = true;
@@ -167,7 +179,7 @@ export class InventoryScreen {
     this.sig = sig;
     for (const s of this.slots) this.drawSlot(s, getAt(inv, refOf(s), b));
     const used = arr => arr.filter(Boolean).length;
-    this.hBag.innerHTML = `Backpack <span>${used(inv.bag)}/${BAG_SLOTS}</span>`;
+    this.hBag.innerHTML = `Backpack <span>${used(inv.bag)}/${inv.bag.length}</span>`;
     this.hQuick.innerHTML = `Quick use <span>${used(inv.quick)}/${QUICK_SLOTS}</span><em>${esc(kn('wheel'))} item wheel</em>`;
     this.hSafe.innerHTML = `Safe pocket <span>${used(inv.safe)}/${SAFE_SLOTS}</span><em>kept when you die</em>`;
     const w = weight(inv);
@@ -233,8 +245,14 @@ export class InventoryScreen {
         break;
       }
       case 'takeAll': ok = !!box && box.revealed >= box.slots.length && takeAll(inv, box).length > 0; break;
+      case 'sell': {                                       // the lobby: to the Trader, at today's price
+        const it = this.lobby && getAt(inv, op.ref, box);
+        if (it) { removeAt(inv, op.ref, box); Credits.add(sellPrice(it.id, it.n)); ok = true; }
+        break;
+      }
     }
     syncShield(p);
+    if (ok && this.lobby) this.onChange?.(op);
     if (ok) { if (op.t !== 'use') uiSfx.click(); bus.emit('inv:changed', op); }
     else if (op.t !== 'use') uiSfx.error();
     this.render();
@@ -296,7 +314,7 @@ export class InventoryScreen {
     if (d.on) {
       const s = this.slotAt(e.clientX, e.clientY);
       if (s && !s.classList.contains('searching')) { const to = refOf(s); if (!sameRef(to, d.ref)) this.apply({ t: 'move', from: d.ref, to }); }
-      else if (!s && !this.overPanel(e.clientX, e.clientY)) this.apply({ t: 'drop', ref: d.ref });
+      else if (!s && !this.lobby && !this.overPanel(e.clientX, e.clientY)) this.apply({ t: 'drop', ref: d.ref });
     }
     this.cancelDrag();
   }
@@ -333,6 +351,8 @@ export class InventoryScreen {
     if (!it) return;
     const def = ITEMS[it.id];
     if (ref.a === 'box') this.apply({ t: 'take', ref });
+    else if (this.lobby && ref.a === 'equip') this.apply({ t: 'store', ref });
+    else if (this.lobby) { if (!equipSlotFor(this.p.inv, it) || !this.apply({ t: 'equip', ref })) this.apply({ t: 'store', ref }); }
     else if (def.use) this.apply({ t: 'use', ref });
     else if (ref.a === 'equip') this.apply({ t: 'stow', ref });
     else if (equipSlotFor(this.p.inv, it)) this.apply({ t: 'equip', ref });
@@ -345,6 +365,16 @@ export class InventoryScreen {
     const it = s && this.itemOf(s);
     if (!it) { this.hideMenu(); return; }
     const ref = refOf(s), def = ITEMS[it.id], acts = [];
+    if (this.lobby) {                                      // the loadout screen: equip, move, split, sell
+      if (ref.a === 'box') acts.push(['take', 'Into the loadout']);
+      if (ref.a !== 'equip' && equipSlotFor(this.p.inv, it)) acts.push(['equip', 'Equip']);
+      if (def.quick && ref.a !== 'quick') acts.push(['quick', 'To a quick slot']);
+      if (ref.a !== 'safe' && ref.a !== 'box') acts.push(['safe', 'To the safe pocket']);
+      if (ref.a !== 'box') acts.push(['store', 'Back to the stash']);
+      if (!it.d && it.n > 1) acts.push(['split', `Split (${Math.floor(it.n / 2)})`]);
+      acts.push(['sell', `Sell for ${sellPrice(it.id, it.n).toLocaleString('en-US')} cr`]);
+      return this.showMenu(e, ref, def, acts);
+    }
     if (ref.a === 'box') acts.push(['take', 'Take']);
     if (def.use && ref.a !== 'box') { const why = cannotUse(this.p, it.id); acts.push(['use', why ? `Use (${why.toLowerCase()})` : `Use (${def.use.time} s)`, !!why]); }
     if (ref.a !== 'equip' && equipSlotFor(this.p.inv, it)) acts.push(['equip', 'Equip']);
@@ -355,6 +385,9 @@ export class InventoryScreen {
     if (this.box && ref.a !== 'box') acts.push(['store', `Into the ${this.box.name.toLowerCase()}`]);
     if (!it.d && it.n > 1) acts.push(['split', `Split (${Math.floor(it.n / 2)})`]);
     acts.push(['drop', 'Drop on the ground']);
+    this.showMenu(e, ref, def, acts);
+  }
+  showMenu(e, ref, def, acts) {
     this.menuRef = ref;
     this.menu.innerHTML = `<header>${esc(def.name)}</header>` + acts.map(([t, label, off]) => `<button data-t="${t}"${off ? ' disabled' : ''}>${esc(label)}</button>`).join('');
     this.menu.classList.remove('hidden');

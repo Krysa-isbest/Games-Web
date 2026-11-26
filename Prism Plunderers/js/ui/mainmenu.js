@@ -5,11 +5,14 @@ import { bus } from '../core/events.js';
 import { Sound, uiSfx } from '../core/sound.js';
 import { $, esc } from '../core/util.js';
 import { UI } from './screens.js';
+import { initLobby, showTab, openLoadout, loadoutOpen } from './lobby.js';
+import { loadoutEmpty, loadout } from '../game/economy.js';
+import { ITEMS } from '../game/items.js';
 
 const TABS = ['play', 'workshop', 'raider', 'skills', 'trader'];
 // the build order (NEXT-CHAT.md). DONE = how many parts are finished.
 const PARTS = ['Foundation', 'Player', 'Prism enemies', 'Weapons and items', 'The Ruins', 'Raid rules', 'Performance', 'Lobby and workshop', 'Skill tree', 'Menus and settings', 'Difficulty', 'Multiplayer'];
-const DONE = 6;
+const DONE = 8;
 const LINES = ['2999. They landed. We shot first.', '3000. They came back. All of them.'];
 const SOON = 'Co-op comes with the multiplayer update.';
 
@@ -20,12 +23,13 @@ export function initMainMenu({ play }) {
   renderSlots();                        // first: renderTop writes your initial into the first slot
   renderSteps();
   renderTop();
+  initLobby({ refresh: renderTop });
   UI.onOpen('main', () => { renderTop(); setTab(tab, true); });
   bus.on('save:reset', renderTop);
 
   document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   $('btn-play').onclick = () => onPlay();
-  $('bb-settings').onclick = () => UI.go('controls');
+  $('bb-settings').onclick = () => UI.go('graphics');
   $('tb-me').onclick = () => UI.go('save');
   // where Play takes you: a raid in The Ruins, or the test range (free play, the full kit)
   const renderDest = () => { $('dest-name').textContent = P.dest === 'test' ? 'Test range' : 'The Ruins'; };
@@ -41,7 +45,7 @@ export function initMainMenu({ play }) {
   $('bb-friends').onclick = () => UI.toast(SOON);
 
   addEventListener('keydown', onKey);
-  bus.on('input:escape', () => { if (UI.current === 'main' && tab !== 'play') setTab('play'); });
+  bus.on('input:escape', () => { if (UI.current === 'main' && tab !== 'play' && !loadoutOpen()) setTab('play'); });
   splash();
 }
 
@@ -52,6 +56,9 @@ function renderTop() {
   $('tb-init').textContent = (P.name[0] || 'P').toUpperCase();
   $('np-name').textContent = P.name;
   if (meInit) meInit.textContent = (P.name[0] || 'P').toUpperCase();
+  // what you take into the next raid, under the Play button
+  const L = loadout(), gear = Object.values(L.equip).filter(Boolean).map(it => ITEMS[it.id].name);
+  $('play-kit').textContent = loadoutEmpty() ? 'Loadout empty: the free starting kit' : `Loadout: ${gear.join(', ') || 'no gear'}` + (gear.length ? '' : ' (Tab to change it)');
 }
 
 // ---------- the "road to the first raid" card ----------
@@ -88,7 +95,8 @@ function setTab(id, quiet = false) {
   tab = id;
   $('s-main').dataset.tab = id;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
-  if (id !== 'play') $('tabpage').innerHTML = page(id);
+  if (id !== 'play' && !showTab(id)) $('tabpage').innerHTML = page(id);
+  bus.emit('lobby:tab', id);
   if (changed && !quiet) uiSfx.click();
 }
 const cell = (k, v, empty = false) => `<div><small>${esc(k)}</small><b class="${empty ? 'empty' : ''}">${esc(v)}</b></div>`;
@@ -110,13 +118,13 @@ function page(id) {
 
 // ---------- keyboard ----------
 function onKey(e) {
-  if (UI.current !== 'main' || document.getElementById('splash') || e.repeat) return;
+  if (UI.current !== 'main' || document.getElementById('splash') || e.repeat || loadoutOpen()) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
   const i = TABS.indexOf(tab);
   if (e.code === 'KeyQ') setTab(TABS[(i + TABS.length - 1) % TABS.length]);
   else if (e.code === 'KeyE') setTab(TABS[(i + 1) % TABS.length]);
-  else if (e.code === 'Tab') { e.preventDefault(); setTab(tab === 'raider' ? 'play' : 'raider'); }
+  else if (e.code === 'Tab') { e.preventDefault(); openLoadout(); }
   else if (e.code === 'KeyT') $('bb-chat').click();
 }
 

@@ -13,6 +13,8 @@
 // canvas (the offline tests) the ground is plain sand.
 import * as THREE from 'three';
 import { rng } from '../../core/util.js';
+import { S } from '../../core/save.js';
+import { GFX } from '../../core/engine.js';
 import { XS, WX, ZS, WZ, STREET_END, WALK } from './plan.js';
 
 export const G = 410;                                    // the painted square: -G..G on both axes
@@ -25,11 +27,18 @@ function canvas(w, h) {
   c.width = w; c.height = h;
   return c.getContext('2d') ? c : null;
 }
+// a canvas as a texture: smaller with a lower Texture quality setting (drawn at full size, then scaled down: the
+// same picture, less memory), filtered by the Texture filtering setting (part 7)
 function texOf(c, repeat) {
+  const q = GFX.textures[S.textures] || 1;
+  if (q < 1) {
+    const s = canvas(Math.max(16, Math.round(c.width * q)), Math.max(16, Math.round(c.height * q)));
+    if (s) { s.getContext('2d').drawImage(c, 0, 0, s.width, s.height); c = s; }
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-  t.anisotropy = 8;
+  t.anisotropy = S.aniso || 1;
   return t;
 }
 
@@ -287,7 +296,7 @@ export function groundMaterial(paint, seed, L) {
   while (squares.length < 16) squares.push(new THREE.Vector4(0, 0, 0, 0));
   const inner = XS[XS.length - 1] - WX[WX.length - 1] / 2;                       // the blocks end at the ring streets' inner edges
   const uniforms = {
-    uDetail: { value: detail }, uMarks: { value: paint.marks }, uAsph: { value: asph }, uSlab: { value: slab }, uStone: { value: stone },
+    uDetail: { value: detail }, uMarks: { value: paint.marks }, uMarksK: { value: S.groundDetail === 'low' ? 0 : 1 }, uAsph: { value: asph }, uSlab: { value: slab }, uStone: { value: stone },
     uG: { value: G }, uEnd: { value: STREET_END }, uIn: { value: inner }, uWalk: { value: WALK },
     uXS: { value: XS.slice() }, uWX: { value: WX.slice() }, uZS: { value: ZS.slice() }, uWZ: { value: WZ.slice() },
     uPlaza: { value: new THREE.Vector4(P.x0, P.z0, P.x1, P.z1) }, uSq: { value: squares }, uSqN: { value: Math.min(16, (L.squares || []).length) },
@@ -309,7 +318,7 @@ export function groundMaterial(paint, seed, L) {
 // the shader: what is under a pixel of ground, worked out from its place in the world
 const GROUND_PARS = /* glsl */`
 uniform sampler2D uDetail, uMarks, uAsph, uSlab, uStone;
-uniform float uG, uEnd, uIn, uWalk;
+uniform float uG, uEnd, uIn, uWalk, uMarksK;
 uniform float uXS[11], uWX[11], uZS[11], uWZ[11];
 uniform vec4 uPlaza, uSq[16];
 uniform int uSqN;
@@ -402,9 +411,9 @@ vec3 groundColor(vec3 base, vec2 wp) {
     if (uFountain.z > 0.0) st *= 1.0 - 0.3 * gBand(length(wp - uFountain.xy) - uFountain.z, 0.18);
     col = st;
   }
-  // the marks on top (patches, oil, scorch, drifts of sand ...)
+  // the marks on top (patches, oil, scorch, drifts of sand ...; none with Ground detail at Low)
   vec4 mk = texture2D(uMarks, vec2((wp.x + uG) / (2.0 * uG), (uG - wp.y) / (2.0 * uG)));
-  return mix(col, mk.rgb, mk.a);
+  return mix(col, mk.rgb, mk.a * uMarksK);
 }
 `;
 const GROUND_MAIN = /* glsl */`

@@ -2,7 +2,7 @@
 // a cool fill from the sky). Shared by the scenes that show the outdoors.
 import * as THREE from 'three';
 import { S } from '../core/save.js';
-import { SHADOW_SIZE } from '../core/engine.js';
+import { SHADOW_SIZE, GFX } from '../core/engine.js';
 import { rng } from '../core/util.js';
 
 export const HORIZON = 0x6e4660;
@@ -45,13 +45,15 @@ export function addSky(scene, { fog = 0.0065, shadowSpan = 45, far = 240 } = {})
   fill.position.set(30, 25, 40);
   scene.add(fill);
 
+  // the shadowed square round you: the scene's span, times the Shadow distance setting
+  const span = () => shadowSpan * (GFX.shadowDist[S.shadowDist] || 1);
   function shadows() {
     const size = SHADOW_SIZE[S.shadows] || 0;
     sun.castShadow = size > 0;
     if (!size) return;
     if (sun.shadow.mapSize.x !== size) { sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(size, size); }
-    const c = sun.shadow.camera;
-    c.left = c.bottom = -shadowSpan; c.right = c.top = shadowSpan; c.near = 1; c.far = far;
+    const c = sun.shadow.camera, s = span();
+    c.left = c.bottom = -s; c.right = c.top = s; c.near = 1; c.far = far;
     c.updateProjectionMatrix();
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.5;
   }
@@ -63,7 +65,7 @@ export function addSky(scene, { fog = 0.0065, shadowSpan = 45, far = 240 } = {})
     follow(x, z) {
       sky.position.set(x, 0, z); stars.position.set(x, 0, z);
       // snap to whole shadow texels, so the shadows do not shimmer while walking
-      const step = (shadowSpan * 2) / Math.max(256, sun.shadow.mapSize.x || 2048);
+      const step = (span() * 2) / Math.max(256, sun.shadow.mapSize.x || 2048);
       const sx = Math.round(x / step) * step, sz = Math.round(z / step) * step;
       sun.target.position.set(sx, 0, sz);
       sun.position.copy(sun.target.position).add(SUN);

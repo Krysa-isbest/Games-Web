@@ -10,6 +10,7 @@ import { Sound, uiSfx } from './core/sound.js';
 import { $ } from './core/util.js';
 import { UI } from './ui/screens.js';
 import { initControls } from './ui/keybinds.js';
+import { initGraphics } from './ui/graphics.js';
 import { initSavePanel } from './ui/savepanel.js';
 import { Debug } from './ui/debug.js';
 import { initMainMenu } from './ui/mainmenu.js';
@@ -26,6 +27,7 @@ catch (e) {
 Input.init($('view'));
 UI.init();
 initControls();
+initGraphics();
 initSavePanel();
 Debug.init();
 
@@ -58,7 +60,7 @@ bus.on('gfx:lost', () => UI.toast('The graphics card reset. Restoring...', 'bad'
 Loop.start({
   fixed: (dt, tick) => Scenes.fixed(dt, tick),
   afterStep: () => Input.endTick(),
-  frame: (dt, alpha) => { Scenes.frame(dt, alpha); Debug.frame(); },
+  frame: (dt, alpha) => { Scenes.frame(dt, alpha); Debug.frame(); Engine.adapt(Loop.stats.ms); },
 });
 Scenes.go('menu');
 window.__ppStarted = true;                             // from here on, errors no longer cover the screen

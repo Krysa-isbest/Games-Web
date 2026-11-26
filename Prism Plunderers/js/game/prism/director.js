@@ -28,6 +28,7 @@ const BOOM = { fink: 0.7, fly: 0.7, swatter: 1.3, scatter: 0.5, roach: 2.4 };
 // how far away each kind is still drawn on a big map (the scene's drawRange is the most): a Fly 170 m away is a dot
 // a few pixels big in the haze, a Scatter on the ground is behind a wall long before that (step 5d: many more robots)
 const SEEN = { fink: 200, fly: 170, scatter: 130, swatter: 240, roach: 240 };
+const FAR_THINK = 80, SLOW_STEP = 3 / 60;              // calm robots further away than this step every 3rd tick (part 7)
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 export class PrismDirector {
@@ -205,9 +206,19 @@ export class PrismDirector {
     for (const r of [...this.robots]) {
       if (r.gone) continue;
       r.prev.x = r.pos.x; r.prev.y = r.pos.y; r.prev.z = r.pos.z; r.prevYaw = r.yaw;
-      r.st += dt; r.hurtT += dt;
-      if (r.dead) this.dying(r, dt);
-      else BRAINS[r.type].step(r, c, dt);
+      // a calm robot far from you thinks and moves 20 times a second instead of 60 (part 7): it cannot see you
+      // from there, and its steps are too small to see (it holds still between them, so nothing jitters)
+      let st = dt;
+      if (player && !r.dead && !r.hostile && !r.falling && r.aware < 0.01 && (r.pos.x - player.pos.x) ** 2 + (r.pos.z - player.pos.z) ** 2 > FAR_THINK * FAR_THINK) {
+        r.slowT = (r.slowT || 0) + dt;
+        if (r.slowT < SLOW_STEP - 1e-6) continue;
+        st = r.slowT; r.slowT = 0;
+      } else r.slowT = 0;
+      r.st += st; r.hurtT += st;
+      c.dt = st;
+      if (r.dead) this.dying(r, st);
+      else BRAINS[r.type].step(r, c, st);
+      c.dt = dt;
     }
     this.stepBolts(dt); this.stepRockets(dt); this.stepBombs(dt); this.stepGas(dt); this.stepPods(dt); this.stepGrenades(dt);
   }

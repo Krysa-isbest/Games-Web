@@ -65,7 +65,7 @@ export function createPlayScene(o) {
   let phys = null, sky = null, world = null, player = null, raider = null, cam = null, hud = null, glow = null, prism = null, footing = null;
   let ground = null, inv = null, wheel = null, map = null, arc = null, extra = null, lamp = null;
   let deadT = 0, beatT = 0, slideLoop = null, gasLoop = null, windLoop = null, invOpen = false, pendingQuick = -1, reloadSound = 0;
-  let lampOn = false, dark = 0, light0 = null;
+  let lampOn = false, dark = 0, light0 = null, shadowsOn = S.shadows !== 'off';
   const offs = [];
   const wctx = { phys: null, director: null, rnd: rng(77) };
   const fxRnd = rng(91), spawnRnd = rng((o.seed || 1) * 7 + 3);
@@ -367,11 +367,18 @@ export function createPlayScene(o) {
         bus.on('input:escape', () => { if (map?.open) { map.close(); return; } if (!UI.current && Input.locked) Input.unlock(); }),
         bus.on('input:binds', hints),
         bus.on('ui', id => { if (!id && !Input.locked && !invOpen) showPause(true); }),
-        bus.on('gfx', () => { sky.shadows(); refreshMaterials(scene); }),
+        // a graphics setting changed: shadows switched on or off rebuild the materials (only then: it is slow)
+        bus.on('gfx', () => {
+          sky.shadows();
+          const on = S.shadows !== 'off';
+          if (on !== shadowsOn) { shadowsOn = on; refreshMaterials(scene); }
+          world.graphics?.();
+        }),
       );
       listen();
       $('pz-resume').onclick = () => grab(false);
       $('pz-controls').onclick = () => { showPause(false); UI.go('controls'); };
+      $('pz-graphics').onclick = () => { showPause(false); UI.go('graphics'); };
       $('pz-quit').onclick = () => extra.quit ? extra.quit() : Scenes.go('menu');
       $('pz-tag').textContent = o.label || '';
       onLock(false);

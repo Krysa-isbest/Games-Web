@@ -7,7 +7,16 @@ import { createPlayScene } from './play.js';
 import { buildRuins } from '../world/ruins/build.js';
 import { PrismSpawner } from '../world/ruins/spawner.js';
 import { createRaid, giveStartKit } from '../game/raid.js';
+import { loadoutEmpty, takeLoadout, bagSlots } from '../game/economy.js';
 import { P } from '../core/save.js';
+
+// what you go in with: your loadout (part 8: it leaves the stash for good), or the free starting kit when it is
+// empty; the backpack is as big as yours
+function raidKit(p) {
+  if (!loadoutEmpty()) { takeLoadout(p); return; }
+  p.inv.bag = Array(bagSlots()).fill(null);
+  giveStartKit(p);
+}
 
 export const RUINS_SEED = 3000;
 
@@ -16,7 +25,7 @@ export default function createRuins() {
     id: 'ruins', label: 'The Ruins · raid', loading: 'Dropping into The Ruins', seed: RUINS_SEED,
     sky: { fog: 0.0042, shadowSpan: 60, far: 300 }, near: 0.1, far: 800, drawRange: 240,
     build: (scene, phys, glow) => buildRuins(scene, phys, glow, RUINS_SEED),
-    kit: giveStartKit,
+    kit: raidKit,
     setup: api => {
       const spawner = new PrismSpawner(api.prism, api.world.layout.prism);
       const raid = createRaid(api, { seed: ((Date.now() & 0xffff) ^ (P.stats.raids * 7919)) >>> 0 });

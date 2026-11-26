@@ -86,28 +86,32 @@ export const SETTINGS_DEFAULTS = {
   sens: 1, aimSens: 0.7, invertY: false, rawMouse: true,
   sprintMode: 'hold', crouchMode: 'hold', aimMode: 'hold',
   fullscreenPlay: true,
-  // graphics (the full menu comes with the settings part; the engine already reads these)
+  // graphics (the Graphics screen, ui/graphics.js; what the words stand for: engine.js GFX)
   // fov: horizontal field of view in degrees, measured on a 16:9 screen
   preset: 'high', scale: 1, dynRes: false, fpsCap: 0, fov: 90, aa: 'msaa', shadows: 'high', showFps: false,
+  shadowDist: 'medium', textures: 'high', aniso: 8, groundDetail: 'high', view: 'far', detail: 'medium', panes: true, effects: 'high',
   // audio
   vol: 0.8, music: 0.6, sfx: 1, ui: 0.7, ambient: 0.8,
 };
+// what each preset sets (anything changed by hand afterwards makes the preset 'custom'); High is how v0.6 looked
 export const PRESETS = {
-  low: { scale: 0.7, aa: 'off', shadows: 'off' },
-  medium: { scale: 0.85, aa: 'msaa', shadows: 'low' },
-  high: { scale: 1, aa: 'msaa', shadows: 'high' },
-  ultra: { scale: 1, aa: 'msaa', shadows: 'ultra' },
+  low: { scale: 0.75, dynRes: true, aa: 'off', shadows: 'off', shadowDist: 'near', textures: 'low', aniso: 1, groundDetail: 'low', view: 'near', detail: 'near', panes: false, effects: 'low' },
+  medium: { scale: 0.9, dynRes: false, aa: 'msaa', shadows: 'low', shadowDist: 'near', textures: 'medium', aniso: 4, groundDetail: 'high', view: 'medium', detail: 'medium', panes: true, effects: 'high' },
+  high: { scale: 1, dynRes: false, aa: 'msaa', shadows: 'high', shadowDist: 'medium', textures: 'high', aniso: 8, groundDetail: 'high', view: 'far', detail: 'medium', panes: true, effects: 'high' },
+  ultra: { scale: 1, dynRes: false, aa: 'msaa', shadows: 'ultra', shadowDist: 'far', textures: 'high', aniso: 16, groundDetail: 'high', view: 'far', detail: 'far', panes: true, effects: 'high' },
 };
 
 // ---------- profile ----------
 export const PROFILE_DEFAULTS = {
-  v: 1,
+  v: 2,
   name: 'Plunderer', color: '#a36bff',
   credits: 0,                                   // Scrap Credits
   stash: [],                                    // [{ id, n }] stackable, or [{ id, n: 1, d: {...} }] for items with their own state
-  loadout: { weapon1: null, weapon2: null, melee: null, shield: null, bag: [] },
+  // what you take into the next raid (part 8; game/economy.js): an inventory like the raider's
+  loadout: { equip: { shield: null, melee: null, weapon1: null, weapon2: null }, bag: [], quick: [null, null, null, null], safe: [null, null] },
   skills: { points: 0, nodes: {} },             // nodes: { nodeId: level }
-  workshop: { level: 1, known: [] },            // known: recipe ids
+  // the workshop (part 8): each station's level (0 = not built yet), the backpack's level, Pip's finds
+  workshop: { level: 1, known: [], stations: { gunsmith: 0, medbay: 0, gear: 0, explosives: 0 }, bag: 0, chicken: { finds: [] } },
   stats: { raids: 0, extracted: 0, deaths: 0, kills: 0, earned: 0 },
   flags: { introSeen: false },
   dest: 'ruins',                                // where Play goes: 'ruins' | 'test'
@@ -115,10 +119,12 @@ export const PROFILE_DEFAULTS = {
 
 // v1 had a vertical 75° default; v2 measures FOV horizontally (default 90°). An untouched old default moves over.
 const migrateSettings = old => { if ((old.v || 1) < 2 && old.fov === 75) old.fov = 90; return old; };
+// v1 kept the loadout as names (never used); v2 keeps it as an inventory of items (part 8)
+const migrateProfile = old => { if ((old.v || 1) < 2) delete old.loadout; return old; };
 
 export const Stores = {
   settings: makeStore('settings', SETTINGS_DEFAULTS, migrateSettings),
-  profile: makeStore('profile', PROFILE_DEFAULTS),
+  profile: makeStore('profile', PROFILE_DEFAULTS, migrateProfile),
 };
 export const S = Stores.settings.data;
 export const P = Stores.profile.data;

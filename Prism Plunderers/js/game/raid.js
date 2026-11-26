@@ -18,6 +18,7 @@ import { makeItem, addItem, syncShield, all } from './inventory.js';
 import { applyDamage } from './damage.js';
 import { ITEMS, RARITY } from './items.js';
 import { fwdX, fwdZ } from './move-math.js';
+import { chickenForage } from './economy.js';
 
 // time: the raid (s); hold: calling the pick-up (s); open: when the points open (s after landing); pad: how close to
 // a point's middle you must be; fall / door / out: the drop pod's landing, its door blowing off, you stepping out;
@@ -85,6 +86,7 @@ export function createRaid(api, { seed = 1 } = {}) {
     else if (result !== 'left') P.stats.deaths++;
     P.stats.kills += R.kills;
     saveProfile();
+    chickenForage(seed + P.stats.raids);                    // Pip went scratching about while you were out (part 8)
     const worth = list => list.reduce((s, it) => s + ITEMS[it.id].value * it.n, 0);
     const summary = { result, point: R.pickup ? R.pickup.name : '', time: elapsed(), kills: R.kills, cause: R.cause, kept: merge(kept), lost: merge(lost), value: worth(kept), lostValue: worth(lost) };
     bus.emit('raid:end', summary);

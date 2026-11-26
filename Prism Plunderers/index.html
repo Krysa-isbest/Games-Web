@@ -139,7 +139,7 @@
 
   <aside class="col-r page" data-page="play">
     <article class="map">
-      <header><h3>The Ruins</h3><span class="tag-open">Open · free roam</span></header>
+      <header><h3>The Ruins</h3><span class="tag-open">Raids · 20 min</span></header>
       <svg class="map-art" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <linearGradient id="mps" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1430"/><stop offset=".55" stop-color="#6b3c4f"/><stop offset=".8" stop-color="#d0805a"/><stop offset="1" stop-color="#e9a36a"/></linearGradient>
@@ -155,7 +155,7 @@
         <g fill="#b98aff"><circle cx="196" cy="70" r="2"/><circle cx="252" cy="52" r="1.6"/><circle cx="330" cy="84" r="1.8"/></g>
       </svg>
       <dl class="map-info">
-        <div><dt>Size</dt><dd>1.2 km</dd></div>
+        <div><dt>Size</dt><dd>800 m</dd></div>
         <div><dt>Prism</dt><dd class="hi">High</dd></div>
         <div><dt>Zones</dt><dd><i class="zr"></i>Red <i class="zy"></i>Yellow</dd></div>
       </dl>
@@ -169,16 +169,22 @@
         <p class="sq-note">1 to 4 plunderers · room code or Tailscale invite</p>
       </div>
       <button class="play" id="btn-play"><span class="pl-chev"><svg><use href="#i-chev"/></svg></span><span class="pl-t">Play</span></button>
+      <p class="play-kit" id="play-kit"></p>
     </div>
   </aside>
 
-  <!-- the other tabs, filled in by mainmenu.js -->
+  <!-- the other tabs, filled in by mainmenu.js and ui/lobby.js -->
   <section class="tabpage page" id="tabpage"></section>
+  <!-- WORKSHOP tab: the room is the 3D scene behind; the stations along the bottom, the one you picked on the right -->
+  <div class="workshop" id="workshop">
+    <aside class="ws-panel" id="ws-panel"></aside>
+    <nav class="ws-bar" id="ws-bar"></nav>
+  </div>
 
   <footer class="botbar">
     <div class="hints">
       <span class="hint"><kbd>Q</kbd><kbd>E</kbd>Switch tabs</span>
-      <span class="hint"><kbd>Tab</kbd>Raider</span>
+      <span class="hint"><kbd>Tab</kbd>Loadout</span>
     </div>
     <div class="bb-right">
       <button class="bb-btn" id="bb-chat"><kbd>T</kbd>Chat</button>
@@ -200,7 +206,24 @@
     <div class="p-body" id="ct-body"></div>
     <footer class="p-foot">
       <span class="note">Click a key, then press the new one. Esc cancels, Delete clears. A key that is already taken swaps places.</span>
+      <button class="btn" id="ct-graphics">Graphics settings</button>
       <button class="btn" id="ct-reset">Reset keys</button>
+    </footer>
+  </div>
+</section>
+
+<!-- settings: graphics (js/ui/graphics.js) -->
+<section id="s-graphics" class="screen hidden">
+  <div class="board">
+    <header class="p-head">
+      <div class="p-title"><small>Settings</small><h2>Graphics</h2></div>
+      <span class="p-sub">Changes are saved right away</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
+    </header>
+    <div class="p-body" id="gx-body"></div>
+    <footer class="p-foot">
+      <span class="note" id="gx-note">A slower PC: pick Low, then raise what you miss most. Render scale and shadows cost the most.</span>
+      <button class="btn" id="gx-controls">Controls</button>
     </footer>
   </div>
 </section>
@@ -221,7 +244,7 @@
       <ul class="rs-list lost" id="rs-lost"></ul>
     </div>
     <footer class="p-foot">
-      <span class="note">You sell what you brought out to the Trader, and take gear from your stash into the next raid, once the lobby update is in.</span>
+      <span class="note">In the lobby, Tab opens your loadout and stash: sell what you brought out (right-click, Sell) or take it into the next raid.</span>
       <button class="btn primary" data-back>Back to the lobby</button>
     </footer>
   </div>
@@ -314,6 +337,7 @@
     <h2>Paused</h2>
     <button class="btn primary" id="pz-resume">Resume</button>
     <button class="btn" id="pz-controls">Controls</button>
+    <button class="btn" id="pz-graphics">Graphics</button>
     <button class="btn" id="pz-quit">Back to the lobby</button>
     <p class="note" id="pz-keys"></p>
   </div>

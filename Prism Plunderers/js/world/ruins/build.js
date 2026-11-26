@@ -15,10 +15,13 @@ import { disposeTree } from '../../core/engine.js';
 import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
 import { wallPieces } from '../../core/physics.js';
+import { S } from '../../core/save.js';
+import { GFX } from '../../core/engine.js';
 
-// chunks whose nearest edge is further than FAR are hidden; detail (in smaller chunks) beyond NEAR, and it casts
-// shadows only within SHADOW_NEAR; beyond LOD a solid chunk draws only its bigger boxes (the small ones are last in
-// its mesh). Step 5d (v0.5.4) added the last three.
+// chunks whose nearest edge is further than the View distance (FAR by default) are hidden; detail (in smaller chunks)
+// beyond the Detail distance (NEAR by default), and it casts shadows only within SHADOW_NEAR; beyond LOD a solid
+// chunk draws only its bigger boxes (the small ones are last in its mesh). Step 5d (v0.5.4) added the last three;
+// part 7 the settings (engine.js GFX; world.graphics() applies a change).
 const CHUNK = 100, DCHUNK = 50, FAR = 340, NEAR = 150, LOD = 150, SHADOW_NEAR = 45;
 const tiny = b => Math.max(b.w * b.h, b.w * b.d, b.h * b.d) < 0.5;       // a box with no face over half a square metre
 const _m = new THREE.Matrix4(), _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Color();
@@ -405,15 +408,25 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
       return z ? `The Ruins · ${z.name} · ${z.kind} zone` : 'The Ruins · Outskirts';
     },
     step() {},
+    // a graphics setting changed: the ground's marks and its textures' filtering now; the distances and the windows
+    // at the next frame (Texture quality needs the map built again)
+    graphics() {
+      const u = mats.ground.userData?.uniforms;
+      if (u?.uMarksK) u.uMarksK.value = S.groundDetail === 'low' ? 0 : 1;
+      for (const t of [mats.ground.map, ...(mats.ground.userData?.textures || [])]) if (t && t.anisotropy !== (S.aniso || 1)) { t.anisotropy = S.aniso || 1; t.needsUpdate = true; }
+      cullAt = null;
+    },
     // the fires burn; chunks far from you are hidden, their detail sooner; beyond LOD a chunk draws only its bigger
     // boxes; only the detail near you casts shadows (checked again whenever you have moved 10 m)
     frame(dt, a, p) {
       animateFires(dt);
       if (!p || (cullAt && Math.hypot(p.pos.x - cullAt.x, p.pos.z - cullAt.z) < 10)) return;
       cullAt = { x: p.pos.x, z: p.pos.z };
+      const view = GFX.view[S.view] || FAR, near = GFX.detail[S.detail] || NEAR;
       for (const c of chunks) {
         const dx = Math.max(c.x0 - p.pos.x, 0, p.pos.x - c.x1), dz = Math.max(c.z0 - p.pos.z, 0, p.pos.z - c.z1), d2 = dx * dx + dz * dz;
-        c.mesh.visible = d2 < c.far * c.far;
+        const far = c.kind === 'detail' ? Math.min(near, view) : view;
+        c.mesh.visible = d2 < far * far && (c.kind !== 'pane' || S.panes !== false);
         if (!c.mesh.visible) continue;
         if (c.kind === 'solid') {
           const lod = d2 > LOD * LOD;

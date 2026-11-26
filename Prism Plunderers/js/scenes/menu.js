@@ -7,6 +7,82 @@ import { rng, damp } from '../core/util.js';
 import { Raider } from '../game/raider.js';
 import { glowTexture } from '../world/sky.js';
 import { showRaidSummary } from '../game/raid.js';
+import { P } from '../core/save.js';
+import { bus } from '../core/events.js';
+
+// ---------- the workshop (part 8): a room under the ruins, a bench for each station, Pip the rooster ----------
+// Built away from the street (the camera cuts to it when the Workshop tab opens). A bench not built yet is a faint
+// outline where it will stand.
+const WX = -70, WZ = 30;
+const BENCH_AT = { gunsmith: [-4.6, -4.1, 0x7a5a3c], medbay: [0.2, -4.3, 0xd6d8d2], gear: [4.8, -4.0, 0x8a3b2b], explosives: [6.6, 0.4, 0x5a6338] };
+function buildWorkshop(scene) {
+  const g = new THREE.Group();
+  g.position.set(WX, 0, WZ);
+  scene.add(g);
+  const M = (c, r = 0.85, m = 0.1) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, flatShading: true });
+  const box = (w, h, d, x, y, z, mat, parent = g) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(x, y, z); parent.add(b); return b; };
+  const wall = M(0x3d4250), floor = M(0x4a4a4c, 0.95), dark = M(0x23252b, 0.7, 0.3), wood = M(0x6b5a46);
+  box(18, 0.1, 13, 0, -0.05, -0.5, floor);
+  box(18, 4.6, 0.3, 0, 2.3, -6.6, wall); box(0.3, 4.6, 13, -8.6, 2.3, -0.5, wall); box(0.3, 4.6, 13, 8.6, 2.3, -0.5, wall);
+  box(18, 0.3, 13, 0, 4.6, -0.5, M(0x2a2d36));
+  for (const x of [-5, 0, 5]) box(0.3, 0.35, 13, x, 4.3, -0.5, dark);                    // beams
+  for (let k = 0; k < 6; k++) box(0.04, 0.04, 12, -6 + k * 2.4, 4.05, -0.5, dark);         // cables
+  // work lamps hanging from the beams, warm; a cold light from a doorway on the left
+  for (const [x, z] of [[-4, -1.5], [2.5, -2.5], [5.5, 1]]) {
+    const lamp = new THREE.Group(); lamp.position.set(x, 3.3, z); g.add(lamp);
+    box(0.9, 0.22, 0.55, 0, 0, 0, dark, lamp);
+    box(0.8, 0.04, 0.45, 0, -0.12, 0, new THREE.MeshBasicMaterial({ color: 0xffe2b0 }), lamp);
+    box(0.02, 1.0, 0.02, 0, 0.6, 0, dark, lamp);
+    const l = new THREE.PointLight(0xffc98a, 9, 11, 1.6); l.position.y = -0.4; lamp.add(l);
+  }
+  const cold = new THREE.PointLight(0x6f7fff, 5, 12, 1.4); cold.position.set(-7.5, 2.6, 2.5); g.add(cold);
+  g.add(new THREE.HemisphereLight(0x6a6f88, 0x201a16, 0.35));
+  // clutter: an old armchair, crates, a shelf, a speaker
+  box(1.0, 0.45, 0.9, -0.6, 0.25, 1.2, M(0x3a3640)); box(1.0, 0.8, 0.22, -0.6, 0.75, 0.8, M(0x3a3640));
+  for (const s of [-1, 1]) box(0.18, 0.55, 0.9, -0.6 + s * 0.55, 0.45, 1.2, M(0x3a3640));
+  box(0.8, 0.6, 0.6, 1.4, 0.3, 2.2, wood); box(0.6, 0.5, 0.6, 1.5, 0.85, 2.2, wood);
+  box(0.4, 2.2, 1.8, -8.2, 1.1, -2.5, dark); for (const y of [0.6, 1.2, 1.8]) box(0.45, 0.05, 1.8, -8.15, y, -2.5, wood);
+  box(0.7, 0.9, 0.5, -7.6, 3.2, -5.8, M(0x1a1a1e));
+  // the benches: the real one (shown once built) and its outline (until then)
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: 0.12, depthWrite: false });
+  const benches = {};
+  for (const [id, [x, z, c]] of Object.entries(BENCH_AT)) {
+    const real = new THREE.Group(), ghost = new THREE.Group(), side = id === 'explosives';
+    for (const [grp, top, leg] of [[real, M(c, 0.7, 0.2), dark], [ghost, ghostMat, ghostMat]]) {
+      grp.position.set(x, 0, z); grp.rotation.y = side ? -Math.PI / 2 : 0; g.add(grp);
+      box(2.3, 0.08, 0.95, 0, 0.92, 0, top, grp);
+      for (const [lx, lz] of [[-1.05, -0.38], [1.05, -0.38], [-1.05, 0.38], [1.05, 0.38]]) box(0.07, 0.9, 0.07, lx, 0.45, lz, leg, grp);
+      box(2.1, 0.05, 0.8, 0, 0.3, 0, leg, grp);
+    }
+    // what lies on a built bench, and its little lamp
+    box(0.5, 0.3, 0.35, -0.6, 1.11, -0.15, M(0x4b5058), real); box(0.3, 0.12, 0.2, 0.5, 1.02, 0.1, M(0xb8923a), real);
+    box(0.04, 0.5, 0.04, 0.95, 1.2, -0.3, dark, real); box(0.18, 0.1, 0.12, 0.95, 1.47, -0.22, new THREE.MeshBasicMaterial({ color: 0xffd9a0 }), real);
+    benches[id] = { real, ghost, at: new THREE.Vector3(WX + x, 1, WZ + z) };
+  }
+  // Pip's pen: a low crate of straw, and Pip
+  box(1.8, 0.25, 1.4, -6.2, 0.13, 2.2, wood); box(1.6, 0.06, 1.2, -6.2, 0.27, 2.2, M(0xc9a85a));
+  const hen = makeHen();
+  g.add(hen);
+  const refresh = () => { for (const [id, b] of Object.entries(benches)) { const on = (P.workshop.stations[id] | 0) > 0; b.real.visible = on; b.ghost.visible = !on; } };
+  refresh();
+  return { g, benches, hen, refresh, home: new THREE.Vector3(WX - 6.2, 0, WZ + 2.2) };
+}
+function makeHen() {
+  const g = new THREE.Group();
+  const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, flatShading: true });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), M(0xb5652c));
+  body.scale.set(1, 0.85, 1.25); body.position.y = 0.36; g.add(body);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.34, 5), M(0x2f3a24));
+  tail.position.set(0, 0.52, -0.25); tail.rotation.x = -0.9; g.add(tail);
+  const head = new THREE.Group(); head.position.set(0, 0.55, 0.2); g.add(head);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.1, 7, 5), M(0xc8743a)); skull.position.y = 0.06; head.add(skull);
+  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.09, 0.13), M(0xd8322a)); comb.position.set(0, 0.17, 0.01); head.add(comb);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 4), M(0xe0b040)); beak.position.set(0, 0.05, 0.12); beak.rotation.x = Math.PI / 2; head.add(beak);
+  const wattle = new THREE.Mesh(new THREE.SphereGeometry(0.025, 5, 4), M(0xd8322a)); wattle.position.set(0, -0.02, 0.09); head.add(wattle);
+  for (const s of [-1, 1]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 4), M(0xe0a040)); leg.position.set(s * 0.07, 0.11, 0); g.add(leg); }
+  g.userData = { head };
+  return g;
+}
 
 const glow = (tex, color, scale, opacity = 1) => {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
@@ -208,6 +284,10 @@ export default function createMenu() {
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xd9b9a0, size: 0.06, transparent: true, opacity: 0.5, depthWrite: false }));
   scene.add(dust);
 
+  const ws = buildWorkshop(scene);
+  let mode = 'lobby', station = 'chicken';
+  const wsLook = new THREE.Vector3(WX, 1.1, WZ - 3), wsWant = new THREE.Vector3();
+  const offs = [];
   let t = 0, mx = 0, my = 0, cx = 0, cy = 0, look = 0;
   const onMove = e => { mx = e.clientX / innerWidth - 0.5; my = e.clientY / innerHeight - 0.5; };
   const tmp = new THREE.Vector3();
@@ -217,11 +297,18 @@ export default function createMenu() {
     enter(params = {}) {
       addEventListener('pointermove', onMove);
       document.body.dataset.mode = 'menu';
+      offs.push(
+        bus.on('lobby:tab', id => { mode = id === 'workshop' ? 'workshop' : 'lobby'; }),
+        bus.on('lobby:station', id => { station = id; }),
+        bus.on('lobby:built', () => ws.refresh()),
+      );
       UI.reset('main');
       if (params.raid) showRaidSummary(params.raid, UI);    // back from a raid: what you brought out, what you lost
     },
     exit() {
       removeEventListener('pointermove', onMove);
+      for (const off of offs) off();
+      offs.length = 0;
       disposeTree(scene);
       tex.dispose(); shadowTex.dispose();
     },
@@ -261,8 +348,23 @@ export default function createMenu() {
       dust.position.x = ((t * 1.4) % 20) - 10;
       dust.position.y = Math.sin(t * 0.3) * 0.4;
 
-      // the camera frames the raider head to boots, and drifts a little with the mouse
+      // Pip wanders round the pen and pecks at the straw
+      const ha = t * 0.35, hp = ws.home;
+      ws.hen.position.set(hp.x + Math.cos(ha) * 0.45 - WX, 0.28, hp.z + Math.sin(ha) * 0.35 - WZ);
+      ws.hen.rotation.y = -ha + Math.PI;
+      ws.hen.userData.head.rotation.x = Math.max(0, Math.sin(t * 2.6)) ** 6 * 1.1;
+
       cx = damp(cx, mx, 2.5, dt); cy = damp(cy, my, 2.5, dt);
+      if (mode === 'workshop') {
+        // in the workshop: the room from near the door, turning towards the station you picked
+        const b = ws.benches[station];
+        wsWant.copy(b ? b.at : new THREE.Vector3(WX - 6.2, 0.6, WZ + 2.2));
+        wsLook.x = damp(wsLook.x, wsWant.x, 3, dt); wsLook.y = damp(wsLook.y, wsWant.y, 3, dt); wsLook.z = damp(wsLook.z, wsWant.z, 3, dt);
+        camera.position.set(WX - 1.5 + cx * 0.4, 2.4 - cy * 0.2, WZ + 5.2);
+        camera.lookAt(wsLook);
+        return;
+      }
+      // the camera frames the raider head to boots, and drifts a little with the mouse
       camera.position.set(cx * 0.35, 1.05 - cy * 0.12 + Math.sin(t * 0.2) * 0.02, RZ + 3.5);
       camera.lookAt(cx * 0.1, 0.98, RZ);
     },

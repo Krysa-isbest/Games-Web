@@ -5,6 +5,14 @@ import { bus } from './events.js';
 import { clamp } from './util.js';
 
 export const SHADOW_SIZE = { off: 0, low: 1024, medium: 2048, high: 2048, ultra: 4096 };
+// what the graphics settings (DESIGN 14.2 / 14.2a, part 7) stand for: how far round you shadows are drawn (times the
+// scene's own span), how far the city is drawn and its small detail (m), how big the ground's textures are
+export const GFX = {
+  shadowDist: { near: 0.67, medium: 1, far: 1.5 },
+  view: { near: 240, medium: 300, far: 340 },
+  detail: { near: 75, medium: 150, far: 250 },
+  textures: { low: 0.5, medium: 0.75, high: 1 },
+};
 
 export const Engine = {
   renderer: null, canvas: null,
@@ -45,6 +53,19 @@ export const Engine = {
     this.dyn = f;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.w, this.h, false);
+  },
+  // dynamic resolution (part 7): every half second, from the average frame time (Loop.stats.ms), draw fewer pixels
+  // when frames take too long for the target (the frame rate cap, or 60), and more again after 3 s with room to spare
+  adaptT: 0, roomy: 0,
+  adapt(ms, now = performance.now()) {
+    if (now < this.adaptT) return;
+    this.adaptT = now + 500;
+    if (!S.dynRes) { this.roomy = 0; if (this.dyn !== 1) this.setDynamicScale(1); return; }
+    if (!(ms > 0)) return;
+    const target = 1000 / (S.fpsCap > 0 ? Math.min(S.fpsCap, 60) : 60);
+    if (ms > target * 1.15) { this.roomy = 0; this.setDynamicScale(this.dyn - 0.08); }
+    else if (ms < target * 1.05) { this.roomy += 0.5; if (this.roomy >= 3) { this.roomy = 0; this.setDynamicScale(this.dyn + 0.05); } }
+    else this.roomy = 0;
   },
   render(scene, camera) { if (!this.lost) this.renderer.render(scene, camera); },
   // numbers for the debug overlay (they describe the frame that was just drawn)
