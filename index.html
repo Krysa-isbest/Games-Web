@@ -92,6 +92,8 @@ h1 em{font-style:italic;color:var(--accent)}
 .logbtn.live .dot{background:var(--live)}
 
 footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.rat{text-decoration:none;font-size:15px;opacity:.18;filter:grayscale(1);transition:opacity .2s,filter .2s}
+.rat:hover{opacity:1;filter:none}
 
 /* changelog dialog */
 dialog{
@@ -145,7 +147,7 @@ dialog::backdrop{background:rgba(31,27,22,.3);backdrop-filter:blur(3px)}
 
   <main class="grid" id="grid"></main>
 
-  <footer><span>Banger Games</span><span id="total"></span></footer>
+  <footer><span>Banger Games</span><a class="rat" href="School/index.html" aria-label="School">🐀</a><span id="total"></span></footer>
 </div>
 
 <dialog id="log">
@@ -618,6 +620,12 @@ const GAMES = [
     desc: 'Sink ships in first person. Blow voxel holes in tugboats, yachts, ferries, container ships and cruise liners, patch the leaks with planks, bail out the water, board the enemy and kill their captain. Watch out for the sharks.',
     mp: 'Online · up to 4 · voice chat', lang: 'English', genre: 'Naval FPS · voxel destruction',
     updating: true, changelog: [
+      { version: '0.6.9', date: '2026-11-26', notes: [
+        'A brand new nuke: a white flash that lights up the sky and leaves a spot in your eyes, and a boiling, white-hot fireball that rises and cools into a real mushroom cloud, with a rolling cap, a stem pulled up out of the sea, a ring of cloud around it and a wall of mist spreading over the water.',
+        'The blast wave races out over the sea as a real wave with spray and foam on it. You hear nothing until it reaches you, then the bang, the shake, ringing ears, muffled hearing and a long rumble. Ships rock and get shoved away as it passes, and the damage lands when it gets there.',
+        'A clearer warning: a red circle and rings on the water, a red wall of light around the blast zone, a beam over ground zero, and the bomb falling out of the sky with a whistle in the last seconds. The countdown shows how far you are from ground zero.',
+        'The sky and the sea glow orange, embers rain down, the sea boils at ground zero and ash falls for a while.',
+      ] },
       { version: '0.6.8', date: '2026-11-10', notes: [
         'The mortar aims properly: the mouse moves it about three times faster, and W / S (further / closer) and A / D (turn) aim it too.',
         'Mortar bombs land in 3–4.5 seconds instead of about 6, so ships can\'t sail out from under them any more. The range is 80–155 m, and a lower barrel always throws further.',

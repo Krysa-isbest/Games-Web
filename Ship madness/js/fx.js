@@ -207,6 +207,8 @@ export const FX = {
     G.shake = Math.max(G.shake || 0, Math.min(1.2, r * 0.5 / (1 + d / 15)));
   },
   flash(x, y, z, peak = 10) { light.position.set(x, y, z); lightT = 0.12; light.userData.k = peak / 0.12; light.intensity = peak; },
+  // any soft sprite (mist, spray, smoke) or a glowing one (embers), set up by the caller (the nuke uses these)
+  sprite(o, additive = false) { (additive ? glow : soft).spawn(o); },
   tracer(a, b) {
     let i = tracerData.findIndex(t => !t);
     if (i < 0) i = Math.random() * 64 | 0;

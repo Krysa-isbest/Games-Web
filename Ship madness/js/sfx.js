@@ -28,9 +28,15 @@ export function initAudio() {
 }
 export function setVolume(v) { if (master) master.gain.value = v; }
 
+// after the nuke's bang everything sounds muffled for a few seconds (k = 0 .. 1, it wears off by itself)
+let deafK = 0;
+export function deafen(k) { deafK = Math.max(deafK, Math.min(1, k)); }
+export function clearDeafen() { deafK = 0; }
+
 export function audioTick(underwater) {
   if (!ctx) return;
-  filt.frequency.setTargetAtTime(underwater ? 500 : 20000, ctx.currentTime, 0.08);
+  deafK = Math.max(0, deafK - (G.dt || 0) * 0.2);
+  filt.frequency.setTargetAtTime(underwater ? 500 : 20000 * Math.pow(0.03, deafK), ctx.currentTime, 0.08);
   amb.gain.setTargetAtTime((0.08 + 0.06 * Math.sin(G.t * 0.45) ** 2) * (0.6 + G.seaAmp * 0.5) * S.ambVol, ctx.currentTime, 0.3);
 }
 
@@ -39,12 +45,13 @@ function vol(pos) {
   return 1 / (1 + G.camera.position.distanceTo(pos) / 18);
 }
 
-function noise({ dur = 0.3, freq = 1000, q = 1, type = 'lowpass', gain = 0.5, sweep = 0, pos = null, attack = 0.002, wet = 0, delay = 0 }) {
+// loop: for sounds longer than the 2 s noise buffer (the nuke's roar and rumble)
+function noise({ dur = 0.3, freq = 1000, q = 1, type = 'lowpass', gain = 0.5, sweep = 0, pos = null, attack = 0.002, wet = 0, delay = 0, loop = false }) {
   if (!ctx) return;
   const g0 = gain * vol(pos) * S.sfxVol;
   if (g0 < 0.008) return;
   const t = ctx.currentTime + delay;
-  const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = loop;
   src.playbackRate.value = 0.8 + Math.random() * 0.4;
   const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   if (sweep) f.frequency.setValueAtTime(freq, t), f.frequency.exponentialRampToValueAtTime(Math.max(40, freq * sweep), t + dur);
@@ -54,7 +61,7 @@ function noise({ dur = 0.3, freq = 1000, q = 1, type = 'lowpass', gain = 0.5, sw
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   src.connect(f); f.connect(g); g.connect(filt);
   if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(echoGain); }
-  src.start(t, Math.random() * Math.max(0, 1.9 - dur)); src.stop(t + dur + 0.05);
+  src.start(t, Math.random() * (loop ? 1.9 : Math.max(0, 1.9 - dur))); src.stop(t + dur + 0.05);
 }
 function tone({ f0 = 440, f1 = 0, dur = 0.2, type = 'sine', gain = 0.3, pos = null, delay = 0, wet = 0 }) {
   if (!ctx) return;
@@ -111,6 +118,18 @@ export const sfx = {
   bell() { tone({ f0: 880, dur: 1.2, gain: 0.25 }); tone({ f0: 1320, dur: 0.9, gain: 0.12 }); },
   horn() { tone({ f0: 110, dur: 1.6, type: 'sawtooth', gain: 0.18 }); tone({ f0: 165, dur: 1.6, type: 'sawtooth', gain: 0.12 }); },
   siren() { for (let i = 0; i < 3; i++) { tone({ f0: 500, f1: 900, dur: 0.6, type: 'sawtooth', gain: 0.18, delay: i * 1.2 }); tone({ f0: 900, f1: 500, dur: 0.6, type: 'sawtooth', gain: 0.18, delay: i * 1.2 + 0.6 }); } },
+  // the nuke: the blast wave arriving (near = 1 close .. 0 far), the cloud's long rumble, the bomb falling, ringing ears
+  nukeBoom(near = 1) {
+    const g = 0.4 + near * 0.6;
+    noise({ dur: 0.16, freq: 1600, type: 'highpass', gain: 1.1 * g });
+    tone({ f0: 62, f1: 18, dur: 3.4, gain: 1.1 * g });
+    tone({ f0: 41, f1: 24, dur: 5, gain: 0.7 * g, delay: 0.05 });
+    noise({ dur: 6, freq: 1500, sweep: 0.05, gain: 1.2 * g, attack: 0.006, wet: 0.7, loop: true });
+    noise({ dur: 10, freq: 320, sweep: 0.35, gain: 0.85 * g, attack: 0.3, wet: 0.5, loop: true });
+  },
+  nukeRumble(near = 1) { noise({ dur: 15, freq: 170, sweep: 0.55, gain: 0.35 + near * 0.35, attack: 1.5, loop: true }); tone({ f0: 34, f1: 27, dur: 12, gain: 0.08 + near * 0.25, delay: 0.4 }); },
+  whistle() { tone({ f0: 1900, f1: 420, dur: 3.3, gain: 0.08 }); noise({ dur: 3.3, freq: 2400, q: 8, type: 'bandpass', sweep: 0.25, gain: 0.1, attack: 1.4, loop: true }); },
+  ears(k = 1) { tone({ f0: 3950, dur: 5, gain: 0.04 * k, delay: 0.1 }); tone({ f0: 4170, dur: 4, gain: 0.02 * k, delay: 0.1 }); },
   jet() { noise({ dur: 2.5, freq: 3000, sweep: 0.2, gain: 0.5, attack: 0.8 }); },
   crash(pos) { noise({ dur: 0.7, freq: 600, sweep: 0.3, gain: 0.8, pos }); tone({ f0: 70, f1: 40, dur: 0.5, gain: 0.5, pos }); },
   thunder() { noise({ dur: 3, freq: 400, sweep: 0.3, gain: 0.9, attack: 0.05, wet: 0.6 }); },
@@ -169,6 +188,7 @@ for (const k of Object.keys(sfx)) {
     const pos = POS_ARG[k] != null ? a[POS_ARG[k]] : null;
     if (k === 'shot' && (playSample('shot_' + a[0] + (a[2] ? '_quiet' : ''), pos) || playSample('shot_' + a[0], pos) || playSample('shot', pos))) return;
     if (k === 'boom' && a[1] >= 4 && playSample('nuke', pos)) return;
+    if (k === 'nukeBoom' && playSample('nuke', null)) return;           // your own nuke sound replaces the bang
     if (k === 'cannon') { if (CANNON_SLOT[a[1]] ? playSample(CANNON_SLOT[a[1]], pos) || (a[1] === 'mortar' && playSample('cannon', pos)) : playSample('cannon', pos)) return; return synth.call(synths, ...a); }
     if (k === 'c4' && (playSample('c4', pos) || playSample('boom', pos))) return;
     if (k !== 'shot' && k !== 'c4' && playSample(k, pos)) return;

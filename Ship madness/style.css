@@ -188,7 +188,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .leak { color: #8fe3ff; } .fire { color: #ffa24a; animation: pulse 0.8s infinite; }
 #minimap { right: 16px; top: 16px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2); }
 #prompt { left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(8, 26, 36, 0.8); padding: 8px 14px; border-radius: 8px; font-size: 16px; white-space: nowrap; }
-#nuke { left: 50%; top: 70px; transform: translateX(-50%); font-family: var(--head); font-size: 34px; color: #ffe14a; background: rgba(140, 0, 0, 0.75); padding: 8px 20px; border-radius: 10px; animation: pulse 0.5s infinite; }
+#nuke { left: 50%; top: 70px; transform: translateX(-50%); font-family: var(--head); font-size: 34px; color: #ffe14a; background: rgba(140, 0, 0, 0.75); padding: 8px 20px; border-radius: 10px; animation: pulse 0.5s infinite; text-align: center; }
+#nuke small { display: block; margin-top: 2px; font-family: var(--ui); font-size: 17px; font-weight: 700; letter-spacing: 0.5px; color: #fff3d6; }
+#nuke small.bad { color: #fff; }
 #dead { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(80, 0, 0, 0.4); gap: 8px; pointer-events: none; }
 #dead b { font-family: var(--head); font-weight: 400; font-size: 58px; letter-spacing: 6px; }
 #dead small { font-size: 18px; }

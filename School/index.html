@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Škola</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3eee6; --paper:#fbf8f3; --ink:#1f1b16; --soft:#6b6257; --faint:#a39a8e;
+  --line:#e2d9cc; --accent:#b8502f; --ok:#3f8a5f; --okbg:#e3f1e7; --bad:#9a3a22; --badbg:#f7e3da;
+  --serif:Fraunces,Georgia,serif; --sans:Inter,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto;padding:40px 16px 60px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.top h1{margin:0;font:400 40px var(--serif);letter-spacing:-.02em}
+.top h1 em{color:var(--accent)}
+.top a{color:var(--soft);font-size:14px;text-decoration:none}
+.top a:hover{color:var(--ink)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:22px}
+.set{display:flex;align-items:center;gap:14px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;margin-bottom:12px;transition:transform .15s,box-shadow .15s}
+.set:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px rgba(60,40,20,.4)}
+.set div{flex:1}
+.set small{display:block;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.set b{font:600 20px var(--serif)}
+.set span{color:var(--faint);font-size:13px}
+.bar{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-bottom:8px}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.meta{display:flex;justify-content:space-between;color:var(--faint);font-size:13px;margin-bottom:14px}
+.q{font:600 21px/1.4 var(--serif);margin:0 0 18px}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{font:500 15px/1.4 var(--sans);text-align:left;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;gap:10px}
+.opt:hover:not(:disabled){border-color:var(--soft)}
+.opt kbd{font:600 12px var(--sans);color:var(--faint);padding-top:2px}
+.opt:disabled{cursor:default}
+.opt.ok{background:var(--okbg);border-color:var(--ok)}
+.opt.bad{background:var(--badbg);border-color:var(--bad)}
+.row{display:flex;gap:8px;align-items:center}
+.row input{flex:1;min-width:0;font:500 17px var(--sans);color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px;outline:none}
+.row input:focus{border-color:var(--soft)}
+.row .unit{color:var(--soft);font-weight:600}
+.btn{font:600 15px var(--sans);color:#fff;background:var(--accent);border:0;border-radius:12px;padding:12px 18px;cursor:pointer}
+.btn:hover{background:#a2441f}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--soft)}
+.fb{margin-top:16px;border-radius:12px;padding:12px 14px;font-size:14.5px;line-height:1.5}
+.fb.ok{background:var(--okbg);color:#2a5e40}
+.fb.bad{background:var(--badbg);color:var(--bad)}
+.fb b{display:block;margin-bottom:2px}
+.next{margin-top:16px;display:flex;justify-content:flex-end}
+.note{color:var(--soft);font-size:13.5px;margin:0 0 16px}
+.score{font:400 56px var(--serif);margin:4px 0;color:var(--accent)}
+.end .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.empty{color:var(--soft)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>🐀 <em>Škola</em></h1><a href="../index.html">← Hry</a></div>
+  <div id="app"></div>
+</div>
+<script src="questions.js"></script>
+<script>
+const SETS = window.SCHOOL_SETS || [];
+const app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+// for typed answers: no capitals, no háčky/čárky, no extra spaces
+const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+const cz = n => String(+(+n).toFixed(3)).replace('.', ',');
+
+let S = null; // { set, list: [question], i, right, wrong: [question], cur, done }
+
+function home() {
+  S = null;
+  app.innerHTML = SETS.length
+    ? SETS.map((s, i) => `<button class="card set" data-set="${i}"><div><small>${esc(s.subject)}</small><b>${esc(s.title)}</b></div><span>${s.questions.length} otázek</span></button>`).join('')
+    : '<p class="empty">Zatím tu nejsou žádné otázky.</p>';
+}
+function start(set, list) {
+  S = { set, list: shuffle(list), i: 0, right: 0, wrong: [] };
+  ask();
+}
+// turn a question into what is shown: generated numbers, shuffled options
+function prepare(q) {
+  if (q.t === 'num') return { src: q, t: 'num', ...q.gen() };
+  if (q.t === 'mc') return { src: q, t: 'mc', q: q.q, opts: shuffle(q.a.map((text, k) => ({ text, ok: k === 0 }))), e: q.e };
+  return { src: q, t: 'txt', q: q.q, a: q.a, e: q.e };
+}
+function ask() {
+  if (S.i >= S.list.length) return end();
+  const c = S.cur = prepare(S.list[S.i]);
+  S.done = false;
+  let h = `<div class="bar"><i style="width:${S.i / S.list.length * 100}%"></i></div>
+    <div class="meta"><span>${S.i + 1} / ${S.list.length}</span><span>✓ ${S.right}</span></div>
+    <div class="card">${S.i === 0 && S.set.note ? `<p class="note">${esc(S.set.note)}</p>` : ''}<p class="q">${esc(c.q)}</p>`;
+  if (c.t === 'mc') h += `<div class="opts">${c.opts.map((o, k) => `<button class="opt" data-k="${k}"><kbd>${k + 1}</kbd><span>${esc(o.text)}</span></button>`).join('')}</div>`;
+  else h += `<div class="row"><input id="ans" autocomplete="off" spellcheck="false" ${c.t === 'num' ? 'inputmode="decimal"' : ''} placeholder="Tvoje odpověď">${c.unit ? `<span class="unit">${esc(c.unit)}</span>` : ''}<button class="btn" id="check">Zkontrolovat</button></div>`;
+  h += '<div id="fb"></div></div>';
+  app.innerHTML = h;
+  const inp = document.getElementById('ans');
+  if (inp) inp.focus();
+}
+function answer(k) {
+  if (S.done) return;
+  const c = S.cur;
+  let ok, right;
+  if (c.t === 'mc') {
+    ok = c.opts[k].ok;
+    right = c.opts.find(o => o.ok).text;
+    document.querySelectorAll('.opt').forEach((b, j) => { b.disabled = true; if (c.opts[j].ok) b.classList.add('ok'); else if (j === k) b.classList.add('bad'); });
+  } else {
+    const val = document.getElementById('ans').value;
+    if (!val.trim()) return;
+    if (c.t === 'num') {
+      const n = parseFloat(val.replace(/\s/g, '').replace(',', '.'));
+      ok = isFinite(n) && Math.abs(n - c.a) <= Math.max(0.011, Math.abs(c.a) * 0.01); // 1 % tolerance for rounding
+      right = cz(c.a) + ' ' + (c.unit || '');
+    } else {
+      ok = c.a.some(a => norm(a) === norm(val));
+      right = c.a[0];
+    }
+    document.getElementById('ans').disabled = true;
+    document.getElementById('check').remove();
+  }
+  S.done = true;
+  if (ok) S.right++; else S.wrong.push(c.src);
+  document.getElementById('fb').innerHTML = `<div class="fb ${ok ? 'ok' : 'bad'}"><b>${ok ? '✓ Správně' : '✗ Špatně, správně je: ' + esc(right)}</b>${c.e ? esc(c.e) : ''}</div>
+    <div class="next"><button class="btn" id="next">${S.i + 1 < S.list.length ? 'Další →' : 'Výsledek'}</button></div>`;
+  document.getElementById('next').focus();
+}
+function end() {
+  const n = S.list.length, pct = Math.round(S.right / n * 100);
+  app.innerHTML = `<div class="card end"><p class="note">${esc(S.set.title)}</p><div class="score">${S.right} / ${n}</div>
+    <p>${pct}&nbsp;% · ${pct >= 90 ? 'Výborně! 🎉' : pct >= 70 ? 'Dobře, ještě kousek.' : 'Chce to ještě procvičit.'}</p>
+    <div class="btns">${S.wrong.length ? `<button class="btn" id="redo">Zopakovat chybné (${S.wrong.length})</button>` : ''}
+    <button class="btn ghost" id="again">Znovu všechno</button><button class="btn ghost" id="home">Jiný test</button></div></div>`;
+}
+
+app.addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  if (t.dataset.set) { const s = SETS[t.dataset.set]; start(s, s.questions); }
+  else if (t.dataset.k) answer(+t.dataset.k);
+  else if (t.id === 'check') answer();
+  else if (t.id === 'next') { S.i++; ask(); }
+  else if (t.id === 'redo') start(S.set, S.wrong);
+  else if (t.id === 'again') start(S.set, S.set.questions);
+  else if (t.id === 'home') home();
+});
+document.addEventListener('keydown', e => {
+  if (!S || S.i >= S.list.length) return;
+  if (e.key === 'Enter' && !S.done && S.cur.t !== 'mc' && e.target.id === 'ans') { e.preventDefault(); answer(); }
+  else if (!S.done && S.cur.t === 'mc' && /^[1-9]$/.test(e.key) && +e.key <= S.cur.opts.length) answer(+e.key - 1);
+});
+home();
+</script>
+</body>
+</html>

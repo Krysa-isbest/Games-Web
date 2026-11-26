@@ -22,6 +22,7 @@ import { Avatar, installHooks, installActions, installGuestHandlers, installShar
 import { initLobby, lobbyBack, renderPlayers } from './lobby.js';
 import { Player } from './player.js';
 import { initMusic, musicTick } from './music.js';
+import { initNukeFx } from './nuke.js';
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: S.aa, powerPreference: 'high-performance' });
@@ -36,7 +37,7 @@ const airFog = new THREE.Fog(SKY.horizon, 160, 850);
 scene.fog = airFog;
 const camera = new THREE.PerspectiveCamera(S.fov, innerWidth / innerHeight, 0.03, 3000);
 scene.add(camera);
-Object.assign(G, { scene, camera, renderer, toast: UI.toast, ui: UI, showResults: UI.showResults, lock, unlock, spawnEnemy, chat: UI.chatLine, killfeed: UI.killLine, campReward, campResults, populate: populateShip });
+Object.assign(G, { scene, camera, renderer, airFog, toast: UI.toast, ui: UI, showResults: UI.showResults, lock, unlock, spawnEnemy, chat: UI.chatLine, killfeed: UI.killLine, campReward, campResults, populate: populateShip });
 G.announce = (t, k) => UI.toast(t, k);
 
 scene.add(new THREE.HemisphereLight('#cfe6ff', '#24505e', 0.9));
@@ -71,6 +72,7 @@ function applyGraphics() {
 G.oceanDetail = S.ocean;
 
 FX.init(scene);
+initNukeFx();
 makeIslands(scene, 1337);
 buildOcean(scene, ISLANDS);
 initInput();

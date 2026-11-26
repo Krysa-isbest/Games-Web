@@ -1,7 +1,7 @@
 // Menus, HUD, toasts, minimap, results, the campaign map and shop.
 import { G, P, S, VERSION, saveProfile, MAP_HALF } from './state.js';
 import { SHIP_TYPES, THROTTLE_NAME } from './ship.js';
-import { WEAPONS, SLOTS } from './weapons.js';
+import { WEAPONS, SLOTS, NUKE_R, NUKE_REACH } from './weapons.js';
 import { cannonOf } from './cannons.js';
 import { ISLANDS } from './islands.js';
 import { sfx } from './sfx.js';
@@ -224,7 +224,7 @@ export function campaignDock(game, hostUI) {
   draw();
 }
 // ---------- HUD ----------
-let mapT = 0;
+let mapT = 0, nukeHtml = '';
 export function updateHUD(dt) {
   const me = G.me;
   $('hud').classList.toggle('hidden', !G.running);
@@ -292,7 +292,13 @@ export function updateHUD(dt) {
   $('dead').classList.toggle('hidden', me.alive);
   $('dead-t').textContent = me.out ? 'You are out. Spectating…' : `Back in ${Math.ceil(me.respawnT)}…`;
   $('nuke').classList.toggle('hidden', !G.nuke);
-  if (G.nuke) $('nuke').textContent = `☢️ NUKE IN ${Math.ceil(G.nuke.t)}`;
+  if (G.nuke) {         // the countdown, and how far you are from ground zero
+    const p = me.worldPos(), d = Math.hypot(p.x - G.nuke.x, p.z - G.nuke.z);
+    const where = d < NUKE_R ? '<small class="bad">YOU ARE IN THE RED CIRCLE: GET OUT!</small>'
+      : `<small>${Math.round(d)} m from ground zero${d < NUKE_REACH ? ': still too close' : ''}</small>`;
+    const html = `☢️ NUKE IN ${Math.max(0, Math.ceil(G.nuke.t))}${where}`;
+    if (html !== nukeHtml) { nukeHtml = html; $('nuke').innerHTML = html; }
+  }
   if (G.flashScreen > 0) G.flashScreen = Math.max(0, G.flashScreen - dt * 0.5);
   $('flash').style.opacity = G.flashScreen || 0;
   mapT -= dt;

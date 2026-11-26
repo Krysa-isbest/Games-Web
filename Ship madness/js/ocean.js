@@ -26,16 +26,36 @@ export function waveHeight(x, z, t = G.t) {
   }
   let h = 0;
   for (const w of WAVES) h += w.a * Math.sin(w.k * (w.dx * x0 + w.dz * z0) - w.w * t);
-  return h * A;
+  return h * A + nukeWave(x, z);
 }
 // cheaper version for particles and foam (no sideways correction, big waves only)
 export function waveHeightFast(x, z, t = G.t) {
   let h = 0;
   for (let i = 0; i < 4; i++) { const w = WAVES[i]; h += w.a * Math.sin(w.k * (w.dx * x + w.dz * z) - w.w * t); }
-  return h * G.seaAmp;
+  return h * G.seaAmp + nukeWave(x, z);
 }
 
 export const SKY = { zenith: new THREE.Color('#2f6fb8'), horizon: new THREE.Color('#bcd7e6'), sunDir: new THREE.Vector3(0.45, 0.55, -0.7).normalize() };
+
+// the nuke (nuke.js fills these in): its blast wave racing over the sea, the warning circle, the fireball's light
+export const NUKE_SEA = {
+  ring: new THREE.Vector4(0, 0, 0, 0),     // centre x, z, radius, wave height (m)
+  ring2: new THREE.Vector4(6, 0, 0, 0),    // front width, crest foam, churned water behind it, boiling at ground zero
+  zone: new THREE.Vector4(0, 0, 0, 0),     // the warning circle: x, z, radius, strength
+  glow: new THREE.Vector4(0, 0, 0, 0),     // the fireball: x, y, z, light strength
+  col: new THREE.Color('#ff9440'),          // its colour, as the sea reflects it
+  sky: new THREE.Color(0, 0, 0),            // its glow in the sky (colour x strength)
+  flash: 0,                                  // the whole sky turns white for a moment
+};
+// the blast wave in the water: a crest with a trough behind it (the shader draws exactly the same)
+function nukeWave(x, z) {
+  const r = NUKE_SEA.ring;
+  if (r.w <= 0) return 0;
+  const w = NUKE_SEA.ring2.x, u = Math.hypot(x - r.x, z - r.y) - r.z;
+  if (u > w * 4 || u < -w * 7) return 0;
+  const u2 = u + w * 1.7, w2 = w * 1.5;
+  return r.w * (Math.exp(-u * u / (w * w)) - 0.45 * Math.exp(-u2 * u2 / (w2 * w2)));
+}
 
 // tiling normal map from periodic value noise
 export function makeNormalTexture(size = 256) {
@@ -73,6 +93,7 @@ const vert = /* glsl */`
   uniform float uTime, uAmp;
   uniform vec4 uWave[8];
   uniform float uQ[8];
+  uniform vec4 uNukeRing, uNukeRing2;
   varying vec3 vWorld; varying float vH; varying vec3 vNormal2; varying float vJ;
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -91,6 +112,18 @@ const vert = /* glsl */`
       jxx += q * wa * w.x * w.x * s; jzz += q * wa * w.y * w.y * s; jxz += q * wa * w.x * w.y * s;
     }
     wp.xyz += disp;
+    // the nuke's blast wave: a crest racing outwards with a trough behind it (same as nukeWave() on the CPU)
+    if (uNukeRing.w > 0.001) {
+      vec2 dv = wp.xz - uNukeRing.xy;
+      float d = max(length(dv), 0.001);
+      float w = uNukeRing2.x;
+      float u = d - uNukeRing.z;
+      float u2 = u + w * 1.7, w2 = w * 1.5;
+      float g1 = exp(-u * u / (w * w)), g2 = exp(-u2 * u2 / (w2 * w2));
+      wp.y += uNukeRing.w * (g1 - 0.45 * g2);
+      float dh = uNukeRing.w * (-2.0 * u / (w * w) * g1 + 0.9 * u2 / (w2 * w2) * g2);
+      nx += dv.x / d * dh; nz += dv.y / d * dh;
+    }
     vWorld = wp.xyz; vH = disp.y;
     vNormal2 = normalize(vec3(-nx, 1.0 - ny, -nz));
     vJ = (1.0 - jxx) * (1.0 - jzz) - jxz * jxz;
@@ -106,6 +139,8 @@ const frag = /* glsl */`
   uniform vec4 uShipDim[${MAX_SHIPS}];   // half width, half length, deck top, speed
   uniform vec4 uShipShape[${MAX_SHIPS}]; // bottom width, bow start, stern taper
   uniform vec3 uIsland[${MAX_ISL}];
+  uniform vec4 uNukeRing, uNukeRing2, uNukeZone, uNukeGlow;
+  uniform vec3 uNukeCol;
   varying vec3 vWorld; varying float vH; varying vec3 vNormal2; varying float vJ;
 
   float hullHalf(float yN, float zN, float hw, vec4 sh) {
@@ -193,6 +228,15 @@ const frag = /* glsl */`
     vec3 col = mix(refr, refl, fres);
     float rs = max(dot(R, uSun), 0.0);
     col += vec3(1.0, 0.92, 0.78) * (pow(rs, 700.0) * 9.0 + pow(rs, 80.0) * 0.35);
+    // the nuke's fireball lights up the sea and shines in the waves
+    if (uNukeGlow.w > 0.001) {
+      vec3 L = uNukeGlow.xyz - vWorld;
+      float ld = max(length(L), 0.001);
+      L /= ld;
+      float rl = max(dot(R, L), 0.0);
+      float fall = 1.0 / (1.0 + ld * ld * 0.000012);
+      col += uNukeCol * uNukeGlow.w * fall * (pow(rl, 40.0) * 2.0 * (0.25 + fres) + pow(rl, 5.0) * 0.22 + max(dot(N, L), 0.0) * 0.08);
+    }
 
     // foam: where waves fold over (low jacobian), around hulls, wakes and shores
     float fn = texture2D(uNorm, p / 6.0 + vec2(t * 0.03, 0.0)).z;
@@ -201,7 +245,27 @@ const frag = /* glsl */`
     float foam = smoothstep(0.62, 0.15, vJ) * (0.6 + 0.4 * pattern);
     foam += clamp(wake, 0.0, 1.4) * pattern * 1.1;
     foam += shore * pattern;
+    // the blast wave: a white crest, churned water behind it, the sea boiling at ground zero
+    if (uNukeRing2.y + uNukeRing2.z + uNukeRing2.w > 0.001) {
+      float nd = length(p - uNukeRing.xy);
+      float nu = nd - uNukeRing.z, nw = uNukeRing2.x;
+      float ncrest = 1.0 - smoothstep(0.0, nw * 1.3, abs(nu + nw * 0.25));
+      float nchurn = (1.0 - smoothstep(-nw * 2.0, 0.0, nu)) * exp(min(nu, 0.0) / 90.0);
+      float nboil = 1.0 - smoothstep(12.0, 95.0, nd);
+      foam += (ncrest * uNukeRing2.y * 1.6 + nchurn * uNukeRing2.z + nboil * uNukeRing2.w) * (0.45 + 0.55 * pattern);
+    }
     col = mix(col, vec3(0.9, 0.95, 0.97), clamp(foam, 0.0, 0.92));
+
+    // the nuke warning: a red circle on the water (deadly inside), red rings running outwards, ground zero marked
+    if (uNukeZone.w > 0.001) {
+      float zd = length(p - uNukeZone.xy), zr = uNukeZone.z;
+      float line = 1.0 - smoothstep(0.3, 1.5, abs(zd - zr));
+      float inside = 1.0 - step(zr, zd);
+      float runs = smoothstep(0.8, 1.0, fract(zd / 7.0 - t * 0.9)) * inside;
+      float core = 1.0 - smoothstep(1.5, 5.0, zd);
+      float zk = clamp(line * 0.9 + inside * 0.1 + runs * 0.3 + core * 0.85, 0.0, 0.92) * uNukeZone.w;
+      col = mix(col, vec3(1.0, 0.08, 0.03), zk);
+    }
 
     float fog = 1.0 - exp(-dist * uFogDen);
     col = mix(col, uFog, clamp(fog, 0.0, 1.0));
@@ -236,6 +300,7 @@ export function buildOcean(scene, islands) {
     uQ: { value: WAVES.map(w => w.q) },
     uNorm: { value: NORMAL_TEX },
     uZenith: { value: SKY.zenith }, uHorizon: { value: SKY.horizon }, uSun: { value: SKY.sunDir }, uFog: { value: SKY.horizon },
+    uNukeRing: { value: NUKE_SEA.ring }, uNukeRing2: { value: NUKE_SEA.ring2 }, uNukeZone: { value: NUKE_SEA.zone }, uNukeGlow: { value: NUKE_SEA.glow }, uNukeCol: { value: NUKE_SEA.col },
     uShips: { value: 0 }, uShipInv: { value: Array.from({ length: MAX_SHIPS }, () => new THREE.Matrix4()) },
     uShipDim: { value: Array.from({ length: MAX_SHIPS }, () => new THREE.Vector4()) },
     uShipShape: { value: Array.from({ length: MAX_SHIPS }, () => new THREE.Vector4(0.8, 0.55, 0.05, 0)) },
@@ -250,9 +315,10 @@ export function buildOcean(scene, islands) {
 
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
-    uniforms: { uZenith: { value: SKY.zenith }, uHorizon: { value: SKY.horizon }, uSun: { value: SKY.sunDir }, uTime: { value: 0 }, uUnder: { value: 0 }, uUnderCol: { value: new THREE.Color(0.06, 0.29, 0.34) } },
+    uniforms: { uZenith: { value: SKY.zenith }, uHorizon: { value: SKY.horizon }, uSun: { value: SKY.sunDir }, uTime: { value: 0 }, uUnder: { value: 0 }, uUnderCol: { value: new THREE.Color(0.06, 0.29, 0.34) },
+      uGlowDir: { value: new THREE.Vector3(0, 1, 0) }, uGlowCol: { value: NUKE_SEA.sky }, uFlash: { value: 0 } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w; }`,
-    fragmentShader: `uniform vec3 uZenith, uHorizon, uSun, uUnderCol; uniform float uTime, uUnder; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uZenith, uHorizon, uSun, uUnderCol, uGlowDir, uGlowCol; uniform float uTime, uUnder, uFlash; varying vec3 vDir;
       float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 45758.5); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
       void main(){ vec3 d = normalize(vDir); float y = max(d.y, 0.0);
@@ -266,6 +332,10 @@ export function buildOcean(scene, islands) {
           cl = smoothstep(0.55, 0.85, cl) * smoothstep(0.0, 0.25, d.y);
           c = mix(c, vec3(1.0) * (0.92 + 0.08 * s), cl * 0.75);
         } else c = uHorizon;
+        // the nuke: its fireball glows in the sky, and for a moment the whole sky flashes white
+        float gd = max(dot(d, uGlowDir), 0.0);
+        c += uGlowCol * (pow(gd, 28.0) * 1.3 + pow(gd, 6.0) * 0.45 + gd * gd * 0.12);
+        c = mix(c, vec3(1.0, 0.98, 0.94), clamp(uFlash, 0.0, 1.0));
         // under water there is no sky: deep water all around, lighter towards the surface, dark below
         if (uUnder > 0.0) {
           vec3 w = mix(uUnderCol * 0.18, uUnderCol * 1.25, smoothstep(-0.7, 0.75, d.y));
@@ -302,6 +372,9 @@ export function updateOcean(camera) {
   ocean.position.set(Math.round(camera.position.x / step) * step, 0, Math.round(camera.position.z / step) * step);
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = G.t;
+  const su = sky.material.uniforms, ng = NUKE_SEA.glow;
+  su.uFlash.value = NUKE_SEA.flash;
+  if (ng.w > 0) su.uGlowDir.value.set(ng.x - camera.position.x, ng.y - camera.position.y, ng.z - camera.position.z).normalize();
   uniforms.uTime.value = G.t;
   uniforms.uAmp.value = G.seaAmp;
   let n = 0;
