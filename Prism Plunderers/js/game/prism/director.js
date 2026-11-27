@@ -17,6 +17,7 @@ import { segDist2 } from '../sentry.js';
 import { rollLoot } from '../items.js';
 import { makeBox, takeAll } from '../inventory.js';
 import { makeWeapon } from '../weapon-models.js';
+import { SHARED } from '../loot.js';
 import { Sfx } from '../sfx.js';
 import { Sound } from '../../core/sound.js';
 import { bus } from '../../core/events.js';
@@ -162,7 +163,10 @@ export class PrismDirector {
         id: 'wreck' + r.id, pos: { x: r.pos.x, y: y + 0.6, z: r.pos.z }, radius: reach,
         hold: () => w.box ? 0 : r.type === 'roach' ? 2.5 : 1.2,               // searching takes a moment; opening again does not
         label: () => w.box ? (w.box.slots.some(Boolean) ? `Open the ${d.name} wreck` : null) : `Search the ${d.name} wreck`,
-        use: p => { const box = this.search(w); bus.emit('loot:open', p, box, w); },
+        use: p => {
+          if (SHARED.open) { SHARED.open('wreck' + w.id, p, b => { w.box = b; }); return; }   // (a squad: the leader's wreck)
+          const box = this.search(w); bus.emit('loot:open', p, box, w);
+        },
       });
     }
     this.wrecks.push(w);
@@ -199,17 +203,32 @@ export class PrismDirector {
   }
 
   // ---------- one simulation step ----------
+  // (part 12) a squad: the robot goes after its target while it is a fair one, or whoever is nearest. A downed
+  // player who keeps still is not seen; nobody fair: null (the brains handle that).
+  pickTarget(r, T) {
+    const fair = q => q && !q.dead && !q.out && !(q.downed && !q.crawling);
+    const d2 = q => (q.pos.x - r.pos.x) ** 2 + (q.pos.z - r.pos.z) ** 2;
+    let best = null, bd = Infinity;
+    for (const q of T) if (fair(q)) { const d = d2(q); if (d < bd) { bd = d; best = q; } }
+    const cur = r.hostile && r.target ? T.find(q => q.id === r.target && fair(q)) : null;
+    if (cur && best !== cur && bd >= d2(cur) * 0.36) return cur;
+    return best;
+  }
   step(dt, player) {
     this.time += dt; this.player = player;
     const c = this.ctx;
     c.player = player; c.dt = dt; c.time = this.time;
+    const T = this.targets;                                // (part 12) the squad, or null: just you
+    if (this.puppet) { this.puppet(dt); this.stepBolts(dt); this.stepRockets(dt); this.stepBombs(dt); this.stepGas(dt); this.stepPods(dt); this.stepGrenades(dt); return; }
     for (const r of [...this.robots]) {
       if (r.gone) continue;
       r.prev.x = r.pos.x; r.prev.y = r.pos.y; r.prev.z = r.pos.z; r.prevYaw = r.yaw;
+      if (T) c.player = this.pickTarget(r, T);
+      const near = T ? T.reduce((m, q) => Math.min(m, (r.pos.x - q.pos.x) ** 2 + (r.pos.z - q.pos.z) ** 2), Infinity) : player ? (r.pos.x - player.pos.x) ** 2 + (r.pos.z - player.pos.z) ** 2 : 0;
       // a calm robot far from you thinks and moves 20 times a second instead of 60 (part 7): it cannot see you
       // from there, and its steps are too small to see (it holds still between them, so nothing jitters)
       let st = dt;
-      if (player && !r.dead && !r.hostile && !r.falling && r.aware < 0.01 && (r.pos.x - player.pos.x) ** 2 + (r.pos.z - player.pos.z) ** 2 > FAR_THINK * FAR_THINK) {
+      if ((player || T) && !r.dead && !r.hostile && !r.falling && r.aware < 0.01 && near > FAR_THINK * FAR_THINK) {
         r.slowT = (r.slowT || 0) + dt;
         if (r.slowT < SLOW_STEP - 1e-6) continue;
         st = r.slowT; r.slowT = 0;
@@ -217,9 +236,10 @@ export class PrismDirector {
       r.st += st; r.hurtT += st;
       c.dt = st;
       if (r.dead) this.dying(r, st);
-      else BRAINS[r.type].step(r, c, st);
+      else { this.inBrain = true; BRAINS[r.type].step(r, c, st); this.inBrain = false; }
       c.dt = dt;
     }
+    c.player = player;
     this.stepBolts(dt); this.stepRockets(dt); this.stepBombs(dt); this.stepGas(dt); this.stepPods(dt); this.stepGrenades(dt);
   }
 
@@ -571,7 +591,7 @@ export class PrismDirector {
           bus.emit('prism:podland', pod);
         }
       } else if (pod.phase === 'open' && pod.t >= 0.5) {
-        pod.types.forEach((type, k) => {
+        if (!this.puppet) pod.types.forEach((type, k) => {        // (a squad's friend: the robots come from the leader)
           const a = k / pod.types.length * Math.PI * 2;
           const fly = PRISM[type].flyer;
           this.spawn(type, { x: pod.pos.x + Math.cos(a) * 2.6, y: pod.pos.y + (fly ? 2.5 : 0.1), z: pod.pos.z + Math.sin(a) * 2.6 },

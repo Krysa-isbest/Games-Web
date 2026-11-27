@@ -106,6 +106,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
   p.emp = Math.max(0, (p.emp || 0) - dt);
   p.landT += dt; p.hurtT += dt;
   if (p.dead && p.mode !== 'dead') die(p);
+  if (p.downed && !p.dead && p.mode !== 'down') goDown(p);     // (part 12: a squad raid)
   const alive = p.mode !== 'dead';
   p.turn = 0;
 
@@ -126,8 +127,8 @@ export function stepPlayer(p, cmd, dt, ctx) {
     p.aiming = !!cmd.aim && p.mode === 'move' && !p.using;
     p.firing = !!cmd.fire && p.mode === 'move' && armed(p) && !p.using;
     // dodge roll: on the ground, in the direction you push (or straight ahead)
-    if (cmd.roll && p.mode !== 'roll' && p.grounded && p.rollCd <= 0) {
-      if (spend(p, STAMINA.roll)) startRoll(p, input ? wx / wl : fwdX(p.facing), input ? wz / wl : fwdZ(p.facing));
+    if (cmd.roll && p.mode !== 'roll' && p.mode !== 'down' && p.grounded && p.rollCd <= 0) {
+      if (spend(p, p.stats.rollCost ?? STAMINA.roll)) startRoll(p, input ? wx / wl : fwdX(p.facing), input ? wz / wl : fwdZ(p.facing));
       else deny(p);
     }
     // slide: crouch while sprinting fast on the ground
@@ -155,7 +156,7 @@ export function stepPlayer(p, cmd, dt, ctx) {
     let speed = MOVE.jog;
     if (p.aiming) speed = p.crouch ? MOVE.aimCrouch : MOVE.aim;
     else if (p.crouch) speed = MOVE.crouch;
-    else if (p.sprinting) speed = MOVE.sprint;
+    else if (p.sprinting) speed = p.stats.sprint ?? MOVE.sprint;
     if (p.aiming && input && (wx * fwdX(p.facing) + wz * fwdZ(p.facing)) / wl < -0.3) speed *= MOVE.back;
     if (p.stagger > 0) speed *= 0.45;
     if (p.using) speed *= 0.5;                                    // patching yourself up: a slow walk
@@ -166,7 +167,8 @@ export function stepPlayer(p, cmd, dt, ctx) {
     p.vel.z = approach(p.vel.z, tz, k, dt);
     if (p.aiming || p.firing) turnTo(p, cmd.yaw, 22, dt);         // shooting turns you to where you aim
     else if (input) turnTo(p, yawOf(wx, wz), p.sprinting ? MOVE.turnSprint : MOVE.turn, dt);
-  } else if (p.mode === 'roll') stepRoll(p, dt);
+  } else if (p.mode === 'down') stepDown(p, dt, wx, wz, input);
+  else if (p.mode === 'roll') stepRoll(p, dt);
   else if (p.mode === 'slide') stepSlide(p, dt, wx, wz, input, ctx);
   else if (p.mode === 'dead') {
     p.deathT += dt;
@@ -231,6 +233,9 @@ export function stepPlayer(p, cmd, dt, ctx) {
     if (p.stamina <= 0) { p.stamina = 0; p.winded = true; p.sprinting = false; bus.emit('player:winded', p); }
   } else if (p.staminaDelay <= 0 && p.mode !== 'roll') p.stamina = Math.min(p.maxStamina, p.stamina + p.stats.regen * dt);
   if (p.winded && p.stamina >= STAMINA.recover) p.winded = false;
+  // Overclock Heart (skill tree): health back while the shield holds, half as fast below 30 %
+  if (p.stats.heart > 0 && !p.dead && p.shield && !p.shield.broken && p.health < p.maxHealth)
+    p.health = Math.min(p.maxHealth, p.health + p.stats.heart * (p.health < p.maxHealth * 0.3 ? 0.5 : 1) * dt);
 
   if (ctx && ctx.items) stepUse(p, cmd, dt, ctx.items);
 }
@@ -317,6 +322,23 @@ function stepSlide(p, dt, wx, wz, input, ctx) {
 }
 function endSlide(p) { p.mode = 'move'; p.slideCd = SLIDE.cooldown; }
 
+// ---------- down in a squad raid (part 12, DESIGN 6): crawl, bleed out in 60 s, or a teammate revives you ----------
+function goDown(p) {
+  stopUsing(p);
+  p.mode = 'down'; p.downT = 0; p.crawling = false;
+  p.sprinting = false; p.aiming = false; p.firing = false; p.iframes = 0; p.use = null;
+  bus.emit('player:downed', p);
+}
+function stepDown(p, dt, wx, wz, input) {
+  p.downT = (p.downT || 0) + dt;
+  p.bleed -= dt * (p.coop ? 1 : 12);                       // nobody left to help: it goes fast
+  p.crawling = input;
+  p.vel.x = approach(p.vel.x, input ? wx * 0.9 : 0, 6, dt);
+  p.vel.z = approach(p.vel.z, input ? wz * 0.9 : 0, 6, dt);
+  if (input) turnTo(p, yawOf(wx, wz), 3, dt);
+  if (p.bleed <= 0) { p.downed = false; p.dead = true; p.deathCause = 'Bled out'; }
+}
+
 // ---------- dying and coming back ----------
 function die(p) {
   p.mode = 'dead'; p.deathT = 0;
@@ -339,6 +361,11 @@ export function respawnPlayer(p, spawn) {
 // ---------- using things (interact key) ----------
 function stepUse(p, cmd, dt, items) {
   if (!cmd.interact) p.useLatch = false;
+  if (p.mode === 'down') {                                 // (the prompt line tells you how long you have)
+    p.focus = null; p.use = null; p.focusHold = 0;
+    p.focusText = `Down · ${Math.max(0, Math.ceil(p.bleed))} s · a teammate can revive you · keep still and the Prism lose you`;
+    return;
+  }
   const it = p.mode === 'move' ? items.pick(p) : null;
   const text = it ? it.label(p) : null;
   if (!text) { p.focus = null; p.focusText = ''; p.focusHold = 0; p.use = null; return; }
@@ -350,7 +377,7 @@ function stepUse(p, cmd, dt, items) {
     return;
   }
   if (cmd.interact && !p.useLatch && Math.hypot(p.vel.x, p.vel.z) < 1.5) {
-    if (!p.use || p.use.id !== it.id) p.use = { id: it.id, t: 0, hold };
+    if (!p.use || p.use.id !== it.id) p.use = { id: it.id, t: 0, hold, keep: !!it.keep };
     p.use.t += dt;
     if (p.use.t >= hold) { it.use(p); bus.emit('player:use', p, it); p.use = null; p.useLatch = true; }
   } else p.use = null;

@@ -81,7 +81,11 @@ export const SHIELD_ORDER = ['light', 'medium', 'heavy'];
 export const BASE = { health: 500 };
 // Weapon numbers live with the items (items.js), weapon behaviour in weapons.js.
 
-// The player's numbers. The skill tree (a later part) will raise them from the profile.
-export function playerStats() {
-  return { maxHealth: BASE.health, maxStamina: STAMINA.max, regen: STAMINA.regen, sprintCost: STAMINA.sprint };
+// The player's numbers; m = the skill tree's mods (game/skills.js skillMods; none: the base numbers)
+export function playerStats(m = null) {
+  m = m || { sprint: 1, regen: 1, rollCost: 1, reload: 1, hold: 1, use: 1, health: 0, stamina: 0, heart: 0 };
+  return {
+    maxHealth: BASE.health + m.health, maxStamina: STAMINA.max + m.stamina, regen: STAMINA.regen * m.regen, sprintCost: STAMINA.sprint,
+    sprint: MOVE.sprint * m.sprint, rollCost: STAMINA.roll * m.rollCost, reload: m.reload, hold: m.hold, use: m.use, heart: m.heart,
+  };
 }

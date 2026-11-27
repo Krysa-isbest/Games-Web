@@ -71,7 +71,7 @@ export function stepWeapons(p, cmd, dt, ctx) {
   w.fireCd -= dt; w.shotT += dt; w.dry = Math.max(0, w.dry - dt);
   w.bloom = Math.max(0, w.bloom - BLOOM_BACK * dt);
   w.buf = cmd.firePressed ? SEMI_BUFFER : Math.max(0, w.buf - dt);
-  if (p.mode === 'dead' || !p.inv) {
+  if (p.mode === 'dead' || p.mode === 'down' || !p.inv) {
     w.reloadT = 0; w.swingT = -1; w.throwT = -1; w.outT = w.inT = 0; w.want = null;
     if (w.active === 'throw') w.active = w.back;
     p.using = null; w.fireCd = Math.max(0, w.fireCd);
@@ -157,7 +157,7 @@ export function startReload(p, it, W) {
   const w = p.wpn;
   if (w.reloadT > 0 || it.d.ammo >= W.mag) return false;
   if (count(p.inv, W.ammo) <= 0) { bus.emit('wpn:noammo', p, it.id); return false; }
-  w.reloadT = w.reloadTime = W.reload;
+  w.reloadT = w.reloadTime = W.reload * (p.stats?.reload ?? 1);        // (the skill tree's Quick Hands)
   bus.emit('wpn:reload', p, it.id);
   return true;
 }
@@ -305,7 +305,7 @@ export function startUse(p, ref) {
   cancelReload(p);
   p.wpn.swingT = -1;
   if (p.wpn.active === 'throw' && p.wpn.throwT < 0) endThrow(p);
-  p.using = { ref: { a: ref.a, i: ref.i }, id: it.id, t: 0, time: ITEMS[it.id].use.time };
+  p.using = { ref: { a: ref.a, i: ref.i }, id: it.id, t: 0, time: ITEMS[it.id].use.time * (p.stats?.use ?? 1) };   // (Field Medic)
   bus.emit('use:start', p, p.using);
   return true;
 }

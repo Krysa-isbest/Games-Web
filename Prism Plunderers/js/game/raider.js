@@ -163,10 +163,11 @@ export class Raider {
   solve(dt, s) {
     const w = this.w, t = this.t;
     const mode = s.mode || 'move';
-    const dead = mode === 'dead', rolling = mode === 'roll', sliding = mode === 'slide';
+    const dead = mode === 'dead', rolling = mode === 'roll', sliding = mode === 'slide', down = mode === 'down';
     const grounded = s.grounded !== false;
     const sp = s.speed || 0;
-    const moving = grounded && !dead && !rolling && !sliding && sp > 0.15;
+    const moving = grounded && !dead && !down && !rolling && !sliding && sp > 0.15;
+    const crawl = down ? Math.min(1, sp * 2) : 0;                         // (part 12: down, crawling on the belly)
 
     // walking backwards and sideways (while aiming): the legs turn into the direction of travel
     let dirAng = moving ? Math.atan2(s.side || 0, s.fwd ?? sp) : 0, back = false;
@@ -186,7 +187,7 @@ export class Raider {
     // world's footing(); on stairs the drawn step, not the wedge you walk on). Without it (the lobby) the feet
     // stand at the model's origin. With it each foot stands on what is under it, the soles tilt with a slope, the
     // hips come down so the lower foot still reaches, and on steep ground (stairs) the steps get shorter.
-    const ground = typeof s.ground === 'function' && !dead ? s.ground : null;
+    const ground = typeof s.ground === 'function' && !dead && !down ? s.ground : null;
     const R0 = this.root.position, tdir = back ? -1 : 1;
     const probe = (x, z) => { const g = ground(x, R0.y + 0.5, z); return g && g.y - R0.y > -0.9 ? g : null; };   // knee high down
     let grade = 0;
@@ -291,6 +292,7 @@ export class Raider {
       dz = lerp(dz, 0.22, w.roll);
       dy = lerp(dy, -0.3, w.roll);
       if (dead) { dz = left ? 0.12 : 0.02; dy = -0.8; }
+      if (down) { const c = Math.sin(this.t * 5 + (left ? 0 : Math.PI)) * crawl; dz = 0.05 + c * 0.14; dy = -0.74 + Math.abs(c) * 0.08; }
       solveLeg(lg, dz, dy);
       lg.an.rotation.x -= p;                                              // toes up the slope
       lg.th.rotation.z = lg.side * (0.03 + 0.1 * w.crouch + 0.06 * w.air);
@@ -327,6 +329,7 @@ export class Raider {
       // tucked in the roll
       ux = lerp(ux, -0.9, w.roll); uz = lerp(uz, sd * 0.3, w.roll); ex = lerp(ex, -2.0, w.roll);
       if (dead) { ux = 0.3; uy = 0; uz = sd * 1.1; ex = -0.3; }
+      if (down) { const c = Math.sin(this.t * 5 + (left ? 0 : Math.PI)) * crawl; ux = -2.6 + c * 0.45; uy = 0; uz = sd * 0.3; ex = -0.4 - Math.max(0, c) * 0.6; }
       a.up.rotation.set(ux, uy, uz);
       a.el.rotation.set(ex, 0, 0);
     }
@@ -338,6 +341,12 @@ export class Raider {
       pivotY = 0.1; rot = -1.42 * k;
       hipY = HIP_Y;
       this.head.rotation.set(0.25 * k, 0.45 * k, 0);
+    }
+    if (down) {                                                           // on the belly, head up, looking ahead
+      const k = smooth(0, 0.5, s.downT || 0);
+      pivotY = 0.12; rot = 1.35 * k;
+      hipY = HIP_Y;
+      this.head.rotation.set(-0.9 * k, 0, 0);
     }
     this.body.position.y = pivotY;
     this.body.rotation.x = rot;

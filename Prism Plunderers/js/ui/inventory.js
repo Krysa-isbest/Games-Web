@@ -17,6 +17,7 @@ import { startUse, cannotUse } from '../game/weapons.js';
 import { SHIELDS } from '../game/stats.js';
 import { P, Credits } from '../core/save.js';
 import { sellPrice } from '../game/economy.js';
+import { SHARED } from '../game/loot.js';
 import { bus } from '../core/events.js';
 import { kn, BINDS } from '../core/input.js';
 import { uiSfx } from '../core/sound.js';
@@ -224,6 +225,32 @@ export class InventoryScreen {
   // ---------- the one door for every change ----------
   apply(op) {
     const p = this.p, inv = p.inv, box = this.box;
+    // (part 12) a squad friend: the box is the leader's. Work the change out on copies, and keep it only if the
+    // leader says nobody changed the box first (then only the inventory slots it touched are copied in)
+    if (box && box.remote && SHARED.commit && (op.t === 'take' || op.t === 'store' || op.t === 'takeAll' || op.t === 'drop' && op.ref.a === 'box' ||
+      (op.ref && op.ref.a === 'box') || (op.from && (op.from.a === 'box' || op.to.a === 'box')))) {
+      if (op.t === 'drop' || box.pending) { uiSfx.error(); return false; }
+      const inv2 = JSON.parse(JSON.stringify(inv)), box2 = JSON.parse(JSON.stringify({ id: box.id, name: box.name, slots: box.slots, revealed: box.revealed }));
+      this.p.inv = inv2; this.box = box2;
+      let ok2 = false;
+      try { ok2 = this.applyLocal(op); } finally { this.p.inv = inv; this.box = box; syncShield(p); }
+      if (!ok2) { uiSfx.error(); this.render(); return false; }
+      box.pending = true;
+      SHARED.commit(box, box.slots, box2.slots).then(res => {
+        box.pending = false;
+        if (res.ok) {
+          for (const k of Object.keys(inv.equip)) if (JSON.stringify(inv.equip[k]) !== JSON.stringify(inv2.equip[k])) inv.equip[k] = inv2.equip[k];
+          for (const a of ['bag', 'quick', 'safe']) inv2[a].forEach((it, i) => { if (JSON.stringify(inv[a][i]) !== JSON.stringify(it)) inv[a][i] = it; });
+          syncShield(p); uiSfx.click(); bus.emit('inv:changed', op, box);
+        } else { uiSfx.error(); bus.emit('use:denied', p, 'Someone else took it first'); }
+        this.render(true);
+      });
+      return true;
+    }
+    return this.applyLocal(op);
+  }
+  applyLocal(op) {
+    const p = this.p, inv = p.inv, box = this.box;
     let ok = false;
     switch (op.t) {
       case 'move': ok = move(inv, op.from, op.to, box); break;
@@ -253,7 +280,7 @@ export class InventoryScreen {
     }
     syncShield(p);
     if (ok && this.lobby) this.onChange?.(op);
-    if (ok) { if (op.t !== 'use') uiSfx.click(); bus.emit('inv:changed', op); }
+    if (ok) { if (op.t !== 'use') uiSfx.click(); bus.emit('inv:changed', op, box); }
     else if (op.t !== 'use') uiSfx.error();
     this.render();
     return ok;

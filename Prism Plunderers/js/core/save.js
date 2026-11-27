@@ -91,7 +91,9 @@ export const SETTINGS_DEFAULTS = {
   preset: 'high', scale: 1, dynRes: false, fpsCap: 0, fov: 90, aa: 'msaa', shadows: 'high', showFps: false,
   shadowDist: 'medium', textures: 'high', aniso: 8, groundDetail: 'high', view: 'far', detail: 'medium', panes: true, effects: 'high',
   // audio
-  vol: 0.8, music: 0.6, sfx: 1, ui: 0.7, ambient: 0.8,
+  vol: 0.8, music: 0.6, sfx: 1, ui: 0.7, ambient: 0.8, bgMute: true,
+  // game (part 10, ui/settings.js): camera shake, HUD size, crosshair colour, hit markers; the settings tab last open
+  shake: 1, hud: 1, xc: 'white', hitMarks: true, setTab: 'game',
 };
 // what each preset sets (anything changed by hand afterwards makes the preset 'custom'); High is how v0.6 looked
 export const PRESETS = {

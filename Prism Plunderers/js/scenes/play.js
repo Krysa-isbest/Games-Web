@@ -20,6 +20,7 @@ import { TICK } from '../core/config.js';
 import { loadPhysics, Physics, G } from '../core/physics.js';
 import { $, esc, rng } from '../core/util.js';
 import { UI } from '../ui/screens.js';
+import { openSettings } from '../ui/settings.js';
 import { Debug } from '../ui/debug.js';
 import { InventoryScreen } from '../ui/inventory.js';
 import { ItemWheel } from '../ui/wheel.js';
@@ -71,7 +72,8 @@ export function createPlayScene(o) {
   const fxRnd = rng(91), spawnRnd = rng((o.seed || 1) * 7 + 3);
   const _a = new THREE.Vector3(), _b = new THREE.Vector3();
   // the simulation runs while the mouse is captured, while the inventory is open, and while you are dead
-  const paused = () => !Input.locked && !invOpen && !(player && player.dead);
+  // (part 12) with a squad nothing ever pauses: the menu only stops your own raider
+  const paused = () => !api.params.coop && !Input.locked && !invOpen && !(player && player.dead);
   const spawnPoint = () => world.spawnPoint ? world.spawnPoint(spawnRnd, player) : world.spawn;
 
   // ---------- HUD helpers ----------
@@ -281,7 +283,8 @@ export function createPlayScene(o) {
 
   const ctx = { phys: null, items: null };
   const api = {
-    scene, camera,
+    scene, camera, params: {},
+    get footing() { return footing; },
     get phys() { return phys; }, get world() { return world; }, get prism() { return prism; }, get player() { return player; },
     get hud() { return hud; }, get cam() { return cam; }, get ground() { return ground; }, get glow() { return glow; },
   };
@@ -298,7 +301,8 @@ export function createPlayScene(o) {
     get range() { return world; },
     get extra() { return extra; },
     get lamp() { return lamp; },
-    async enter() {
+    async enter(params = {}) {
+      api.params = params;                                 // (part 12: { coop } when a squad goes in together)
       document.body.dataset.mode = 'game';
       UI.home = null; UI.hide();
       $('fade-msg').textContent = o.loading || 'Loading';
@@ -322,8 +326,8 @@ export function createPlayScene(o) {
       ground = new GroundLoot({ scene, phys, items: world.items });
       for (const g of world.groundItems || []) ground.place(makeItem(g.id, g.n), g);
 
-      const sp = spawnPoint();
-      player = createPlayer({ name: P.name, spawn: sp });
+      const sp = (o.spawn && o.spawn(api, world)) || spawnPoint();     // (a squad: the same drop zone for everyone)
+      player = createPlayer({ name: P.name, spawn: sp, ...(o.stats ? { stats: o.stats() } : {}) });     // (a raid: the skill tree's numbers)
       attachBody(player, phys);
       (o.kit || giveKit)(player);
       raider = new Raider({ shadows: true });
@@ -377,8 +381,7 @@ export function createPlayScene(o) {
       );
       listen();
       $('pz-resume').onclick = () => grab(false);
-      $('pz-controls').onclick = () => { showPause(false); UI.go('controls'); };
-      $('pz-graphics').onclick = () => { showPause(false); UI.go('graphics'); };
+      $('pz-settings').onclick = () => { showPause(false); openSettings(); };
       $('pz-quit').onclick = () => extra.quit ? extra.quit() : Scenes.go('menu');
       $('pz-tag').textContent = o.label || '';
       onLock(false);
@@ -462,7 +465,7 @@ export function createPlayScene(o) {
       const step = raider.update(stop ? 0 : dt, {
         mode: p.mode, speed, fwd: p.vel.x * fx + p.vel.z * fz, side: -(p.vel.x * -fz + p.vel.z * fx),
         grounded: p.grounded, vy: p.vel.y, crouch: p.crouch, sprint: p.sprinting, aim: p.aiming || p.firing,
-        rollT: p.rollT / ROLL.time, deathT: p.deathT, landT: p.landT, landPower: p.landPower, hurtT: p.hurtT,
+        rollT: p.rollT / ROLL.time, deathT: p.deathT, downT: p.downT, landT: p.landT, landPower: p.landPower, hurtT: p.hurtT,
         turn: p.turn, using: !!p.use || !!p.using, lookYaw: angDiff(facing, cam.yaw), lookPitch: cam.pitch,
         hand: handState(p), ground: footing,
       });

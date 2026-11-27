@@ -10,7 +10,7 @@
 // The rules' state is plain data in R (a co-op host can own it later) and changes only in step(); the pod, the
 // dropship and the camera shots are drawing only (frame()).
 import * as THREE from 'three';
-import { P, Stash, saveProfile } from '../core/save.js';
+import { P, S, Stash, saveProfile } from '../core/save.js';
 import { bus } from '../core/events.js';
 import { $, esc, rng } from '../core/util.js';
 import { Scenes } from '../core/scenes.js';
@@ -19,6 +19,9 @@ import { applyDamage } from './damage.js';
 import { ITEMS, RARITY } from './items.js';
 import { fwdX, fwdZ } from './move-math.js';
 import { chickenForage } from './economy.js';
+import { raidPoints } from './skills.js';
+import { threat as threatNow, needsSupply, PACE } from './pacing.js';
+import { zoneKind } from '../world/ruins/plan.js';
 
 // time: the raid (s); hold: calling the pick-up (s); open: when the points open (s after landing); pad: how close to
 // a point's middle you must be; fall / door / out: the drop pod's landing, its door blowing off, you stepping out;
@@ -42,10 +45,11 @@ export function giveStartKit(p) {
 export const clock = s => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 // api: the play scene's (scene, player, world, prism, hud, cam, glow, phys)
-export function createRaid(api, { seed = 1 } = {}) {
+export function createRaid(api, { seed = 1, threat = threatNow(), stay = null } = {}) {
   const p = api.player, L = api.world.layout, rnd = rng(seed);
   const R = {
     phase: 'drop', t: 0, left: RAID.time, kills: 0, deadT: 0, cause: '', done: false, quitArm: 0, wasCalling: false,
+    threat, redT: 0, supply: null,                                    // (part 11) time in the sealed red zone; the supply drop
     extracts: L.extracts.map(e => ({ id: e.id, name: e.name, x: e.x, z: e.z, openAt: RAID.open[0] + rnd() * (RAID.open[1] - RAID.open[0]) })),
     pickup: null,
   };
@@ -73,6 +77,35 @@ export function createRaid(api, { seed = 1 } = {}) {
     bus.emit('raid:pickup', R.pickup);
   }
 
+  // ---------- the supply drop (part 11): a crate that falls next to you; hold E for a medkit and two stims ----------
+  const SUPPLY_FALL = 2.2;
+  let crate = null, supplyUse = null;
+  function dropSupply() {
+    const a = (p.facing || 0) + Math.PI / 2;
+    R.supply = { x: p.pos.x + Math.sin(a) * 2, y: p.pos.y, z: p.pos.z + Math.cos(a) * 2, t: 0, taken: false };
+    const s = R.supply;
+    supplyUse = api.world.items.add({
+      id: 'supply', pos: { x: s.x, y: s.y + 0.5, z: s.z }, radius: 2.4,
+      hold: () => s.t >= SUPPLY_FALL && !s.taken ? 1 : 0,
+      label: () => s.taken || s.t < SUPPLY_FALL ? null : 'Hold to open the supply crate',
+      use: () => {
+        if (s.taken || s.t < SUPPLY_FALL) return;
+        s.taken = true;
+        addItem(p.inv, makeItem('medkit', 1)); addItem(p.inv, makeItem('stim', 2));
+        api.hud.pop('+1 Medkit, +2 Stim', 'good');
+        api.world.items.remove(supplyUse);
+        if (crate) crate.visible = false;
+      },
+    });
+    crate = new THREE.Group();
+    add(crate, new THREE.BoxGeometry(0.9, 0.6, 0.6), metal, 0, 0.3, 0);
+    add(crate, new THREE.BoxGeometry(0.94, 0.12, 0.64), amber, 0, 0.32, 0, false);
+    crate.userData.flame = add(crate, new THREE.ConeGeometry(0.35, 1.6, 8), flameM, 0, -0.8, 0, false);
+    crate.userData.flame.rotation.x = Math.PI;
+    api.scene.add(crate);
+    api.hud.pop('Supply drop · a crate is coming down next to you', 'good');
+  }
+
   // ---------- what happens to your things, and back to the lobby with a summary ----------
   function finish(result) {
     if (R.done) return;
@@ -85,11 +118,16 @@ export function createRaid(api, { seed = 1 } = {}) {
     if (result === 'extracted') P.stats.extracted++;
     else if (result !== 'left') P.stats.deaths++;
     P.stats.kills += R.kills;
+    const points = raidPoints(result, elapsed(), R.kills);   // skill points (part 9)
+    P.skills.points += points;
     saveProfile();
     chickenForage(seed + P.stats.raids);                    // Pip went scratching about while you were out (part 8)
     const worth = list => list.reduce((s, it) => s + ITEMS[it.id].value * it.n, 0);
-    const summary = { result, point: R.pickup ? R.pickup.name : '', time: elapsed(), kills: R.kills, cause: R.cause, kept: merge(kept), lost: merge(lost), value: worth(kept), lostValue: worth(lost) };
+    const summary = { result, point: R.pickup ? R.pickup.name : '', time: elapsed(), kills: R.kills, cause: R.cause, kept: merge(kept), lost: merge(lost), value: worth(kept), lostValue: worth(lost), points };
     bus.emit('raid:end', summary);
+    // (part 12) the squad leader's game runs the Prism for everyone: it stays in the raid (you are out, your things
+    // are in the stash already) until the rest of the squad is out too
+    if (stay?.()) { R.out = summary; p.out = true; p.god = true; api.hud.pop('You are out · the raid goes on for your squad until they are out', 'good'); return; }
     Scenes.go('menu', { raid: summary });
   }
   const merge = list => {
@@ -151,7 +189,7 @@ export function createRaid(api, { seed = 1 } = {}) {
       const open = isOpen(e), dx = e.x - p.pos.x, dz = e.z - p.pos.z;
       return `<li class="${open ? 'open' : ''}"><span>${esc(e.name)}</span><b>${open ? 'Open' : clock(e.openAt - elapsed())}</b><i>${Math.round(Math.hypot(dx, dz))} m</i></li>`;
     }).join('');
-    const html = `<div class="rd-top"><small>Raid</small><b class="${R.left < 120 ? 'low' : ''}">${clock(R.left)}</b></div><ul>${rows}</ul>${calling}`;
+    const html = `<div class="rd-top"><small>Raid · ${esc(R.threat.name)}</small><b class="${R.left < 120 ? 'low' : ''}">${clock(R.left)}</b></div><ul>${rows}</ul>${calling}`;
     if (html !== lastHtml) { box.innerHTML = html; lastHtml = html; }
   }
   drawHud();
@@ -182,11 +220,23 @@ export function createRaid(api, { seed = 1 } = {}) {
     frozen: () => R.phase === 'drop' || R.phase === 'pickup',
     hideRaider: () => R.phase === 'drop' && R.t < RAID.out || (R.phase === 'pickup' && R.t > 4.6),
     step(dt) {
-      if (R.done) return;
+      if (R.done) { if (R.out && !stay?.()) { const s = R.out; R.out = null; Scenes.go('menu', { raid: s }); } return; }
       R.t += dt;
-      if (R.phase === 'drop' && R.t >= RAID.out) { R.phase = 'live'; R.t = 0; p.god = false; bus.emit('raid:landed'); }
+      if (R.phase === 'drop' && R.t >= RAID.out) {
+        R.phase = 'live'; R.t = 0; p.god = false; bus.emit('raid:landed');
+        api.hud.pop(`Threat: ${R.threat.name} · ${R.threat.text}`, R.threat.tier >= 2 ? 'bad' : 'weak');
+      }
       else if (R.phase === 'live') {
         R.left -= dt;
+        // (part 11) the sealed red zone: a warning, then the jamming field hurts until you leave
+        if (R.threat.redLocked && !p.dead && zoneKind(p.pos.x, p.pos.z) === 'red') {
+          if (R.redT === 0) api.hud.pop(`Red zone sealed until raid ${PACE.redOpen + 1} · turn back`, 'bad');
+          R.redT += dt;
+          if (R.redT > PACE.redGrace) applyDamage(p, { amount: PACE.redDps * dt, type: 'gas', source: 'the Prism jamming field' });
+        } else R.redT = 0;
+        // (part 11) the supply drop: once, in your first raids, when you are low with nothing to heal with
+        if (!R.supply && needsSupply(p, false, R.threat)) dropSupply();
+        if (R.supply) R.supply.t += dt;
         R.wasCalling = !!(p.use && p.use.id.startsWith('extract-'));
         if (R.left <= 0 && !p.dead) { R.left = 0; R.cause = 'The raid timer ran out'; applyDamage(p, { amount: 1e7, type: 'fall', source: 'the raid timer' }); }
       } else if (R.phase === 'pickup' && R.t >= RAID.ship) finish('extracted');
@@ -197,7 +247,7 @@ export function createRaid(api, { seed = 1 } = {}) {
       R.deadT += dt;
       if (R.deadT >= RAID.down) finish(R.cause === 'The raid timer ran out' ? 'timeout' : 'dead');
     },
-    deathText: () => `You lose what you carried, except the safe pocket · the lobby in ${Math.max(0, Math.ceil(RAID.down - R.deadT))}`,
+    deathText: () => R.out ? 'Your squad is still in the raid: you go back to the lobby when they are out' : `You lose what you carried, except the safe pocket · the lobby in ${Math.max(0, Math.ceil(RAID.down - R.deadT))}`,
     // the pause menu's button: twice to leave (it costs everything you carry)
     quit() {
       if (R.quitArm > 0) { finish('left'); return; }
@@ -227,6 +277,17 @@ export function createRaid(api, { seed = 1 } = {}) {
       return false;
     },
     frame(dt) {
+      // the supply crate coming down (part 11)
+      if (crate && R.supply) {
+        const s = R.supply, k = Math.min(1, s.t / SUPPLY_FALL);
+        crate.position.set(s.x, s.y + 60 * (1 - k) * (1 - k), s.z);
+        crate.userData.flame.visible = k < 1;
+        if (k >= 1 && !crate.userData.landed) {
+          crate.userData.landed = true;
+          api.prism.fx.smoke(new THREE.Vector3(s.x, s.y + 0.3, s.z), 2, 2, 0xb59f80, 1);
+          api.prism.sound('pod', { x: s.x, y: s.y, z: s.z });
+        }
+      }
       // the pod: falling, landing in a cloud of dust, its door blowing off
       const q = podPos(R.phase === 'drop' ? R.t : RAID.out);
       pod.position.set(q.x, q.y, q.z);
@@ -234,7 +295,7 @@ export function createRaid(api, { seed = 1 } = {}) {
       if (podFlame.visible) podFlame.scale.set(1, 0.8 + Math.random() * 0.4, 1);
       if (R.phase === 'drop') {
         if (R.t >= RAID.fall && !pod.userData.landed) {
-          pod.userData.landed = true; shake = 0.9;
+          pod.userData.landed = true; shake = 0.9 * (S.shake ?? 1);
           const at = new THREE.Vector3(podAt.x, 0.4, podAt.z);
           api.prism.fx.flash(at, 0xffc27a, 3.5, 0.25);
           for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; api.prism.fx.smoke(new THREE.Vector3(podAt.x + Math.cos(a) * 1.8, 0.3, podAt.z + Math.sin(a) * 1.8), 2.6, 2.6, 0xb59f80, 1.2); }
@@ -274,6 +335,7 @@ export function createRaid(api, { seed = 1 } = {}) {
     dispose() {
       for (const off of offs) off();
       for (const u of uses) api.world.items.remove(u);
+      if (supplyUse) api.world.items.remove(supplyUse);
       box.classList.add('hidden'); box.innerHTML = '';
       quitBtn.textContent = 'Back to the lobby';
       p.god = false;
@@ -295,7 +357,7 @@ export function showRaidSummary(s, UI) {
   $('rs-sub').textContent = T[1];
   const cell = (k, v) => `<div class="stat"><small>${esc(k)}</small><b>${esc(v)}</b></div>`;
   $('rs-stats').innerHTML = cell('Time in the raid', clock(s.time)) + cell('Prism destroyed', s.kills) +
-    cell('Brought back', s.value.toLocaleString('en-US') + ' cr') + cell('Lost', s.lostValue.toLocaleString('en-US') + ' cr');
+    cell('Brought back', s.value.toLocaleString('en-US') + ' cr') + cell('Lost', s.lostValue.toLocaleString('en-US') + ' cr') + cell('Skill points', '+' + (s.points || 0));
   const list = (items, empty) => items.length ? items.map(it => {
     const d = ITEMS[it.id];
     return `<li><b style="color:${RARITY[d.rarity].color}">${esc(d.name)}</b><span>x${it.n}</span><i>${(d.value * it.n).toLocaleString('en-US')} cr</i></li>`;

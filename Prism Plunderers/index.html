@@ -195,18 +195,88 @@
   </footer>
 </section>
 
-<!-- settings: controls -->
-<section id="s-controls" class="screen hidden">
+<!-- the squad: invite, join, chat (js/ui/squadui.js, part 12) -->
+<section id="s-squad" class="screen hidden">
   <div class="board">
     <header class="p-head">
-      <div class="p-title"><small>Settings</small><h2>Controls</h2></div>
+      <div class="p-title"><small>Co-op</small><h2>Squad</h2></div>
+      <span class="p-sub" id="sq-status">1 to 4 plunderers</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
+    </header>
+    <div class="p-body sq-body">
+      <div class="sq-col">
+        <h3 class="sect">Your squad</h3>
+        <ul class="sq-list" id="sq-list"></ul>
+        <h3 class="sect">Room code <small>(over the internet)</small></h3>
+        <div class="sq-line"><button class="btn primary" id="sq-host">Open a room</button><b class="sq-code" id="sq-code"></b></div>
+        <div class="sq-line"><input id="sq-join-code" maxlength="5" placeholder="CODE" spellcheck="false" autocomplete="off"><button class="btn" id="sq-join">Join</button></div>
+        <h3 class="sect">Invite code <small>(LAN or Tailscale, no server)</small></h3>
+        <div class="sq-two">
+          <div><p class="note">Leader: make a code, send it to a friend, paste their reply.</p>
+            <button class="btn" id="sq-inv">Make invite code</button>
+            <textarea id="sq-inv-out" readonly placeholder="Your invite code appears here"></textarea>
+            <textarea id="sq-reply-in" placeholder="Paste their reply code"></textarea>
+            <button class="btn" id="sq-finish">Finish connection</button></div>
+          <div><p class="note">Friend: paste the invite code, send back the reply.</p>
+            <textarea id="sq-inv-in" placeholder="Paste the invite code"></textarea>
+            <button class="btn" id="sq-reply">Make reply code</button>
+            <textarea id="sq-reply-out" readonly placeholder="Your reply code appears here"></textarea></div>
+        </div>
+      </div>
+      <div class="sq-col">
+        <h3 class="sect">Chat</h3>
+        <div class="sq-chat" id="sq-chat"></div>
+        <div class="sq-line"><input id="sq-say" maxlength="200" placeholder="Say something" autocomplete="off"><button class="btn" id="sq-send">Send</button></div>
+      </div>
+    </div>
+    <footer class="p-foot">
+      <span class="note">Codes last 15 minutes and work once. The squad leader starts the raid when everyone is ready.</span>
+      <button class="btn danger" id="sq-leave">Leave the squad</button>
+    </footer>
+  </div>
+</section>
+
+<!-- settings: game (js/ui/settings.js, part 10) -->
+<section id="s-game" class="screen hidden">
+  <div class="board">
+    <header class="p-head">
+      <div class="p-title"><small>Settings</small><h2>Game</h2></div><nav class="set-tabs"></nav>
+      <span class="p-sub">Changes are saved right away</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
+    </header>
+    <div class="p-body" id="gm-body"></div>
+    <footer class="p-foot">
+      <span class="note">Q and E switch between the settings pages.</span>
+      <button class="btn" id="gm-reset">Reset all settings</button>
+    </footer>
+  </div>
+</section>
+
+<!-- settings: sound (js/ui/settings.js, part 10) -->
+<section id="s-sound" class="screen hidden">
+  <div class="board">
+    <header class="p-head">
+      <div class="p-title"><small>Settings</small><h2>Sound</h2></div><nav class="set-tabs"></nav>
+      <span class="p-sub">Changes are saved right away</span>
+      <button class="back" data-back><kbd>Esc</kbd>Back</button>
+    </header>
+    <div class="p-body" id="sd-body"></div>
+    <footer class="p-foot">
+      <span class="note">Moving a slider plays a short sound on that channel.</span>
+    </footer>
+  </div>
+</section>
+
+<!-- settings: controls --><section id="s-controls" class="screen hidden">
+  <div class="board">
+    <header class="p-head">
+      <div class="p-title"><small>Settings</small><h2>Controls</h2></div><nav class="set-tabs"></nav>
       <span class="p-sub">Changes are saved right away</span>
       <button class="back" data-back><kbd>Esc</kbd>Back</button>
     </header>
     <div class="p-body" id="ct-body"></div>
     <footer class="p-foot">
       <span class="note">Click a key, then press the new one. Esc cancels, Delete clears. A key that is already taken swaps places.</span>
-      <button class="btn" id="ct-graphics">Graphics settings</button>
       <button class="btn" id="ct-reset">Reset keys</button>
     </footer>
   </div>
@@ -216,14 +286,13 @@
 <section id="s-graphics" class="screen hidden">
   <div class="board">
     <header class="p-head">
-      <div class="p-title"><small>Settings</small><h2>Graphics</h2></div>
+      <div class="p-title"><small>Settings</small><h2>Graphics</h2></div><nav class="set-tabs"></nav>
       <span class="p-sub">Changes are saved right away</span>
       <button class="back" data-back><kbd>Esc</kbd>Back</button>
     </header>
     <div class="p-body" id="gx-body"></div>
     <footer class="p-foot">
       <span class="note" id="gx-note">A slower PC: pick Low, then raise what you miss most. Render scale and shadows cost the most.</span>
-      <button class="btn" id="gx-controls">Controls</button>
     </footer>
   </div>
 </section>
@@ -336,8 +405,7 @@
     <small id="pz-tag">Test range</small>
     <h2>Paused</h2>
     <button class="btn primary" id="pz-resume">Resume</button>
-    <button class="btn" id="pz-controls">Controls</button>
-    <button class="btn" id="pz-graphics">Graphics</button>
+    <button class="btn" id="pz-settings">Settings</button>
     <button class="btn" id="pz-quit">Back to the lobby</button>
     <p class="note" id="pz-keys"></p>
   </div>

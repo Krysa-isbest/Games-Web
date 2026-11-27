@@ -21,7 +21,11 @@ export class PrismSpawner {
       len: g.route ? routeLength(g.route, !g.routeBack) : 0,
     }));
   }
+  // p: the player, or (part 12) the squad's players: a group wakes for whoever is near, sleeps when all are far
   step(dt, p) {
+    const ps = (Array.isArray(p) ? p : [p]).filter(q => q && !q.dead && !q.out);
+    // how far the nearest player is (part 12: a squad wakes groups near any of them, they sleep when all are far)
+    this.far = (x, z) => { let m = Infinity; for (const q of ps) m = Math.min(m, Math.hypot(x - q.pos.x, z - q.pos.z)); return m; };
     this.time += dt;
     const owned = new Set(), want = [];
     for (const g of this.groups) {
@@ -31,8 +35,8 @@ export class PrismSpawner {
       }
       if (!g.active) {
         if (g.route) g.s += dt * (g.speed || 1.5);                       // the patrol carries on, on paper
-        if (g.alive > 0 && p && !p.dead) {
-          const at = this.anchor(g), d = Math.hypot(at.x - p.pos.x, at.z - p.pos.z);
+        if (g.alive > 0 && ps.length) {
+          const at = this.anchor(g), d = this.far(at.x, at.z);
           if (d < (g.radius || this.wake)) want.push({ g, at, d });
         }
         continue;
@@ -44,39 +48,39 @@ export class PrismSpawner {
       for (const r of g.robots) owned.add(r);
       if (!g.robots.length) { g.active = false; continue; }
       const lead = g.robots[0];
-      const far = !p || Math.hypot(lead.pos.x - p.pos.x, lead.pos.z - p.pos.z) > Math.max(this.sleep, (g.radius || this.wake) + 60);
+      const far = !ps.length || this.far(lead.pos.x, lead.pos.z) > Math.max(this.sleep, (g.radius || this.wake) + 60);
       if (far && !g.robots.some(r => r.hostile)) this.putToSleep(g);
     }
     if (want.length) {
-      this.wakeNearest(want, p);
+      this.wakeNearest(want);
       for (const g of this.groups) if (g.active) for (const r of g.robots) owned.add(r);
     }
     // reinforcements nobody owns: gone once you are far away and they have calmed down
     for (const r of [...this.dir.robots]) {
-      if (owned.has(r) || r.dead || r.hostile || !p) continue;
-      if (Math.hypot(r.pos.x - p.pos.x, r.pos.z - p.pos.z) > this.sleep + 40) this.dir.remove(r);
+      if (owned.has(r) || r.dead || r.hostile || !ps.length) continue;
+      if (this.far(r.pos.x, r.pos.z) > this.sleep + 40) this.dir.remove(r);
     }
   }
   // robots awake in the groups (the cap counts these)
   get robotsAwake() { let n = 0; for (const g of this.groups) if (g.active) n += g.robots.length; return n; }
   // wakes the groups that want to, the nearest first, while the cap allows
-  wakeNearest(want, p) {
+  wakeNearest(want) {
     want.sort((a, b) => a.d - b.d);
     let n = this.robotsAwake;
     for (const w of want) {
       const size = Math.min(w.g.alive, w.g.members.length);
-      if (n + size > this.cap && w.d < ROOM_NEAR) n -= this.makeRoom(p, n + size - this.cap);
+      if (n + size > this.cap && w.d < ROOM_NEAR) n -= this.makeRoom(n + size - this.cap);
       if (n + size > this.cap) continue;
       this.wakeUp(w.g, w.at);
       n += w.g.robots.length;
     }
   }
   // puts calm groups far from you to sleep, the furthest first, until `need` robots are freed; returns how many were
-  makeRoom(p, need) {
+  makeRoom(need) {
     const far = [];
     for (const g of this.groups) {
       if (!g.active || !g.robots.length || g.robots.some(r => r.hostile)) continue;
-      const d = Math.hypot(g.robots[0].pos.x - p.pos.x, g.robots[0].pos.z - p.pos.z);
+      const d = this.far(g.robots[0].pos.x, g.robots[0].pos.z);
       if (d > ROOM_FAR) far.push({ g, d });
     }
     far.sort((a, b) => b.d - a.d);

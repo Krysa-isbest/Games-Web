@@ -11,9 +11,12 @@ import { $ } from './core/util.js';
 import { UI } from './ui/screens.js';
 import { initControls } from './ui/keybinds.js';
 import { initGraphics } from './ui/graphics.js';
+import { initSettings } from './ui/settings.js';
 import { initSavePanel } from './ui/savepanel.js';
 import { Debug } from './ui/debug.js';
 import { initMainMenu } from './ui/mainmenu.js';
+import { initSquadUI } from './ui/squadui.js';
+import { Squad, squadTick } from './net/squad.js';
 
 window.__pp = true;                                   // tells the page that the game's code loaded
 $('fatal').classList.add('hidden');                   // in case a slow connection already showed the "could not start" note
@@ -28,6 +31,7 @@ Input.init($('view'));
 UI.init();
 initControls();
 initGraphics();
+initSettings();
 initSavePanel();
 Debug.init();
 
@@ -38,7 +42,9 @@ Scenes.add('ruins', () => import('./scenes/ruins.js').then(m => m.default()));
 
 $('ver').textContent = `${VERSION} · ${BUILD}`;
 // a broken menu part must never stop the whole game from starting
-try { initMainMenu({ play: () => Scenes.go(P.dest === 'test' ? 'test' : 'ruins') }); }
+initSquadUI();
+// Play: The Ruins or the test range; with a squad (part 12) always The Ruins, everyone with the same seed
+try { initMainMenu({ play: (o = {}) => Scenes.go(o.coop ? 'ruins' : P.dest === 'test' ? 'test' : 'ruins', o) }); }
 catch (e) { console.error(e); setTimeout(() => UI.toast('Part of the menu failed to load: ' + e.message, 'bad'), 1500); }
 
 // sound starts with the first click or key press (browser rule), then hover and click blips on every button
@@ -60,7 +66,7 @@ bus.on('gfx:lost', () => UI.toast('The graphics card reset. Restoring...', 'bad'
 Loop.start({
   fixed: (dt, tick) => Scenes.fixed(dt, tick),
   afterStep: () => Input.endTick(),
-  frame: (dt, alpha) => { Scenes.frame(dt, alpha); Debug.frame(); Engine.adapt(Loop.stats.ms); },
+  frame: (dt, alpha) => { Scenes.frame(dt, alpha); Debug.frame(); Engine.adapt(Loop.stats.ms); squadTick(dt); Loop.background = Squad.on; },
 });
 Scenes.go('menu');
 window.__ppStarted = true;                             // from here on, errors no longer cover the screen

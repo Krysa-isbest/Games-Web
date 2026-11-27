@@ -13,6 +13,8 @@ import { ITEMS, RARITY } from '../game/items.js';
 import { STATIONS, stationLevel, upgradeStation, craft, missing, TRADER_STOCK, buyPrice, buyPack, buy, BAG, bagSlots, upgradeBag,
   stashBox, saveStash, loadout, loadoutEmpty, chickenCollect, STASH_SLOTS, freeKit } from '../game/economy.js';
 import { InventoryScreen } from './inventory.js';
+import { PATHS, owned, canBuy, buySkill, resetSkills } from '../game/skills.js';
+import { threat } from '../game/pacing.js';
 import { UI } from './screens.js';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
@@ -40,6 +42,8 @@ function onAct(e) {
   else if (a === 'buy') { ok = buy(arg); msg = ok ? `Bought ${buyPack(arg) > 1 ? buyPack(arg) + ' ' : ''}${ITEMS[arg].name} (in your stash)` : 'Not enough Scrap Credits'; }
   else if (a === 'bag') { ok = upgradeBag(); msg = ok ? `Backpack: ${bagSlots()} slots` : 'Not enough to pay for it'; }
   else if (a === 'free') { ok = freeKit(); msg = ok ? 'Free starter loadout: the Scrap Pistol, 36 rounds, a medkit' : 'Only for an empty loadout'; }
+  else if (a === 'skill') { ok = buySkill(arg); msg = ok ? 'Skill learned' : 'Not enough skill points, or the one before it is missing'; }
+  else if (a === 'respec') { const back = resetSkills(); msg = `All skills unlearned: ${back} points back`; }
   else if (a === 'loadout') { openLoadout(); return; }
   if (ok) uiSfx.ok(); else uiSfx.error();
   if (msg) UI.toast(msg, ok ? '' : 'bad');
@@ -47,7 +51,18 @@ function onAct(e) {
   renderPage();
 }
 let current = '';
-function renderPage() { if (current === 'workshop') renderWorkshop(); else if (current === 'raider') renderRaider(); else if (current === 'trader') renderTrader(); }
+function renderPage() { if (current === 'workshop') renderWorkshop(); else if (current === 'raider') renderRaider(); else if (current === 'trader') renderTrader(); else if (current === 'skills') renderSkills(); }
+
+// the Skills tab (part 9): three paths of crystal facets, bought in order with skill points
+export function renderSkills() {
+  const col = p => `<section class="sk-path" style="--pc:${p.color}"><h4>${esc(p.name)}</h4>` + p.nodes.map(n => {
+    const has = owned(n.id), can = canBuy(n.id);
+    return `<button class="sk-node${has ? ' has' : can ? ' can' : ''}${n.unique ? ' uni' : ''}${n.later ? ' later' : ''}" data-act="skill" data-arg="${n.id}"${has || !can ? ' disabled' : ''}>` +
+      `<i></i><b>${esc(n.name)}</b><small>${esc(n.text)}</small><em>${has ? 'Learned' : n.later ? 'Later' : n.cost + ' pt'}</em></button>`;
+  }).join('') + '</section>';
+  $('tabpage').innerHTML = `<h2>Skills</h2><p>You have <b class="sk-pts">${P.skills.points}</b> skill point${P.skills.points === 1 ? '' : 's'}. You earn them on raids: 2 for getting out, 1 for surviving at least 5 minutes before you fall, and 1 for every 10 Prism destroyed (up to 3). Each path is learned in order.</p>` +
+    `<div class="sk-tree">${PATHS.map(col).join('')}</div><button class="btn" data-act="respec">Unlearn all (free for now)</button>`;
+}
 
 // a cost line: each item with what you have; red where you are short
 function costs(items = [], cr = 0) {
@@ -63,6 +78,7 @@ export function showTab(id) {
   if (id === 'workshop') { renderWorkshop(); bus.emit('lobby:station', sel); return true; }
   if (id === 'raider') { renderRaider(); return true; }
   if (id === 'trader') { renderTrader(); return true; }
+  if (id === 'skills') { renderSkills(); return true; }
   return false;
 }
 
@@ -94,7 +110,7 @@ export function renderWorkshop() {
 
 // the Raider tab: the loadout, the backpack, your record
 export function renderRaider() {
-  const lv = P.workshop.bag | 0, next = BAG[lv + 1], L = loadout();
+  const lv = P.workshop.bag | 0, next = BAG[lv + 1], L = loadout(), t = threat();
   const what = loadoutEmpty() ? 'Empty: you go in with the free starter loadout (the Scrap Pistol, 36 rounds, a medkit).'
     : Object.values(L.equip).filter(Boolean).map(it => ITEMS[it.id].name).join(', ') + ` · ${[...L.bag, ...L.quick, ...L.safe].filter(Boolean).length} more items`;
   const cell = (k, v) => `<div><small>${esc(k)}</small><b>${esc(String(v))}</b></div>`;
@@ -102,6 +118,7 @@ export function renderRaider() {
     `<button class="btn primary wide" data-act="loadout"><kbd>Tab</kbd>Loadout and stash</button>` +
     `<button class="btn wide" data-act="free"${loadoutEmpty() ? '' : ' disabled'}>Free starter loadout (pistol, ammo, medkit)</button>` +
     `<h4>Backpack · ${bagSlots()} slots</h4>` + (next ? `${costs(next.items, next.cr)}<button class="btn" data-act="bag"${missing(next.items, next.cr).length ? ' disabled' : ''}>Upgrade to ${next.slots} slots</button>` : '<p class="ws-max">The biggest backpack.</p>') +
+    `<h4>Threat · ${esc(t.name)}</h4><p class="ws-max">${esc(t.text)}${t.next ? ` Next: ${esc(t.next.name)} after ${t.next.from - t.raids} more raid${t.next.from - t.raids === 1 ? '' : 's'}.` : ''}${t.safety ? ' A supply drop comes once a raid if you are badly hurt with nothing to heal with.' : ''}</p>` +
     `<h4>Record</h4><div class="tp-grid">${cell('Raids', P.stats.raids)}${cell('Extracted', P.stats.extracted)}${cell('Deaths', P.stats.deaths)}${cell('Prism destroyed', P.stats.kills)}${cell('Stash', `${P.stash.length} / ${STASH_SLOTS}`)}</div>`;
 }
 

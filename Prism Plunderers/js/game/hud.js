@@ -13,6 +13,7 @@ import { count, weight, MAX_WEIGHT } from './inventory.js';
 import { inHand, slotItem, spreadOf } from './weapons.js';
 import { PRISM } from './prism/defs.js';
 import { $, esc } from '../core/util.js';
+import { S } from '../core/save.js';
 const _p = new THREE.Vector3();
 // the trade value of the Prism parts (materials and valuables) in the backpack and the safe pocket
 const partsValue = inv => [...inv.bag, ...inv.safe].reduce((s, it) => {
@@ -173,7 +174,7 @@ export class Hud {
     } else this.set('bsc', $('hud-boss'), 'class', 'hud-boss hidden');
     // small bars over robots you have hurt
     let n = 0;
-    const W = innerWidth, H = innerHeight;
+    const W = innerWidth / (S.hud || 1), H = innerHeight / (S.hud || 1);     // the HUD is zoomed by the HUD size setting
     for (const r of dir.robots) {
       if (n >= this.bars.length) break;
       if (r.dead || r.hurtT > 3 || r.type === 'roach') continue;

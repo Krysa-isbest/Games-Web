@@ -674,3 +674,51 @@ body.inv-open #s-main { visibility: hidden; }
 #s-main[data-tab="raider"] .tabpage, #s-main[data-tab="trader"] .tabpage { top: 96px; bottom: 96px; left: auto; right: 28px; width: min(560px, calc(100% - 40px)); transform: none; overflow-y: auto; }
 #s-main[data-tab="trader"] .trade { max-height: none; }
 .tr-row .btn.small:not(:disabled) { color: var(--acc-ink); background: var(--acc); }
+/* ---------- part 9: the Skills tab ---------- */
+#s-main[data-tab="skills"] .tabpage { top: 96px; bottom: 96px; width: min(980px, calc(100% - 40px)); transform: translateX(-50%); overflow-y: auto; }
+.sk-pts { color: var(--acc); }
+.sk-tree { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 12px; }
+.sk-path h4 { margin: 0 0 8px; font: 700 18px var(--cond); text-transform: uppercase; letter-spacing: .08em; color: var(--pc); }
+.sk-node { position: relative; width: 100%; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 10px; text-align: left; margin-bottom: 8px; padding: 10px 56px 10px 10px;
+  border: 0; border-radius: 4px; color: var(--text); background: var(--row); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
+.sk-node i { grid-row: 1 / 3; width: 30px; height: 30px; align-self: center; background: rgba(255, 255, 255, .12); clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+.sk-node b { font: 700 16px var(--cond); text-transform: uppercase; }
+.sk-node small { font: 400 13px/1.35 var(--ui); color: var(--dim); }
+.sk-node em { position: absolute; right: 10px; top: 10px; font: 700 13px var(--cond); font-style: normal; color: var(--dim); }
+.sk-node.can { box-shadow: inset 0 0 0 1px var(--pc); }
+.sk-node.can em { color: var(--acc); }
+.sk-node.has { background: color-mix(in srgb, var(--pc) 16%, transparent); box-shadow: inset 0 0 0 1px var(--pc); cursor: default; }
+.sk-node.has i { background: var(--pc); box-shadow: 0 0 12px var(--pc); }
+.sk-node.has em { color: var(--pc); }
+.sk-node.uni b::after { content: ' · unique'; font-weight: 500; color: var(--violet-hi); text-transform: none; }
+.sk-node:disabled:not(.has) { opacity: .55; cursor: default; }
+/* ---------- part 10: the settings menu ---------- */
+.set-tabs { display: flex; gap: 4px; margin-left: 8px; padding: 3px; align-self: center; border-radius: 999px; background: rgba(0, 0, 0, .35); }
+.set-tabs button { height: 34px; padding: 0 18px; border-radius: 999px; font: 600 17px var(--cond); text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
+.set-tabs button:hover { color: #fff; }
+.set-tabs button.on { color: #111; background: var(--acc); }
+.seg.swatches button { display: inline-flex; align-items: center; gap: 7px; }
+.seg.swatches button::before { content: ''; width: 12px; height: 12px; border-radius: 50%; background: var(--sw, #fff); box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); }
+#hud { zoom: var(--hud, 1); }
+.xhair i, .xhair u, .xhair.lines.aim i { background: var(--xc, #fff); }
+.xhair.aim:not(.lines) i { background: transparent; border-color: var(--xc, #fff); }
+.xhair.dry u { background: var(--bad); }
+body.no-hitmarks .xhit { display: none; }
+@media (max-width: 900px) { .set-tabs button { padding: 0 10px; font-size: 15px; } }
+/* ---------- part 12: the squad ---------- */
+.sq-body { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
+.sq-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.sq-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 4px; border-radius: 4px; background: var(--row); }
+.sq-list li.me { box-shadow: inset 0 0 0 1px var(--acc); }
+.sq-list li span { margin-left: auto; color: var(--dim); font: 500 14px var(--ui); }
+.sq-line { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.sq-line input, .sq-two textarea { flex: 1; min-width: 0; padding: 8px 10px; border: 0; border-radius: 4px; color: var(--text); background: rgba(0, 0, 0, .35); font: 500 15px var(--ui); }
+#sq-join-code { max-width: 120px; text-transform: uppercase; letter-spacing: .2em; }
+.sq-code { font: 700 26px var(--cond); letter-spacing: .25em; color: var(--acc); }
+.sq-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sq-two textarea { display: block; width: 100%; height: 64px; margin: 6px 0; resize: none; font: 400 11px/1.3 'JetBrains Mono', monospace; }
+.sq-chat { height: 320px; overflow-y: auto; padding: 8px 10px; margin-bottom: 8px; border-radius: 4px; background: rgba(0, 0, 0, .3); font: 400 14px/1.45 var(--ui); }
+.sq-chat p { margin: 0 0 4px; } .sq-chat i { color: var(--dim); }
+#sq-status.bad { color: var(--bad); }
+.slot.mate span { font: 700 18px var(--cond); }
+.slot.mate:not(.ready) { opacity: .6; }

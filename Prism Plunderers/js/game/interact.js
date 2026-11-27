@@ -10,7 +10,8 @@ export class Interactions {
   constructor() { this.items = []; }
   add(it) { this.items.push(it); return it; }
   remove(it) { const i = this.items.indexOf(it); if (i >= 0) this.items.splice(i, 1); }
-  holdOf(it, p) { return typeof it.hold === 'function' ? it.hold(p) : (it.hold || 0); }
+  // (the skill tree's Light Fingers and Steady make every hold shorter: p.stats.hold)
+  holdOf(it, p) { return (typeof it.hold === 'function' ? it.hold(p) : (it.hold || 0)) * (it.fixed ? 1 : p?.stats?.hold ?? 1); }   // (fixed: a revive)
 
   // The best thing in reach: the closest one, preferring what the camera looks at.
   pick(p) {

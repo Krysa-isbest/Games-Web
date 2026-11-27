@@ -34,7 +34,7 @@ export class OrbitCam {
     this.yaw -= dx;
     this.pitch = clamp(this.pitch - dy, -1.25, 1.15);
   }
-  kick(amount) { this.shake = Math.min(1, this.shake + amount); }
+  kick(amount) { this.shake = Math.min(1, this.shake + amount * (S.shake ?? 1)); }
 
   // target = the feet (drawn position). st = { eye, aim, sprint, dead }
   update(dt, target, st) {

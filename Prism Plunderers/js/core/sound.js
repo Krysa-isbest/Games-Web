@@ -24,7 +24,7 @@ export const Sound = {
   apply() {
     if (!ctx) return;
     const t = ctx.currentTime;
-    gains.master.gain.setTargetAtTime(S.vol, t, 0.02);
+    gains.master.gain.setTargetAtTime(S.bgMute && typeof document !== 'undefined' && document.hidden ? 0 : S.vol, t, 0.02);
     for (const k of CHANNELS) gains[k].gain.setTargetAtTime(S[k], t, 0.02);
   },
   // a short synthesized beep. Enough for the interface until real sounds are added.

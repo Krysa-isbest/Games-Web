@@ -6,13 +6,16 @@ import { Sound, uiSfx } from '../core/sound.js';
 import { $, esc } from '../core/util.js';
 import { UI } from './screens.js';
 import { initLobby, showTab, openLoadout, loadoutOpen } from './lobby.js';
+import { openSettings } from './settings.js';
 import { loadoutEmpty, loadout } from '../game/economy.js';
 import { ITEMS } from '../game/items.js';
+import { NET } from '../net/net.js';
+import { Squad, setReady, allReady, startRaid } from '../net/squad.js';
 
 const TABS = ['play', 'workshop', 'raider', 'skills', 'trader'];
 // the build order (NEXT-CHAT.md). DONE = how many parts are finished.
 const PARTS = ['Foundation', 'Player', 'Prism enemies', 'Weapons and items', 'The Ruins', 'Raid rules', 'Performance', 'Lobby and workshop', 'Skill tree', 'Menus and settings', 'Difficulty', 'Multiplayer'];
-const DONE = 8;
+const DONE = 12;
 const LINES = ['2999. They landed. We shot first.', '3000. They came back. All of them.'];
 const SOON = 'Co-op comes with the multiplayer update.';
 
@@ -28,8 +31,12 @@ export function initMainMenu({ play }) {
   bus.on('save:reset', renderTop);
 
   document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
-  $('btn-play').onclick = () => onPlay();
-  $('bb-settings').onclick = () => UI.go('graphics');
+  $('btn-play').onclick = () => playPressed();
+  // (part 12) the squad: the slots, Ready for a friend, Start for the leader; the leader's start takes everyone in
+  bus.on('squad', () => { renderSlots(); renderTop(); renderPlay(); });
+  bus.on('squad:start', m => { if (!Squad.host) onPlay({ coop: m }); });
+  renderPlay();
+  $('bb-settings').onclick = () => openSettings();
   $('tb-me').onclick = () => UI.go('save');
   // where Play takes you: a raid in The Ruins, or the test range (free play, the full kit)
   const renderDest = () => { $('dest-name').textContent = P.dest === 'test' ? 'Test range' : 'The Ruins'; };
@@ -40,8 +47,8 @@ export function initMainMenu({ play }) {
     renderDest();
     UI.toast(P.dest === 'test' ? 'Play now opens the test range (free play, the full kit).' : 'Play now starts a raid in The Ruins: 20 minutes to get out with what you find.');
   };
-  $('sq-invite').onclick = () => UI.toast(SOON);
-  $('bb-chat').onclick = () => UI.toast('Chat comes with the multiplayer update.');
+  $('sq-invite').onclick = () => UI.go('squad');
+  $('bb-chat').onclick = () => UI.go('squad');
   $('bb-friends').onclick = () => UI.toast(SOON);
 
   addEventListener('keydown', onKey);
@@ -68,24 +75,51 @@ function renderSteps() {
   $('ev-note').innerHTML = `${DONE} of ${PARTS.length} done. Next up: <b>${esc(PARTS[DONE] || 'the first raid')}</b>`;
 }
 
-// ---------- squad: you plus three free slots ----------
+// ---------- squad: you plus up to three friends (part 12) ----------
 let meInit = null;                      // the letter in your squad slot
 function renderSlots() {
   const box = $('slots');
   box.innerHTML = '';
   const me = document.createElement('div');
-  me.className = 'slot me'; me.title = 'You, the squad leader';
-  me.innerHTML = '<svg><use href="#i-crown"/></svg>';
+  me.className = 'slot me'; me.title = Squad.on ? (Squad.host ? 'You, the squad leader' : 'You') : 'You, the squad leader';
+  me.innerHTML = Squad.on && !Squad.host ? '' : '<svg><use href="#i-crown"/></svg>';
   meInit = document.createElement('span');
   me.append(meInit);
   box.append(me);
-  for (let i = 0; i < 3; i++) {
+  const others = Squad.on ? Squad.members.filter(m => m.id !== NET.id) : [];
+  for (const m of others) {
+    const s = document.createElement('button');
+    s.className = 'slot mate' + (m.ready || m.host ? ' ready' : '');
+    s.title = `${m.name}${m.host ? ' (leader)' : ''} · ${m.status === 'raid' ? 'in a raid' : m.ready || m.host ? 'ready' : 'not ready'}${m.ping ? ` · ${m.ping} ms` : ''}`;
+    s.innerHTML = (m.host ? '<svg><use href="#i-crown"/></svg>' : '') + `<span>${esc((m.name[0] || '?').toUpperCase())}</span>`;
+    s.onclick = () => UI.go('squad');
+    box.append(s);
+  }
+  for (let i = others.length; i < 3; i++) {
     const b = document.createElement('button');
     b.className = 'slot add'; b.title = 'Invite a friend';
     b.innerHTML = '<svg><use href="#i-plus"/></svg>';
-    b.onclick = () => UI.toast(SOON);
+    b.onclick = () => UI.go('squad');
     box.append(b);
   }
+  const row = $('sq-invite');
+  if (row) row.innerHTML = Squad.on ? `<span>Squad</span><b>${Squad.size} / 4</b>` : '<span>Invite friends</span><b>Co-op</b>';
+}
+// the Play button: solo as before; in a squad the leader starts (when everyone is ready), a friend toggles Ready
+function renderPlay() {
+  const t = document.querySelector?.('#btn-play .pl-t');
+  if (!t) return;
+  if (!Squad.on) { t.textContent = 'Play'; return; }
+  const me = Squad.members.find(m => m.id === NET.id);
+  t.textContent = Squad.host ? (allReady() ? 'Start raid' : 'Waiting...') : me?.ready ? 'Ready ✓' : 'Ready';
+}
+function playPressed() {
+  if (!Squad.on) { onPlay(); return; }
+  if (!Squad.host) { const me = Squad.members.find(m => m.id === NET.id); setReady(!me?.ready); uiSfx.click(); return; }
+  if (Squad.inRaid) { UI.toast('Your squad is still in a raid.'); return; }
+  if (!allReady()) { UI.toast(`Waiting for ${Squad.members.filter(m => !m.host && !m.ready).map(m => m.name).join(', ')} to be ready.`); return; }
+  const m = startRaid();
+  if (m) onPlay({ coop: m });
 }
 
 // ---------- tabs ----------

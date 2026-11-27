@@ -14,8 +14,6 @@ let presetBox = null;
 
 export function initGraphics() {
   UI.onOpen('graphics', render);
-  $('gx-controls').onclick = () => UI.go('controls');
-  $('ct-graphics').onclick = () => UI.go('graphics');
 }
 
 // one setting changed by hand

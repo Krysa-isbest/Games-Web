@@ -11,6 +11,10 @@ import { fwdX, fwdZ } from './move-math.js';
 import { G } from '../core/physics.js';
 import { bus } from '../core/events.js';
 
+// (part 12) shared loot in a squad: on a friend's game, crates and wrecks belong to the leader. open(id, p, keep)
+// asks for a box; commit(box, before, after) asks to change it (only if nobody changed it first)
+export const SHARED = { open: null, commit: null };
+
 export class GroundLoot {
   constructor({ scene, phys, items }) {
     this.scene = scene; this.phys = phys; this.items = items;

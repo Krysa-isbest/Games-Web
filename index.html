@@ -209,8 +209,35 @@ const GAMES = [
   {
     file: 'Prism Plunderers/index.html', title: 'Prism Plunderers', subtitle: 'Working title', art: 'prism', big: true,
     desc: 'A third-person PvE extraction shooter. The year is 3000 and the Prism, alien robots from the planet Prisma, have overrun Earth. Drop into the ruins, loot, fight the robots and get out alive with what you found. Right now: 20-minute raids into The Ruins, a dense ruined desert city guarded by about 125 Prism robots of five kinds: a drop pod in, a dropship out, real weapons and a drag-and-drop inventory. Between raids: a workshop to build and craft in, a stash and loadout, and a Trader. The skill tree comes next; online co-op for up to 4 comes later.',
-    mp: null, lang: 'English', genre: 'Extraction shooter · PvE',
+    mp: 'Online co-op · up to 4', lang: 'English', genre: 'Extraction shooter · PvE',
     updating: true, changelog: [
+      { version: '0.12', date: '2026-11-27', notes: [
+        'Co-op, first version: squads of up to 4. Invite friends with a room code (over the internet) or with invite and reply codes (LAN or Tailscale, no server). Codes last 15 minutes and work once.',
+        'The Squad screen (Invite friends, or Chat in the lobby): who is in, their ping, ready or not, and a chat. The leader starts the raid once everyone is ready.',
+        'The squad drops into The Ruins together at the same drop zone, and you see each other. The extraction points open at the same times for everyone, and each of you extracts on your own.',
+        'The Prism are shared: the leader\'s game runs them and they go after whoever is closest. Your shots, grenades and their attacks work on every screen.',
+        'Downed, not dead: in a squad, 0 health puts you down. You crawl, and a teammate holds E for 5 s to get you up with 25 % health. After 60 s you bleed out. Keep still and the Prism lose you; explosions stop a revive.',
+        'Shared loot: crates and Prism wrecks are the same for the whole squad. What one of you takes is gone for the others, and nothing can be looted twice.',
+        'Coming next: items dropped on the ground for teammates, name tags, pings and chat during a raid.'
+      ] },
+      { version: '0.11', date: '2026-11-26', notes: [
+        'The Prism get tougher the more raids you finish. Threat levels: Fresh, Known (from raid 3), Hunted (from raid 7) and Marked (from raid 13). The Raider tab shows yours and when the next one comes.',
+        'Your first two raids: the red zone downtown is sealed while you learn the city. Its Prism and the Roach sleep, and if you stay inside, a jamming field hurts you after a few seconds.',
+        'Hunted and Marked: patrols, guards and the Fink\'s drop pods bring more Flies, and later a second Swatter.',
+        'In your first 5 raids, if you are badly hurt with nothing to heal with, a supply crate with a medkit and two stims comes down next to you (once a raid).'
+      ] },
+      { version: '0.10', date: '2026-11-26', notes: [
+        'A proper settings menu: Game, Controls, Graphics and Sound pages with tabs on top (Q and E switch pages). The gear button and Settings in the pause menu open the page you had last.',
+        'Sound page: master, effects, ambience, interface and music volume, each with a test sound, and the game can go quiet while it is in the background.',
+        'Game page: camera shake strength (or off), HUD size, crosshair colour and hit markers on or off.',
+        'Reset all settings puts everything back to the defaults (your keys stay).'
+      ] },
+      { version: '0.9', date: '2026-11-26', notes: [
+        'The skill tree (Skills tab): three paths, Mobility, Conditioning and Survival, learned in order with skill points.',
+        'You earn skill points on raids: 2 for getting out, 1 for lasting 5 minutes before you fall, and 1 for every 10 Prism you destroy (up to 3). The raid summary shows what you earned.',
+        'Skills: faster sprint, quicker stamina, cheaper rolls, more health and stamina, faster reloads, faster looting and healing, and Overclock Heart, which slowly heals you while your shield holds.',
+        'Unlearn all gives every point back, free for now.'
+      ] },
       { version: '0.8.2', date: '2026-11-26', notes: [
         'The Trader and Raider tabs are a proper panel now, top to bottom on the right, and scroll instead of running off the screen.',
         'A free starter loadout (Raider tab): the Scrap Pistol, some ammo and a medkit, for when you have nothing. An empty loadout goes in with the same kit.'

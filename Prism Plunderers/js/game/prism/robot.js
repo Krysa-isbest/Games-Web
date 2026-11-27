@@ -217,8 +217,12 @@ export function hear(robots, pos, radius, amount) {
 // ---------- damage ----------
 // The one door for damage to robots. part = a part name from defs (or null). src = { id, pos } of the attacker.
 // Returns { dmg, part, weak, broke, killed } or null.
+// (part 12) on a squad friend's game the robots belong to the leader: ROBOT_NET.remote sends the hit there and
+// only the hit marker is worked out here
+export const ROBOT_NET = { remote: null };
 export function damageRobot(r, partName, amount, ctx, src) {
   if (r.dead || !(amount > 0)) return null;
+  if (ROBOT_NET.remote) return ROBOT_NET.remote(r, partName, amount, src);
   const d = PRISM[r.type];
   let part = partName ? d.parts.find(p => p.name === partName) : null;
   if (part && part.open && !r.hatchOpen) part = null;          // a shut hatch is just armour
@@ -235,7 +239,7 @@ export function damageRobot(r, partName, amount, ctx, src) {
     r.hp -= dmg * 0.5;                         // a hit on a thruster hurts the body a little too
   } else r.hp -= dmg;
   r.hurtT = 0; r.flash = 0.07;
-  if (!r.hostile && src) { r.lastSeen = { ...src.pos }; becomeHostile(r, ctx, ctx.player, true); }   // shooting it gives you away
+  if (!r.hostile && src) { r.lastSeen = { ...src.pos }; becomeHostile(r, ctx, ctx.director?.targets?.find(q => q.id === src.id) || ctx.player, true); }   // shooting it gives you away
   if (r.hp <= 0) { r.hp = 0; res.killed = true; ctx.director?.kill(r, src); }
   bus.emit('prism:hit', r, res, src);
   return res;

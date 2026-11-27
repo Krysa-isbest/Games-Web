@@ -11,6 +11,7 @@ import { paintGround, groundMaterial, G } from './groundmap.js';
 import { Interactions } from '../../game/interact.js';
 import { CONTAINERS, rollContainer } from '../../game/items.js';
 import { makeBox } from '../../game/inventory.js';
+import { SHARED } from '../../game/loot.js';
 import { disposeTree } from '../../core/engine.js';
 import { rng } from '../../core/util.js';
 import { bus } from '../../core/events.js';
@@ -332,20 +333,25 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
 
   // ---------- loot containers ----------
   const opened = new Map();
+  const containerBox = i => {
+    let b = opened.get(i);
+    if (!b) {
+      const c = L.containers[i], def = CONTAINERS[c.type], title = def.name[0].toUpperCase() + def.name.slice(1);
+      b = makeBox('c' + i, title, rollContainer(c.type, c.zone, rng(((seed * 73856093) ^ (i * 19349663)) >>> 0)), def.size);
+      b.pos = { x: c.x, y: c.y, z: c.z }; b.reach = 3.2;
+      opened.set(i, b);
+    }
+    return b;
+  };
   L.containers.forEach((c, i) => {
-    const def = CONTAINERS[c.type], title = def.name[0].toUpperCase() + def.name.slice(1);
+    const def = CONTAINERS[c.type];
     items.add({
       id: 'c' + i, pos: { x: c.x, y: c.y + 0.9, z: c.z }, radius: c.type === 'car' ? 2.2 : 1.8,
       hold: () => opened.has(i) ? 0 : def.hold,
       label: () => { const b = opened.get(i); return b ? (b.slots.some(Boolean) ? `Open the ${def.name}` : null) : `Search the ${def.name}`; },
       use: p => {
-        let b = opened.get(i);
-        if (!b) {
-          b = makeBox('c' + i, title, rollContainer(c.type, c.zone, rng(((seed * 73856093) ^ (i * 19349663)) >>> 0)), def.size);
-          b.pos = { x: c.x, y: c.y, z: c.z }; b.reach = 3.2;
-          opened.set(i, b);
-        }
-        bus.emit('loot:open', p, b, null);
+        if (SHARED.open) { SHARED.open('c' + i, p, b => opened.set(i, b)); return; }      // (a squad: the leader's crate)
+        bus.emit('loot:open', p, containerBox(i), null);
       },
     });
   });
@@ -396,6 +402,7 @@ export function buildRuins(scene, phys, glow, seed = 3000) {
     wind: 0.03,
     footing,
     // a drop zone: at random, but after a death not the one closest to where you fell
+    opened, containerBox,
     spawnPoint(rnd, p) {
       const list = p ? L.spawns.filter(s => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) > 300) : L.spawns;
       return (list.length ? list : L.spawns)[Math.floor(rnd() * (list.length || L.spawns.length))];
